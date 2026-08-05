@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google"
 import { Toaster } from "@/components/ui/sonner"
+import { ThemeProvider } from "@/components/layout/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "./globals.css"
 
@@ -14,13 +15,20 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 })
 
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-bricolage",
+  subsets: ["latin"],
+  weight: ["200"],
+  display: "swap",
+})
+
 export const metadata: Metadata = {
   title: {
-    default: "Email Manager · email.yehia.dev",
-    template: "%s · email.yehia.dev",
+    default: "mailwart",
+    template: "%s · mailwart",
   },
   description:
-    "Stalwart directory ops for domains, mailboxes, catch-alls, and Roundcube deep-links.",
+    "Directory operations for Stalwart mail: domains, mailboxes, catch-alls, quotas, DNS health, and webmail hand-off.",
 }
 
 export default function RootLayout({
@@ -31,21 +39,27 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-background text-foreground">
         {/*
           THESIS: Zone-file precision — the mailbox directory reads like a named zone sheet, not a SaaS feature grid.
-          OWN-WORLD: Near-black ink ground, cool zone-blue accent, hairline record rules, mono for addresses only.
+          OWN-WORLD: Cool paper by day, near-black ink by night; zone-blue accent, hairline record rules, mono for addresses only.
           STORY: Operator sees live-shaped directory truth, then enters Secure Admin Login.
-          FIRST VIEWPORT: Brand + headline + one CTA left; synthetic zone/mailbox sheet right; no eyebrow, no metric strip.
-          FORM: Zone-file precision sheet · ordered candidate 3 · seed eed4bab9 (degraded roll, no challengers).
-          FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+          FORM: Zone-file precision sheet · brand wordmark in Bricolage Grotesque ExtraLight 200.
         */}
-        <TooltipProvider>
-          {children}
-          <Toaster theme="dark" richColors closeButton position="top-center" />
-        </TooltipProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <TooltipProvider>
+            {children}
+            <Toaster richColors closeButton position="top-center" />
+          </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   )
