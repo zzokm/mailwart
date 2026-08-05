@@ -320,17 +320,23 @@ Implementation: Node `dns.promises` from server — never open an unauthenticate
 
 ---
 
-## 11. UI shell (Operate — later phases)
+## 11. UI shell (Operate)
 
 ```
 AppShell
-├── TopBar (mailwart wordmark, theme toggle, health, operator menu)
-├── Breadcrumbs (section › domain › mailbox)
-├── Sidebar (Overview, Domains, Mailboxes, Routing, DNS, Logs, Import, Settings)
-└── Main (PageHeader, filters, tables, wizards, toasts)
+├── Sidebar (Overview, Domains, Mailboxes, Routing, Filters, Import, Logs, Settings)
+├── Workspace column (flex-1, min-w-0)
+│   ├── TopBar (SidebarTrigger, health, theme, Copilot toggle)
+│   ├── Main (PageHeader, breadcrumbs, filters, tables, wizards, toasts)
+│   └── …
+└── mailwart Copilot panel (right)
+    ├── Desktop (≥ lg / 1024px): inline aside — shrinks workspace via flex
+    └── Mobile (< lg): Sheet drawer — overlay (shrink would be unusable)
 ```
 
-Brand wordmark: **mailwart** in Bricolage Grotesque ExtraLight 200. Light/dark via `next-themes` (already a dependency). Density: Operate mid-high; motion restrained.
+Brand wordmark: **mailwart** in Bricolage Grotesque ExtraLight 200. Light/dark via `next-themes` (already a dependency). Density: Operate mid-high; motion restrained (panel width transition ~200 ms).
+
+**Copilot layout rule:** On desktop the panel is a peer flex child of the workspace — it never overlays Main. Closed → workspace full width; open → panel takes a fixed width (`--copilot-width`, default `22rem`) and Main shrinks.
 
 ---
 
@@ -354,8 +360,9 @@ Brand wordmark: **mailwart** in Bricolage Grotesque ExtraLight 200. Light/dark v
 | `SESSION_SECRET` | yes | iron-session seal |
 | `DNS_EXPECTED_MX` | optional | DNS health rubric |
 | `DNS_DKIM_SELECTORS` | optional | CSV selectors |
+| `COPILOT_*` provider keys | optional | See §16.5 — server-only; never `NEXT_PUBLIC_*` |
 
-Phase 1: **document only; no redeploy; no git push.**
+Phase 1 product foundation shipped. Copilot expansion: layout + docs first; **no git push** until Copilot Phases 1–5 complete.
 
 ---
 
@@ -370,6 +377,8 @@ Phase 1: **document only; no redeploy; no git push.**
 - [ ] No credentials in client bundles
 - [ ] Audit log for destructive/directory mutations (Phase 4+)
 - [ ] CSP when UI polish ships
+- [ ] Copilot LLM API keys server-only; never echo in tool results or client bundles
+- [ ] Copilot destructive tools require explicit operator approval before execution
 
 ---
 
@@ -381,19 +390,145 @@ Phase 1: **document only; no redeploy; no git push.**
 | Integration | Stalwart Docker or staging throwaway domain |
 | E2E | Login → create mailbox → list → SSO open |
 | Manual | Catch-all, bulk partial failure, DNS amber states |
+| Copilot (later) | Tool registry unit tests; approval gate races; panel layout lg breakpoint |
 
 No mail-tester from this app.
 
 ---
 
-## 15. Phase map
+## 15. Phase map (product foundation)
 
 | Phase | Scope |
 |-------|--------|
-| **1 (this)** | Architecture + product spec + 3 review passes; foundation healthy; no feature UI push |
+| **1** | Architecture + product spec + 3 review passes; foundation healthy |
 | **2** | Design system (mailwart brand), auth polish, theme, breadcrumbs, read views, DNS health |
 | **3** | Mutations: mailboxes, quotas, app passwords, 2FA hooks, catch-all, forwarding/routing |
 | **4** | Autoresponders/Sieve/spam controls, CSV bulk harden, delivery logs/audit |
 | **5** | Analytics overview, polish, Dokploy production cutover readiness |
 
-**Phase 1 success:** Next 16+ builds conceptually; docs exhaustive; review log has 3 passes; Roundcube/SSO/compose preserved; **no push**.
+Product foundation Phase 1 complete. Copilot is a **parallel expansion** — see §16.9.
+
+---
+
+## 16. mailwart Copilot
+
+> Embedded AI-native assistant inside the existing dashboard. Brand: **mailwart Copilot** (product remains **mailwart**).  
+> Does not replace Server Actions, Roundcube SSO, or any directory surface — it orchestrates them.
+
+### 16.1 Purpose and non-goals
+
+**Purpose.** Let the operator ask natural-language questions and request directory ops; Copilot proposes tool calls that map to existing Server Actions, streams progress in the right-hand panel, and navigates the left workspace when useful.
+
+**Non-goals (v1 Copilot).**
+- Not a general chatbot unrelated to mail ops.
+- Not a second write path around Server Actions / JMAP.
+- Not autonomous bulk destroy without approval.
+- Not storing LLM provider keys in the browser.
+
+### 16.2 Layout model
+
+| Viewport | Behavior | Rationale |
+|----------|----------|-----------|
+| **≥ `lg` (1024px)** | Inline right `aside`; workspace `flex-1` **shrinks** | Side-by-side Operate; tables remain usable |
+| **< `lg`** | `Sheet` drawer from the right (overlay) | Shrink would leave an unusable Main beside sidebar |
+
+- Toggle: TopBar button + `Ctrl/Cmd+J` (sidebar keeps `Ctrl/Cmd+B`).
+- Panel open preference: `localStorage` key `mailwart_copilot_open` (desktop only; mobile starts closed).
+- Width: CSS var `--copilot-width: 22rem`. Transition: width/opacity ~200 ms; honor `prefers-reduced-motion`.
+
+```
+┌─ Sidebar ─┬──────── Workspace (shrinks) ────────┬─ Copilot ─┐
+│  nav      │  TopBar … [Copilot]                 │  chrome   │
+│           │  Main / routes                      │  chat     │
+└───────────┴─────────────────────────────────────┴───────────┘
+```
+
+### 16.3 AI state management
+
+Client provider `CopilotProvider` (Phase 1 ships open/close + placeholder). Full shape (Phases 3–5):
+
+| Slice | Contents |
+|-------|----------|
+| `open` | Panel visibility |
+| `messages` | Ordered chat turns (`user` / `assistant` / `system`) |
+| `toolStream` | In-flight and completed tool call cards (id, name, args, status, result summary) |
+| `approvals` | Pending destructive approvals: `{ approvalId, toolCallId, status: pending\|approved\|rejected }` |
+| `run` | `{ status: idle\|streaming\|awaiting_approval\|error, runId, abortController? }` |
+| `navIntent` | Optional `{ href, reason }` applied via `router.push` then cleared |
+
+**Source of truth:** Client holds UI/stream state. Server owns tool execution (Server Actions) and provider keys. Do not duplicate Stalwart directory state in Copilot store — invalidate React Query / `revalidatePath` after tools mutate.
+
+**Persistence:** Chat messages → `sessionStorage` per browser tab for the operator session (survive refresh, clear on logout). Panel open → `localStorage`. Never persist API keys or raw tool secrets in either.
+
+### 16.4 Tool registry design
+
+A server-side registry maps **tool name → Server Action adapter**:
+
+```
+toolName → {
+  description,            // for the model
+  inputSchema: zod,       // validate before invoke
+  risk: "read" | "write" | "destructive",
+  execute: (input, ctx) => ActionResult,  // wraps existing mail.ts / auth actions
+  navigate?: (result) => href | null,     // optional left-panel route after success
+}
+```
+
+**Rules.**
+- Every mutating tool calls an existing `"use server"` action — no parallel JMAP client inside Copilot.
+- Registry is the allowlist; the model cannot invent endpoints.
+- Read tools may auto-run; write tools may auto-run with toast; **destructive** tools always pause for approval (§16.7).
+- Tool results returned to the model are sanitized (no env secrets, no full password payloads beyond “password was set”).
+
+Initial tool families (Phase 3): health/overview, list/get domains & mailboxes, create/update (write), destroy/reset/bulk (destructive), DNS refresh (read), routing/filters reads, navigate-only helpers.
+
+### 16.5 Multi-provider config (Phase 2 detail)
+
+Operators choose a provider in Settings; keys live in **server env** and/or encrypted server-side settings — never `NEXT_PUBLIC_*`.
+
+| Concern | Approach |
+|---------|----------|
+| Providers | OpenAI-compatible, Anthropic, and/or Azure/OpenAI-style base URL (exact list Phase 2) |
+| Keys | Dokploy env (`COPILOT_API_KEY`, `COPILOT_BASE_URL`, `COPILOT_MODEL`, …) and/or settings form that writes server-only store |
+| UI | Settings shows “configured / missing” and last-4 mask only |
+| Runtime | Node-only route or Server Action streams completions; browser talks only to mailwart |
+
+### 16.6 Infinite loop / burnout prevention
+
+| Guard | Policy |
+|-------|--------|
+| Max tool rounds / user turn | Hard cap (e.g. 8); then stop and ask the operator |
+| Max tokens / turn | Provider max + server soft cap |
+| Same-tool repeat | If identical tool+args fails twice, refuse third without operator nudge |
+| Concurrent runs | One active Copilot `runId` per session; new send aborts or queues (prefer abort prior stream) |
+| Bulk coupling | While a directory bulk job is active, block Copilot destructive/write tools that conflict (same as UI disable rules) |
+| Rate | Per-session soft limit on LLM calls (Phase 5); surface “slow down” copy |
+
+### 16.7 Destructive-action approval gate
+
+Tools with `risk: "destructive"` (destroy domain/mailbox, bulk destroy/reset/suspend, catch-all clear that orphans, auth policy danger) **never** execute on model intent alone.
+
+1. Model emits tool call → registry marks `awaiting_approval`.
+2. UI shows approval card in Copilot panel (entity, action, irreversible warning).
+3. Operator **Approve** or **Reject**; only Approve invokes the Server Action.
+4. Approval tokens are single-use, bound to `toolCallId` + `runId`, TTL ~5 minutes.
+5. Reject / expire → tool result `rejected_by_operator` fed back to the model; no side effect.
+
+### 16.8 Navigation triggers (AI → left workspace)
+
+- Registry `navigate` callbacks or dedicated `navigate_to` tool with allowlisted hrefs under `/dashboard/*`.
+- Implementation: set `navIntent` → `router.push` in the workspace; Copilot panel stays open.
+- Never navigate to external origins or `/api/*` from the model.
+- Deep links prefer existing routes (`/dashboard/mailboxes/[id]`, etc.) so breadcrumbs stay coherent.
+
+### 16.9 Copilot phase map
+
+| Phase | Scope | This run |
+|-------|--------|----------|
+| **C1** | Architecture docs + 3 review passes + sliding panel shell (placeholder chat) | **Yes** |
+| **C2** | Multi-provider keys in settings/env | No |
+| **C3** | Tool registry wired to Server Actions | No |
+| **C4** | Rich chat UI (messages, tool stream cards) | No |
+| **C5** | Approval guards, rate limits, loop caps implemented | Docs only in C1 |
+
+**C1 success:** Docs updated; review log has Copilot passes; panel shrinks workspace on desktop / sheet on mobile; `npm run build` green; existing routes intact; **no git push**.

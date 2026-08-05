@@ -52,10 +52,12 @@ Stalwart + Roundcube already deliver mail. Day-to-day pain is **directory and po
 /dashboard/dns            Cross-domain DNS health
 /dashboard/logs           Delivery / audit
 /dashboard/import         CSV/JSON bulk wizard
-/dashboard/settings       Session, URLs (host only), theme, danger zone
+/dashboard/settings       Session, URLs (host only), theme, Copilot providers, danger zone
 ```
 
 Breadcrumbs on all dashboard routes: `Dashboard › Section › Entity`.
+
+**mailwart Copilot** is a right-hand panel on all `/dashboard/*` routes (not a separate top-level route). Desktop shrinks the workspace; mobile uses a sheet. See Architecture §16.
 
 No top-level `/aliases` — aliases live on mailbox detail + routing summary.
 
@@ -154,19 +156,40 @@ Per-mailbox Open → short-lived token → Roundcube authenticated session. Copy
 - App login password change when using `APP_ADMIN_*`.
 - Danger: authentication password policy (`x:Authentication`).
 - Session logout-all (single node: destroy cookie).
+- **Copilot providers (Copilot Phase 2):** configured/missing status, model/base URL, key last-4 mask only — never full keys in the browser.
 
 ### 5.12 Auth (app)
 
 Login, session cookie, logout, rate limit. Unauthenticated users cannot reach `/dashboard/*`.
 
+### 5.13 mailwart Copilot (expansion Phases C1–C5)
+
+**Job:** “Ask the dashboard to inspect or change directory state without leaving the console.”
+
+| Copilot phase | Deliverable |
+|---------------|-------------|
+| **C1** | Architecture + sliding panel shell (placeholder chat); workspace shrinks on desktop |
+| **C2** | Multi-provider API keys via settings/env (server-only) |
+| **C3** | Tool registry mapped to existing Server Actions |
+| **C4** | Rich chat: messages, streaming, tool-call cards |
+| **C5** | Destructive approval gate, loop caps, rate limits |
+
+**Principles (product):**
+- Copilot orchestrates existing actions — it is not a second Stalwart client.
+- Destructive ops require typed/explicit operator approval in the panel.
+- Navigation from tools opens left-workspace routes; panel stays put.
+- Empty Phase C1 state: “mailwart Copilot” chrome + short placeholder inviting a later chat.
+
+**Out of Copilot v1:** general web search, sending/reading mail bodies, autonomous bulk destroy.
 ---
 
 ## 6. Component hierarchy (product view)
 
 | Component | Job |
 |-----------|-----|
-| `AppShell` | Nav + breadcrumbs + theme + main landmark |
+| `AppShell` | Nav + breadcrumbs + theme + Copilot toggle + main landmark |
 | `BrandMark` | mailwart wordmark |
+| `CopilotProvider` / `CopilotPanel` | Right-hand assistant shell (shrink desktop / sheet mobile) |
 | `HealthPill` | Stalwart / Roundcube status |
 | `DnsHealthBadge` | Compact MX/SPF/DKIM/DMARC |
 | `MailboxTable` | Primary working surface |
@@ -207,6 +230,10 @@ Login, session cookie, logout, rate limit. Unauthenticated users cannot reach `/
 | SSO as privileged admin | Dual-confirm or block |
 | 2FA/app-password unsupported | Honest empty + Admin link |
 | Theme | No flash of wrong theme on load (as practical) |
+| Copilot panel desktop | Workspace shrinks; tables remain scrollable |
+| Copilot panel mobile | Sheet overlay below `lg`; does not crush Main |
+| Copilot destructive | Approval required; reject leaves no Stalwart side effect |
+| Copilot API key | Never in Network response bodies or client storage |
 
 ---
 
@@ -235,6 +262,8 @@ Managed domains, public hosts, and Admin/Webmail URLs are **environment / Dokplo
 - Mobile-native apps  
 - Replacing Stalwart Admin for MTA/queue/IP allowlists  
 - Renaming Docker service paths in Phase 1  
+- Copilot autonomous destructive bulk without approval  
+- Copilot provider keys in `NEXT_PUBLIC_*` or localStorage  
 
 ---
 
@@ -247,9 +276,9 @@ Managed domains, public hosts, and Admin/Webmail URLs are **environment / Dokplo
 | **3** | Mutations, quotas, app passwords/2FA hooks, catch-all, forwarding/routing, CSV v1 | CRUD verified on staging/VPS |
 | **4** | Filters/Sieve/spam, bulk harden, delivery/audit logs | Partial failure + audit rows |
 | **5** | Analytics polish, a11y/CSP, Dokploy cutover readiness | Metrics + deploy checklist |
+| **C1–C5** | mailwart Copilot (Architecture §16.9) | Panel layout → providers → tools → chat → approvals; **no push until C5 done** |
 
-**Phase 1 complete:** docs + review log; ready for Phase 2 UI — **no deploy, no push, no mail-tester.**
-
+Product foundation Phase 1 complete. Copilot C1 is the architecture + layout pass for the AI expansion.
 ---
 
 ## 12. Open questions (do not block Phase 1)

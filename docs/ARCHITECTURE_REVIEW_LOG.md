@@ -84,3 +84,88 @@ Operability under partial failure is specified. Multi-tenant generalization and 
 ### Pass 3 verdict
 
 Docs are generalized, edge-aware, and Phase-1-scoped. Persistence defaults chosen (memory jobs, JSONL audit). PRODUCT.md / DESIGN.md / README / `.env.example` lightly rebranded to **mailwart**; `env.ts` example defaults no longer hardcode personal hosts. Production SSO/compose preserved. **Ready for Phase 2.** No git push.
+
+---
+
+# mailwart Copilot — review passes
+
+Karpathy-style critical self-review of the Copilot expansion (Architecture §16). Three passes; each records findings and what changed.
+
+---
+
+## Copilot Pass 1 — Layout, state shape, tool registry seam
+
+**Date:** 2026-08-05  
+**Reviewed:** First draft of Copilot architecture against AppShell realities and existing Server Actions.
+
+### Findings
+
+1. **Overlay temptation.** A fixed `position: fixed` drawer on desktop would cover tables and fight the Operate mode. Mission requires **shrink**, not overlay — must be a flex peer of `SidebarInset`.
+2. **One store for everything.** Dumping messages + Stalwart directory into one Zustand blob would fork server truth. Copilot store must stay UI/stream-only; mutations go through existing actions.
+3. **Tool registry as HTTP wrappers.** Inventing REST for the model would duplicate Server Actions. Registry must be thin adapters over `mail.ts` (and friends).
+4. **Mobile shrink is hostile.** At <1024px with icon/expanded sidebar, a 22rem panel leaves Main unusable — need an explicit breakpoint and Sheet fallback.
+5. **Shortcut collision.** Sidebar already owns `Ctrl/Cmd+B`; Copilot needs a distinct chord (`Ctrl/Cmd+J`).
+
+### Changes made
+
+- Architecture §11 + §16.2: desktop flex shrink; mobile Sheet at `< lg` (1024px); `--copilot-width: 22rem`.
+- §16.3: client slices for open/messages/toolStream/approvals/run/navIntent; no directory cache in Copilot.
+- §16.4: allowlisted registry → Server Action; risk tiers read/write/destructive.
+- Product §5.13 + IA note: Copilot is panel chrome, not a new top-level route.
+
+### Pass 1 verdict
+
+Layout and registry seams are correct. Concurrency, approval races, persistence, and secret handling still thin → Pass 2.
+
+---
+
+## Copilot Pass 2 — Concurrent tools, approval races, persistence
+
+**Date:** 2026-08-05  
+**Reviewed:** Pass 1 against failure modes while streaming tool calls.
+
+### Findings
+
+1. **Concurrent tool calls.** Models often emit parallel tools. Parallel **destructive** calls could race Stalwart and the bulk “one mutating pipeline” rule. Need serialization policy for write/destructive; reads may fan-out with a small concurrency cap.
+2. **Approval race.** Operator double-clicks Approve, or a stale card from a previous `runId` is approved after a new run started → double mutate or wrong target. Approvals must be single-use and bound to `(runId, toolCallId)` with TTL.
+3. **Reject vs abort.** Closing the panel mid-approval must not silently Approve; treat as leave-pending until TTL or explicit Reject. Aborting the stream rejects outstanding pending approvals for that `runId`.
+4. **Chat persistence.** Full `localStorage` of messages risks leaking mailbox identifiers across shared machines longer than a session. Prefer **sessionStorage** for messages; **localStorage** only for panel-open preference.
+5. **navIntent storms.** Multiple navigate tools in one turn could thrash the router — apply only the **last** allowlisted href per turn.
+
+### Changes made
+
+- §16.6: one active `runId`; write/destructive tools serialize; read fan-out capped; bulk job conflict block.
+- §16.7: single-use approval tokens; TTL ~5 min; abort → reject pending for run.
+- §16.3: sessionStorage for chat; localStorage for open preference only.
+- §16.8: last navigation wins per turn; allowlist `/dashboard/*` only.
+
+### Pass 2 verdict
+
+Runtime races and persistence defaults are specified. Secret handling and mobile/a11y edge cases → Pass 3.
+
+---
+
+## Copilot Pass 3 — Secrets, mobile a11y, simplicity gate
+
+**Date:** 2026-08-05  
+**Reviewed:** Pass 2 for over-engineering and secret leakage.
+
+### Findings
+
+1. **Key leakage vectors.** Streaming debug payloads, tool results that echo env, and Settings forms that bind `type="text"` values into client state are the real risks — not only “don’t use NEXT_PUBLIC”. Sanitize tool results; Settings shows configured + last-4 only.
+2. **Encrypted settings store temptation.** Building a vault in C2 is overkill if Dokploy env already holds keys. Prefer env-first; optional server-only settings write only if operators need UI without redeploy — document both, implement env-first in C2.
+3. **Mobile focus trap.** Sheet must trap focus and restore to the TopBar toggle on close; Esc closes Copilot without navigating away.
+4. **Placeholder scope creep.** C1 must not ship chat composers that pretend to call models — chrome + empty state only, or operators will think C2/C4 already work.
+5. **Simplicity:** No Copilot-specific DI, no second JMAP client, no vector DB. Registry + stream + approvals is enough.
+
+### Changes made
+
+- §16.5: env-first provider keys; UI mask only; Node-only completion path.
+- Security checklist: Copilot key + approval items.
+- §16.2 / Product: C1 = shell + placeholder; no fake composer wiring.
+- Review: mobile Sheet focus/Esc; last-nav-wins already in Pass 2.
+- Explicit non-goals: no vault/DI/second client in C1–C5 unless a real deploy pain appears.
+
+### Pass 3 verdict
+
+Copilot architecture is edge-aware and C1-scoped. Ready to implement the sliding panel shell. **No git push** until Copilot C1–C5 complete.
