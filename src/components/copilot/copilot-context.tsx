@@ -3,7 +3,12 @@
 import * as React from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useChat } from "@ai-sdk/react"
-import { DefaultChatTransport, isToolUIPart, type UIMessage } from "ai"
+import {
+  DefaultChatTransport,
+  isToolUIPart,
+  lastAssistantMessageIsCompleteWithApprovalResponses,
+  type UIMessage,
+} from "ai"
 
 import { useLgUp } from "@/hooks/use-lg-up"
 import { readNavIntent, type CopilotNavIntent } from "@/lib/copilot/tool-ui"
@@ -31,8 +36,6 @@ type CopilotContextValue = {
   respondToApproval: CopilotChat["addToolApprovalResponse"]
   /** Clear the transcript and start a fresh run. */
   reset: () => void
-  /** Last route the model opened in the left workspace, for in-stream feedback. */
-  lastNavIntent: CopilotNavIntent | null
 }
 
 const CopilotContext = React.createContext<CopilotContextValue | null>(null)
@@ -122,15 +125,13 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       () => new DefaultChatTransport<UIMessage>({ api: CHAT_ENDPOINT }),
       []
     ),
+    // Resume the run once the operator answers an approval gate, so an
+    // approve/reject never leaves the turn hanging.
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
   })
 
   const router = useRouter()
   const pathname = usePathname()
-  const pathnameRef = React.useRef(pathname)
-  pathnameRef.current = pathname
-
-  const [lastNavIntent, setLastNavIntent] =
-    React.useState<CopilotNavIntent | null>(null)
   const navigatedCalls = React.useRef<Set<string>>(new Set())
 
   // §16.8 — tools emit an allowlisted href; the left workspace follows while the
@@ -149,12 +150,9 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    if (!target) return
-    setLastNavIntent(target)
-    if (target.href !== pathnameRef.current) {
-      router.push(target.href)
-    }
-  }, [messages, router])
+    if (!target || target.href === pathname) return
+    router.push(target.href)
+  }, [messages, pathname, router])
 
   const send = React.useCallback(
     (text: string) => {
@@ -168,7 +166,6 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
   const reset = React.useCallback(() => {
     stop()
     navigatedCalls.current.clear()
-    setLastNavIntent(null)
     clearError()
     setMessages([])
   }, [clearError, setMessages, stop])
@@ -188,7 +185,6 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       clearError,
       respondToApproval: addToolApprovalResponse,
       reset,
-      lastNavIntent,
     }),
     [
       open,
@@ -204,7 +200,6 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       clearError,
       addToolApprovalResponse,
       reset,
-      lastNavIntent,
     ]
   )
 
