@@ -48,19 +48,21 @@ export default async function MailboxDetailPage({
 
   const {
     account,
+    domains,
     roundcubeUrl,
     aliasesEditable,
     appPasswords,
     appPasswordsMutable,
     twoFactor,
     adminUiUrl,
+    forwards,
   } = result.data
 
   return (
     <div>
       <PageHeader
         title={account.email}
-        description="Suspend, quota, app passwords, 2FA status, Roundcube SSO."
+        description="Suspend, quota, app passwords, 2FA status, Roundcube SSO, forwarding."
         breadcrumbs={[
           DASHBOARD_CRUMB,
           MAILBOXES_CRUMB,
@@ -68,29 +70,41 @@ export default async function MailboxDetailPage({
         ]}
         back={{ href: "/dashboard/mailboxes", label: "Mailboxes" }}
         actions={
-          account.domainId ? (
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
               size="sm"
               nativeButton={false}
-              render={
-                <Link href={`/dashboard/domains/${account.domainId}`} />
-              }
+              render={<Link href="/dashboard/routing" />}
             >
-              Domain settings
+              Routing
             </Button>
-          ) : null
+            {account.domainId ? (
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={
+                  <Link href={`/dashboard/domains/${account.domainId}`} />
+                }
+              >
+                Domain settings
+              </Button>
+            ) : null}
+          </div>
         }
       />
       <DataSourceBanner source={result.source} />
       <MailboxDetailClient
         account={account}
+        domains={domains}
         roundcubeUrl={roundcubeUrl}
         aliasesEditable={aliasesEditable}
         appPasswords={appPasswords}
         appPasswordsMutable={appPasswordsMutable}
         twoFactor={twoFactor}
         adminUiUrl={adminUiUrl}
+        forwards={forwards}
       />
     </div>
   )

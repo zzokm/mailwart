@@ -1,5 +1,6 @@
 import type {
   DomainListItem,
+  ForwardingRule,
   HealthStatus,
   OverviewStats,
   StalwartAccount,
@@ -14,6 +15,10 @@ export const MOCK_DOMAINS: StalwartDomain[] = [
     description: "example.com",
     isEnabled: true,
     catchAllAddress: "catch@example.com",
+    catchAllMode: "address",
+    allowRelaying: false,
+    mailExchanger: "local",
+    domainAliases: [],
     subAddressing: "Enabled",
     createdAt: "2025-11-01T00:00:00Z",
   },
@@ -23,6 +28,10 @@ export const MOCK_DOMAINS: StalwartDomain[] = [
     description: "example.net",
     isEnabled: true,
     catchAllAddress: "catch@example.net",
+    catchAllMode: "address",
+    allowRelaying: true,
+    mailExchanger: "backup",
+    domainAliases: ["mail.example.net"],
     subAddressing: "Enabled",
     createdAt: "2025-11-01T00:00:00Z",
   },
@@ -32,6 +41,10 @@ export const MOCK_DOMAINS: StalwartDomain[] = [
     description: "example.org",
     isEnabled: true,
     catchAllAddress: "catch@example.org",
+    catchAllMode: "address",
+    allowRelaying: false,
+    mailExchanger: "local",
+    domainAliases: [],
     subAddressing: "Enabled",
     createdAt: "2025-11-01T00:00:00Z",
   },
@@ -41,6 +54,10 @@ export const MOCK_DOMAINS: StalwartDomain[] = [
     description: "internal.test",
     isEnabled: false,
     catchAllAddress: null,
+    catchAllMode: "bounce",
+    allowRelaying: true,
+    mailExchanger: "remote",
+    domainAliases: [],
     subAddressing: "Enabled",
     createdAt: "2025-11-01T00:00:00Z",
   },
@@ -56,7 +73,19 @@ export const MOCK_ACCOUNTS: StalwartAccount[] = [
     domainName: "example.com",
     isEnabled: true,
     quotas: { diskQuota: 2_147_483_648, diskUsed: 812_646_400 },
-    aliases: {},
+    aliases: {
+      "0": {
+        name: "hi",
+        domainId: "dom-example-com",
+        enabled: true,
+        description: "Short alias",
+      },
+      "1": {
+        name: "hello",
+        domainId: "dom-example-org",
+        enabled: true,
+      },
+    },
     appPasswords: [
       {
         id: "ap-hello-1",
@@ -114,7 +143,13 @@ export const MOCK_ACCOUNTS: StalwartAccount[] = [
     domainName: "example.net",
     isEnabled: true,
     quotas: { diskQuota: 2_147_483_648, diskUsed: 1_288_490_188 },
-    aliases: {},
+    aliases: {
+      "0": {
+        name: "help",
+        domainId: "dom-example-net",
+        enabled: true,
+      },
+    },
     appPasswords: [
       {
         id: "ap-support-1",
@@ -211,6 +246,48 @@ export const MOCK_ACCOUNTS: StalwartAccount[] = [
   },
 ]
 
+export const MOCK_FORWARDING_RULES: ForwardingRule[] = [
+  {
+    id: "fwd-hello-external",
+    scope: "user",
+    domainId: "dom-example-com",
+    domainName: "example.com",
+    source: "hello@example.com",
+    sourceAccountId: "acc-hello",
+    targets: ["ops@example.org"],
+    keepLocalCopy: true,
+    enabled: true,
+    backend: "mock",
+    updatedAt: "2026-03-01T12:00:00Z",
+  },
+  {
+    id: "fwd-billing-external",
+    scope: "user",
+    domainId: "dom-example-com",
+    domainName: "example.com",
+    source: "billing@example.com",
+    sourceAccountId: "acc-billing",
+    targets: ["finance@example.net"],
+    keepLocalCopy: false,
+    enabled: true,
+    backend: "mock",
+    updatedAt: "2026-03-10T09:00:00Z",
+  },
+  {
+    id: "fwd-domain-net",
+    scope: "domain",
+    domainId: "dom-example-net",
+    domainName: "example.net",
+    source: "*@example.net",
+    sourceAccountId: null,
+    targets: ["archive@example.com"],
+    keepLocalCopy: false,
+    enabled: false,
+    backend: "mock",
+    updatedAt: "2026-02-20T16:30:00Z",
+  },
+]
+
 export function mockDomainList(): DomainListItem[] {
   return MOCK_DOMAINS.map((d) => ({
     ...d,
@@ -241,7 +318,9 @@ export function mockOverviewStats(): OverviewStats {
     domainCount: MOCK_DOMAINS.length,
     mailboxCount: MOCK_ACCOUNTS.length,
     enabledDomainCount: MOCK_DOMAINS.filter((d) => d.isEnabled !== false).length,
-    catchAllCount: MOCK_DOMAINS.filter((d) => !!d.catchAllAddress).length,
+    catchAllCount: MOCK_DOMAINS.filter(
+      (d) => d.catchAllMode === "address" || !!d.catchAllAddress
+    ).length,
     mailboxesWithQuota: withQuota,
     storageQuotaBytes: hasQuota ? quotaSum : null,
     storageUsedBytes: hasUsed ? usedSum : null,
@@ -262,22 +341,28 @@ export function mockHealth(): HealthStatus {
 }
 
 /** In-memory mutation store for mock mode (process-local, resets on restart). */
-let mockDomains = [...MOCK_DOMAINS]
-let mockAccounts = [...MOCK_ACCOUNTS]
+let mockDomains = structuredClone(MOCK_DOMAINS)
+let mockAccounts = structuredClone(MOCK_ACCOUNTS)
+let mockForwards = structuredClone(MOCK_FORWARDING_RULES)
 
 export function getMockStore() {
   return {
     domains: mockDomains,
     accounts: mockAccounts,
+    forwards: mockForwards,
     reset() {
-      mockDomains = [...MOCK_DOMAINS]
-      mockAccounts = [...MOCK_ACCOUNTS]
+      mockDomains = structuredClone(MOCK_DOMAINS)
+      mockAccounts = structuredClone(MOCK_ACCOUNTS)
+      mockForwards = structuredClone(MOCK_FORWARDING_RULES)
     },
     setDomains(next: StalwartDomain[]) {
       mockDomains = next
     },
     setAccounts(next: StalwartAccount[]) {
       mockAccounts = next
+    },
+    setForwards(next: ForwardingRule[]) {
+      mockForwards = next
     },
   }
 }

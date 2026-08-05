@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { listDomainsAction } from "@/lib/actions/mail"
+import { catchAllLabel } from "@/lib/stalwart/routing-utils"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = { title: "Domains" }
@@ -112,7 +113,7 @@ export default async function DomainsPage() {
                     )}
                   </TableCell>
                   <TableCell className="hidden font-mono text-[12px] text-muted-foreground md:table-cell">
-                    {d.catchAllAddress ?? "none"}
+                    {catchAllLabel(d)}
                   </TableCell>
                   <TableCell className="text-right font-mono text-[12px] text-muted-foreground">
                     {d.mailboxCount}

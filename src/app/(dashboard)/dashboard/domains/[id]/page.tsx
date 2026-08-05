@@ -60,7 +60,7 @@ export default async function DomainDetailPage({
         title={domain.name}
         description={
           domain.description ||
-          "Catch-all, suspend, DNS health, and record generators."
+          "Catch-all modes, mail exchanger, DNS health, and record generators."
         }
         breadcrumbs={[
           DASHBOARD_CRUMB,

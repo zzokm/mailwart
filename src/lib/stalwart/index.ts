@@ -30,8 +30,21 @@ export { probeAccountCredentials } from "./credentials"
 export {
   MOCK_DOMAINS,
   MOCK_ACCOUNTS,
+  MOCK_FORWARDING_RULES,
   mockDomainList,
   mockOverviewStats,
   mockHealth,
   getMockStore,
 } from "./mock"
+export {
+  parseEmailAliases,
+  serializeEmailAliases,
+  deriveCatchAllMode,
+  catchAllLabel,
+  deriveMailExchanger,
+  mailExchangerToAllowRelaying,
+  isExternalEmail,
+  validateForwardTargets,
+  updateDomainRouting,
+  updateAccountAliases,
+} from "./routing"

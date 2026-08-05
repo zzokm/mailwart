@@ -16,14 +16,71 @@ export type JmapResponse = {
   sessionState?: string
 }
 
+/** How unknown recipients are handled for a domain. */
+export type CatchAllMode = "address" | "bounce" | "blackhole"
+
+/**
+ * cPanel-style mail exchanger posture for the domain.
+ * Maps to Stalwart `allowRelaying` where the API allows:
+ * - local → allowRelaying false (reject unknown / deliver local only)
+ * - backup → allowRelaying true (accept + relay unknown — split/backup)
+ * - remote → allowRelaying true with remote-MX operator intent
+ */
+export type MailExchangerMode = "local" | "backup" | "remote"
+
 export type StalwartDomain = {
   id: string
   name: string
   description?: string
   isEnabled?: boolean
   catchAllAddress?: string | null
+  /**
+   * Derived / mock-tracked catch-all posture.
+   * Live Stalwart only persists address vs unset (bounce); blackhole is mock or advisory.
+   */
+  catchAllMode?: CatchAllMode
+  /** When true, unknown local recipients may be accepted and relayed (split delivery). */
+  allowRelaying?: boolean
+  /** Operator-facing MX posture; mock-tracked, derived from allowRelaying on live. */
+  mailExchanger?: MailExchangerMode
+  /** Domain name aliases (other names treated as this domain). */
+  domainAliases?: string[]
   subAddressing?: string | { "@type"?: string } | null
   createdAt?: string
+}
+
+/** Normalized email alias (alternate local-part delivering into a mailbox). */
+export type EmailAliasEntry = {
+  key: string
+  name: string
+  domainId: string
+  enabled: boolean
+  description?: string
+  /** Reconstructed full address when domain name known. */
+  email?: string
+}
+
+/**
+ * Full forwarder: mail for source is redirected to targets.
+ * Distinct from aliases (which expand acceptance into a mailbox).
+ */
+export type ForwardingRule = {
+  id: string
+  scope: "user" | "domain"
+  /** Domain that owns the source address. */
+  domainId: string
+  domainName: string
+  /** Full source address (user) or `*@domain` (domain). */
+  source: string
+  /** Existing mailbox id when user-scope and source is a real account. */
+  sourceAccountId?: string | null
+  targets: string[]
+  /** Keep a local copy when the source is a real mailbox (mock / Sieve intent). */
+  keepLocalCopy: boolean
+  enabled: boolean
+  /** How this rule is backed when live. */
+  backend: "mock" | "alias" | "catchall" | "sieve-pending"
+  updatedAt: string
 }
 
 export type AccountQuotas = Record<string, number | string | unknown>

@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
@@ -8,8 +9,10 @@ import {
   destroyMailboxAction,
   resetMailboxPasswordAction,
   updateMailboxAction,
+  upsertForwardingRuleAction,
 } from "@/lib/actions/mail"
 import { AppPasswordPanel } from "@/components/mail/app-password-panel"
+import { AliasesPanel } from "@/components/mail/aliases-panel"
 import { ConfirmDestroy } from "@/components/mail/confirm-destroy"
 import { CopyButton } from "@/components/mail/copy-button"
 import { PasswordField } from "@/components/mail/password-field"
@@ -18,31 +21,38 @@ import { RoundcubeButton } from "@/components/mail/roundcube-button"
 import { TwoFactorStatusPanel } from "@/components/mail/two-factor-status"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { generatePassword } from "@/lib/format"
 import type {
   AppPassword,
+  ForwardingRule,
   StalwartAccount,
+  StalwartDomain,
   TwoFactorStatus,
 } from "@/lib/stalwart/types"
 
 export function MailboxDetailClient({
   account,
+  domains,
   roundcubeUrl,
   aliasesEditable,
   appPasswords,
   appPasswordsMutable,
   twoFactor,
   adminUiUrl,
+  forwards,
 }: {
   account: StalwartAccount
+  domains: StalwartDomain[]
   roundcubeUrl: string
   aliasesEditable: boolean
   appPasswords: AppPassword[]
   appPasswordsMutable: boolean
   twoFactor: TwoFactorStatus
   adminUiUrl: string
+  forwards: ForwardingRule[]
 }) {
   const router = useRouter()
   const [description, setDescription] = useState(account.description ?? "")
@@ -57,15 +67,6 @@ export function MailboxDetailClient({
   const [enabled, setEnabled] = useState(account.isEnabled !== false)
   const [pending, startTransition] = useTransition()
   const [destroyOpen, setDestroyOpen] = useState(false)
-
-  const aliasesRaw =
-    account.aliases == null
-      ? null
-      : Array.isArray(account.aliases)
-        ? account.aliases
-        : Object.keys(account.aliases as object).length === 0
-          ? []
-          : account.aliases
 
   function toggleSuspend() {
     const next = !enabled
@@ -255,31 +256,55 @@ export function MailboxDetailClient({
         </section>
 
         <section className="space-y-3 rounded-xl border border-border/80 p-4 sm:p-5">
-          <div>
-            <h2 className="text-sm font-medium">Aliases & forwarding</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {aliasesEditable
-                ? "Edit aliases for this mailbox."
-                : "Edit gated until live Account/get aliases shape probe completes."}
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-medium">Forwarding</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Redirects for this mailbox. Aliases are edited below; cross-domain
+                catch-alls live on Routing.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/dashboard/routing" />}
+            >
+              Routing
+            </Button>
+          </div>
+          {forwards.length > 0 ? (
+            <ul className="space-y-2">
+              {forwards.map((f) => (
+                <li
+                  key={f.id}
+                  className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 px-3 py-2 text-xs"
+                >
+                  <span className="font-mono">{f.source}</span>
+                  <span className="text-muted-foreground">→</span>
+                  <span className="font-mono">{f.targets.join(", ")}</span>
+                  <Badge variant="outline" className="font-mono text-[10px]">
+                    {f.backend}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No user forwards on this mailbox.
             </p>
-          </div>
-          <div className="rounded-lg border border-dashed border-border/70 bg-muted/10 px-3 py-3 font-mono text-[12px] text-muted-foreground">
-            {aliasesRaw == null ||
-            (Array.isArray(aliasesRaw) && aliasesRaw.length === 0) ||
-            (typeof aliasesRaw === "object" &&
-              !Array.isArray(aliasesRaw) &&
-              Object.keys(aliasesRaw).length === 0) ? (
-              <span>No aliases on record.</span>
-            ) : (
-              <pre className="overflow-x-auto whitespace-pre-wrap">
-                {JSON.stringify(aliasesRaw, null, 2)}
-              </pre>
-            )}
-          </div>
-          <Button type="button" variant="outline" size="sm" disabled>
-            Edit aliases (probe pending)
-          </Button>
+          )}
+          <MailboxForwardForm account={account} />
         </section>
+
+        <AliasesPanel
+          accountId={account.id}
+          aliasesRaw={account.aliases}
+          domains={domains}
+          editable={aliasesEditable}
+          defaultDomainId={account.domainId}
+        />
 
         <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 sm:p-5">
           <h2 className="text-sm font-medium text-destructive">Danger</h2>
@@ -323,3 +348,68 @@ export function MailboxDetailClient({
     </div>
   )
 }
+
+function MailboxForwardForm({ account }: { account: StalwartAccount }) {
+  const router = useRouter()
+  const [targets, setTargets] = useState("")
+  const [keepCopy, setKeepCopy] = useState(true)
+  const [pending, startTransition] = useTransition()
+
+  if (!account.domainId) return null
+
+  return (
+    <div className="space-y-3 border-t border-border/60 pt-3">
+      <Label htmlFor="fwd-targets">Add user forward</Label>
+      <Input
+        id="fwd-targets"
+        className="font-mono text-[13px]"
+        value={targets}
+        onChange={(e) => setTargets(e.target.value)}
+        placeholder="ops@example.org"
+        disabled={pending}
+      />
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="fwd-keep"
+          checked={keepCopy}
+          onCheckedChange={(v) => setKeepCopy(v === true)}
+          disabled={pending}
+        />
+        <Label htmlFor="fwd-keep" className="font-normal">
+          Keep local copy
+        </Label>
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        disabled={pending || !targets.trim()}
+        onClick={() => {
+          startTransition(async () => {
+            const result = await upsertForwardingRuleAction({
+              scope: "user",
+              domainId: account.domainId!,
+              source: account.email,
+              sourceAccountId: account.id,
+              targets: targets
+                .split(/[,;\s]+/)
+                .map((t) => t.trim())
+                .filter(Boolean),
+              keepLocalCopy: keepCopy,
+              enabled: true,
+            })
+            if (!result.ok) {
+              toast.error(result.error)
+              return
+            }
+            toast.success(`Forward created for ${account.email}.`)
+            setTargets("")
+            router.refresh()
+          })
+        }}
+      >
+        Create forward
+      </Button>
+    </div>
+  )
+}
+

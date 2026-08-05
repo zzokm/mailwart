@@ -7,7 +7,9 @@ import { toast } from "sonner"
 
 import {
   destroyDomainAction,
+  updateCatchAllAction,
   updateDomainAction,
+  updateMailExchangerAction,
 } from "@/lib/actions/mail"
 import { ConfirmDestroy } from "@/components/mail/confirm-destroy"
 import { DnsHealthPanel } from "@/components/mail/dns-health-panel"
@@ -22,11 +24,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  deriveCatchAllMode,
+  deriveMailExchanger,
+} from "@/lib/stalwart/routing-utils"
 import type {
+  CatchAllMode,
   DnsHealthSummary,
+  MailExchangerMode,
   StalwartAccount,
   StalwartDomain,
 } from "@/lib/stalwart/types"
+import { cn } from "@/lib/utils"
 
 export function DomainDetailClient({
   domain,
@@ -40,23 +49,45 @@ export function DomainDetailClient({
   const router = useRouter()
   const [description, setDescription] = useState(domain.description ?? "")
   const [enabled, setEnabled] = useState(domain.isEnabled !== false)
+  const [catchMode, setCatchMode] = useState<CatchAllMode>(() =>
+    deriveCatchAllMode(domain)
+  )
   const [catchAll, setCatchAll] = useState(domain.catchAllAddress ?? "")
+  const [mxMode, setMxMode] = useState<MailExchangerMode>(() =>
+    deriveMailExchanger(domain)
+  )
   const [pending, startTransition] = useTransition()
   const [destroyOpen, setDestroyOpen] = useState(false)
   const [forceDestroy, setForceDestroy] = useState(false)
 
   function save() {
     startTransition(async () => {
-      const result = await updateDomainAction(domain.id, {
+      const descResult = await updateDomainAction(domain.id, {
         description: description.trim() || domain.name,
         isEnabled: enabled,
-        catchAllAddress: catchAll.trim() ? catchAll.trim() : null,
       })
-      if (!result.ok) {
-        toast.error(result.error)
+      if (!descResult.ok) {
+        toast.error(descResult.error)
         return
       }
+
+      const catchResult = await updateCatchAllAction(domain.id, {
+        mode: catchMode,
+        address: catchMode === "address" ? catchAll || null : null,
+      })
+      if (!catchResult.ok) {
+        toast.error(catchResult.error)
+        return
+      }
+
+      const mxResult = await updateMailExchangerAction(domain.id, mxMode)
+      if (!mxResult.ok) {
+        toast.error(mxResult.error)
+        return
+      }
+
       toast.success(`Updated ${domain.name}.`)
+      if (catchResult.data.note) toast.message(catchResult.data.note)
       router.refresh()
     })
   }
@@ -115,19 +146,36 @@ export function DomainDetailClient({
           </div>
 
           <div className="grid gap-2">
-            <Label>Catch-all address</Label>
+            <Label>Catch-all (default address)</Label>
             <Select
-              value={catchAll || "__none__"}
+              value={catchMode}
               onValueChange={(v) =>
-                setCatchAll(v === "__none__" ? "" : (v ?? ""))
+                setCatchMode((v as CatchAllMode) ?? "bounce")
               }
               disabled={pending}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="address">Deliver to address</SelectItem>
+                <SelectItem value="bounce">Bounce (fail)</SelectItem>
+                <SelectItem value="blackhole">Blackhole</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={catchAll || "__none__"}
+              onValueChange={(v) => {
+                setCatchAll(v === "__none__" ? "" : (v ?? ""))
+                if (v && v !== "__none__") setCatchMode("address")
+              }}
+              disabled={pending || catchMode !== "address"}
             >
               <SelectTrigger className="w-full font-mono text-[13px]">
                 <SelectValue placeholder="No catch-all" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">No catch-all</SelectItem>
+                <SelectItem value="__none__">Select mailbox</SelectItem>
                 {mailboxes.map((m) => (
                   <SelectItem key={m.id} value={m.email}>
                     {m.email}
@@ -136,13 +184,57 @@ export function DomainDetailClient({
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Target must already exist on this domain.
+              Address mode requires an existing mailbox. Bounce rejects unknown
+              recipients. Blackhole discards in mock; live clears catch-all
+              (Stalwart has no discard-at-SMTP).
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Mail exchanger</Label>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {(
+                [
+                  ["local", "Local"],
+                  ["backup", "Backup"],
+                  ["remote", "Remote"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={pending}
+                  onClick={() => setMxMode(value)}
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                    mxMode === value
+                      ? "border-foreground/30 bg-muted/40"
+                      : "border-border/70 hover:bg-muted/20"
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Maps to{" "}
+              <span className="font-mono text-[11px]">allowRelaying</span> —
+              Local off, Backup/Remote on.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <Button type="button" onClick={save} disabled={pending}>
               Save changes
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={<Link href="/dashboard/routing" />}
+            >
+              Routing hub
             </Button>
             <Button
               type="button"

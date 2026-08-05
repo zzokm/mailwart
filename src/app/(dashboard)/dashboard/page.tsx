@@ -70,7 +70,7 @@ export default async function OverviewPage() {
         stats.domainCount > 0
           ? `on ${stats.catchAllCount}/${stats.domainCount} domains`
           : undefined,
-      href: "/dashboard/domains",
+      href: "/dashboard/routing",
     },
     {
       key: "storage",

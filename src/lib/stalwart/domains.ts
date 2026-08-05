@@ -10,23 +10,55 @@ const DOMAIN_PROPS = [
   "description",
   "isEnabled",
   "catchAllAddress",
+  "allowRelaying",
+  "aliases",
   "subAddressing",
   "createdAt",
 ] as const
 
+function mapDomainAliases(raw: unknown): string[] | undefined {
+  if (raw == null) return undefined
+  const names: string[] = []
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (typeof item === "string") names.push(item.toLowerCase())
+      else if (item && typeof item === "object" && "name" in item) {
+        const n = (item as { name?: string }).name
+        if (n) names.push(n.toLowerCase())
+      }
+    }
+  } else if (typeof raw === "object") {
+    for (const v of Object.values(raw as Record<string, unknown>)) {
+      if (typeof v === "string") names.push(v.toLowerCase())
+      else if (v && typeof v === "object" && "name" in v) {
+        const n = (v as { name?: string }).name
+        if (n) names.push(n.toLowerCase())
+      }
+    }
+  }
+  return names.length > 0 ? names : []
+}
+
 function mapDomain(item: Record<string, unknown>): StalwartDomain {
+  const catchAllAddress =
+    typeof item.catchAllAddress === "string"
+      ? item.catchAllAddress
+      : item.catchAllAddress === null
+        ? null
+        : undefined
+  const allowRelaying =
+    typeof item.allowRelaying === "boolean" ? item.allowRelaying : undefined
   return {
     id: String(item.id),
     name: String(item.name ?? ""),
     description:
       typeof item.description === "string" ? item.description : undefined,
     isEnabled: typeof item.isEnabled === "boolean" ? item.isEnabled : true,
-    catchAllAddress:
-      typeof item.catchAllAddress === "string"
-        ? item.catchAllAddress
-        : item.catchAllAddress === null
-          ? null
-          : undefined,
+    catchAllAddress,
+    catchAllMode: catchAllAddress ? "address" : "bounce",
+    allowRelaying,
+    mailExchanger: allowRelaying ? "backup" : "local",
+    domainAliases: mapDomainAliases(item.aliases),
     subAddressing: item.subAddressing as StalwartDomain["subAddressing"],
     createdAt: typeof item.createdAt === "string" ? item.createdAt : undefined,
   }
@@ -130,6 +162,7 @@ export async function updateDomain(
     description: string
     isEnabled: boolean
     catchAllAddress: string | null
+    allowRelaying: boolean
     subAddressing: string
   }>
 ): Promise<void> {

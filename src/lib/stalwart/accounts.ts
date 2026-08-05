@@ -161,6 +161,7 @@ export async function updateAccount(
     description: string
     quotas: Record<string, unknown>
     isEnabled: boolean
+    aliases: Record<string, unknown> | unknown[]
   }>
 ): Promise<void> {
   const r = await jmapCall([

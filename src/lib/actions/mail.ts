@@ -19,6 +19,7 @@ import {
   createAccount,
   createAppPasswordLive,
   createDomain,
+  deriveMailExchanger,
   destroyAccount,
   destroyAppPasswordLive,
   destroyDomain,
@@ -26,24 +27,34 @@ import {
   getDomain,
   getDomainDnsHealth,
   getMockStore,
+  isExternalEmail,
+  mailExchangerToAllowRelaying,
   mockHealth,
   parseEmailAddress,
+  parseEmailAliases,
   queryAccounts,
   queryAppPasswordsLive,
   queryDomains,
+  serializeEmailAliases,
   StalwartError,
   updateAccount,
+  updateAccountAliases,
   updateAccountPassword,
   updateDomain,
+  validateForwardTargets,
   type ActionResult,
   type AppPassword,
   type BulkImportResultRow,
+  type CatchAllMode,
   type DataSource,
   type DkimGeneratedRecord,
   type DmarcGeneratedRecord,
   type DnsHealthSummary,
   type DomainListItem,
+  type EmailAliasEntry,
+  type ForwardingRule,
   type HealthStatus,
+  type MailExchangerMode,
   type OverviewStats,
   type StalwartAccount,
   type StalwartDomain,
@@ -433,6 +444,10 @@ export async function createDomainAction(input: {
         description: input.description?.trim() || name,
         isEnabled: true,
         catchAllAddress: null,
+        catchAllMode: "bounce",
+        allowRelaying: false,
+        mailExchanger: "local",
+        domainAliases: [],
       }
       store.setDomains([...store.domains, domain])
       return ok(domain, src)
@@ -450,6 +465,9 @@ export async function updateDomainAction(
     description: string
     isEnabled: boolean
     catchAllAddress: string | null
+    catchAllMode: CatchAllMode
+    allowRelaying: boolean
+    mailExchanger: MailExchangerMode
   }>
 ): Promise<ActionResult<void>> {
   const denied = await denyUnlessAuthed<void>()
@@ -457,16 +475,41 @@ export async function updateDomainAction(
 
   const src = source()
   try {
+    const mode = patch.catchAllMode
+    let catchAllAddress = patch.catchAllAddress
+    if (mode === "bounce" || mode === "blackhole") {
+      catchAllAddress = null
+    }
+    if (mode === "address" && catchAllAddress === undefined) {
+      // keep existing address from caller
+    }
+
     if (src === "mock") {
       const store = getMockStore()
-      const next = store.domains.map((d) =>
-        d.id === id ? { ...d, ...patch } : d
-      )
-      if (!next.some((d) => d.id === id)) {
+      const existing = store.domains.find((d) => d.id === id)
+      if (!existing) {
         return fail(new StalwartError("Domain not found.", "not_found"), src)
       }
-      if (patch.catchAllAddress) {
-        const target = patch.catchAllAddress.toLowerCase()
+      const nextAddress =
+        catchAllAddress !== undefined
+          ? catchAllAddress
+          : mode
+            ? mode === "address"
+              ? existing.catchAllAddress ?? null
+              : null
+            : existing.catchAllAddress
+
+      if (mode === "address" || (nextAddress && mode !== "bounce" && mode !== "blackhole")) {
+        const target = (nextAddress ?? "").toLowerCase()
+        if (!target) {
+          return fail(
+            new StalwartError(
+              "Select a catch-all mailbox on this domain.",
+              "validation"
+            ),
+            src
+          )
+        }
         const exists = store.accounts.some(
           (a) => a.email.toLowerCase() === target && a.domainId === id
         )
@@ -480,17 +523,60 @@ export async function updateDomainAction(
           )
         }
       }
+
+      const mailExchanger =
+        patch.mailExchanger ??
+        (patch.allowRelaying !== undefined
+          ? patch.allowRelaying
+            ? "backup"
+            : "local"
+          : existing.mailExchanger)
+      const allowRelaying =
+        patch.allowRelaying ??
+        (patch.mailExchanger
+          ? mailExchangerToAllowRelaying(patch.mailExchanger)
+          : existing.allowRelaying)
+
+      const next = store.domains.map((d) =>
+        d.id === id
+          ? {
+              ...d,
+              ...patch,
+              catchAllAddress: nextAddress,
+              catchAllMode:
+                mode ??
+                (nextAddress
+                  ? "address"
+                  : (d.catchAllMode === "blackhole" ? "blackhole" : "bounce")),
+              allowRelaying,
+              mailExchanger,
+            }
+          : d
+      )
       store.setDomains(next)
       return ok(undefined, src)
     }
 
-    if (patch.catchAllAddress) {
+    if (
+      (mode === "address" || catchAllAddress) &&
+      mode !== "bounce" &&
+      mode !== "blackhole"
+    ) {
       const domain = await getDomain(id)
       if (!domain) {
         return fail(new StalwartError("Domain not found.", "not_found"), src)
       }
       const accounts = await queryAccounts([domain])
-      const target = patch.catchAllAddress.toLowerCase()
+      const target = (catchAllAddress ?? domain.catchAllAddress ?? "").toLowerCase()
+      if (!target) {
+        return fail(
+          new StalwartError(
+            "Select a catch-all mailbox on this domain.",
+            "validation"
+          ),
+          src
+        )
+      }
       if (!accounts.some((a) => a.email.toLowerCase() === target)) {
         return fail(
           new StalwartError(
@@ -500,9 +586,29 @@ export async function updateDomainAction(
           src
         )
       }
+      catchAllAddress = target
     }
 
-    await updateDomain(id, patch)
+    const livePatch: Partial<{
+      description: string
+      isEnabled: boolean
+      catchAllAddress: string | null
+      allowRelaying: boolean
+    }> = {}
+    if (patch.description !== undefined) livePatch.description = patch.description
+    if (patch.isEnabled !== undefined) livePatch.isEnabled = patch.isEnabled
+    if (mode === "bounce" || mode === "blackhole") {
+      livePatch.catchAllAddress = null
+    } else if (catchAllAddress !== undefined) {
+      livePatch.catchAllAddress = catchAllAddress
+    }
+    if (patch.mailExchanger) {
+      livePatch.allowRelaying = mailExchangerToAllowRelaying(patch.mailExchanger)
+    } else if (patch.allowRelaying !== undefined) {
+      livePatch.allowRelaying = patch.allowRelaying
+    }
+
+    await updateDomain(id, livePatch)
     return ok(undefined, src)
   } catch (err) {
     return fail(err, src)
@@ -605,6 +711,7 @@ export async function getMailboxDetailAction(id: string): Promise<
   ActionResult<{
     account: StalwartAccount
     domains: StalwartDomain[]
+    forwards: ForwardingRule[]
     roundcubeUrl: string
     aliasesEditable: boolean
     appPasswords: AppPassword[]
@@ -626,9 +733,13 @@ export async function getMailboxDetailAction(id: string): Promise<
         {
           account,
           domains: store.domains,
+          forwards: store.forwards.filter(
+            (f) =>
+              f.sourceAccountId === id ||
+              f.source.toLowerCase() === account.email.toLowerCase()
+          ),
           roundcubeUrl: buildRoundcubeUrl(account.email),
-          // TODO: enable after live Account/get aliases shape probe
-          aliasesEditable: false,
+          aliasesEditable: true,
           appPasswords: account.appPasswords ?? [],
           appPasswordsMutable: true,
           twoFactor: account.twoFactor ?? { state: "disabled" },
@@ -654,12 +765,21 @@ export async function getMailboxDetailAction(id: string): Promise<
         note: "TODO: Confirm OtpAuth / Password.otpAuth shape on live Account/get.",
       } satisfies TwoFactorStatus)
 
+    // EmailAlias map shape is documented; editor always available.
+    const accounts = await queryAccounts(domains)
+    const forwards = buildLiveForwardHints(domains, accounts).filter(
+      (f) =>
+        f.sourceAccountId === id ||
+        f.source.toLowerCase() === account.email.toLowerCase() ||
+        f.targets.some((t) => t.toLowerCase() === account.email.toLowerCase())
+    )
     return ok(
       {
         account,
         domains,
+        forwards,
         roundcubeUrl: buildRoundcubeUrl(account.email),
-        aliasesEditable: false,
+        aliasesEditable: true,
         appPasswords,
         appPasswordsMutable,
         twoFactor,
@@ -1227,3 +1347,614 @@ export async function getSettingsAction(): Promise<
 export async function getRoundcubeLinkAction(email?: string): Promise<string> {
   return buildRoundcubeUrl(email)
 }
+
+export async function getRoutingOverviewAction(): Promise<
+  ActionResult<{
+    domains: StalwartDomain[]
+    accounts: StalwartAccount[]
+    forwards: ForwardingRule[]
+    adminUiUrl: string
+  }>
+> {
+  const src = source()
+  try {
+    if (src === "mock") {
+      const store = getMockStore()
+      return ok(
+        {
+          domains: store.domains,
+          accounts: store.accounts,
+          forwards: store.forwards,
+          adminUiUrl: getStalwartAdminUiUrl(),
+        },
+        src
+      )
+    }
+
+    const { domains, accounts } = await loadLiveDirectory()
+    const forwards = buildLiveForwardHints(domains, accounts)
+    return ok(
+      {
+        domains,
+        accounts,
+        forwards,
+        adminUiUrl: getStalwartAdminUiUrl(),
+      },
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+/** Synthesize read-only forward hints from live aliases + catch-alls. */
+function buildLiveForwardHints(
+  domains: StalwartDomain[],
+  accounts: StalwartAccount[]
+): ForwardingRule[] {
+  const domainsById = new Map(domains.map((d) => [d.id, d]))
+  const now = new Date().toISOString()
+  const rules: ForwardingRule[] = []
+
+  for (const account of accounts) {
+    const aliases = parseEmailAliases(account.aliases, domainsById)
+    for (const alias of aliases) {
+      const domain = domainsById.get(alias.domainId)
+      if (!domain || !alias.email) continue
+      rules.push({
+        id: `alias-${account.id}-${alias.key}`,
+        scope: "user",
+        domainId: domain.id,
+        domainName: domain.name,
+        source: alias.email,
+        sourceAccountId: account.id,
+        targets: [account.email],
+        keepLocalCopy: true,
+        enabled: alias.enabled,
+        backend: "alias",
+        updatedAt: now,
+      })
+    }
+  }
+
+  for (const domain of domains) {
+    if (domain.catchAllAddress) {
+      rules.push({
+        id: `catchall-${domain.id}`,
+        scope: "domain",
+        domainId: domain.id,
+        domainName: domain.name,
+        source: `*@${domain.name}`,
+        sourceAccountId: null,
+        targets: [domain.catchAllAddress],
+        keepLocalCopy: false,
+        enabled: true,
+        backend: "catchall",
+        updatedAt: now,
+      })
+    }
+  }
+
+  return rules
+}
+
+export async function upsertForwardingRuleAction(input: {
+  id?: string
+  scope: "user" | "domain"
+  domainId: string
+  source: string
+  sourceAccountId?: string | null
+  targets: string[]
+  keepLocalCopy?: boolean
+  enabled?: boolean
+}): Promise<ActionResult<ForwardingRule>> {
+  const denied = await denyUnlessAuthed<ForwardingRule>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    const targets = input.targets.map((t) => t.trim().toLowerCase()).filter(Boolean)
+    const enabled = input.enabled !== false
+    const keepLocalCopy = input.keepLocalCopy === true
+
+    if (src === "mock") {
+      const store = getMockStore()
+      const domain = store.domains.find((d) => d.id === input.domainId)
+      if (!domain) {
+        return fail(new StalwartError("Domain not found.", "not_found"), src)
+      }
+
+      const knownEmails = new Set(
+        store.accounts.map((a) => a.email.toLowerCase())
+      )
+      const knownDomains = new Set(
+        store.domains.map((d) => d.name.toLowerCase())
+      )
+      const valid = validateForwardTargets(targets, knownEmails, knownDomains)
+      if (!valid.ok) {
+        return fail(new StalwartError(valid.error, "validation"), src)
+      }
+
+      let source = input.source.trim().toLowerCase()
+      let sourceAccountId = input.sourceAccountId ?? null
+
+      if (input.scope === "domain") {
+        source = `*@${domain.name}`
+        sourceAccountId = null
+      } else {
+        if (!source.includes("@")) {
+          source = `${source}@${domain.name}`
+        }
+        const account =
+          store.accounts.find((a) => a.id === sourceAccountId) ??
+          store.accounts.find((a) => a.email.toLowerCase() === source)
+        if (account) {
+          source = account.email.toLowerCase()
+          sourceAccountId = account.id
+        }
+      }
+
+      const now = new Date().toISOString()
+      if (input.id) {
+        const existing = store.forwards.find((f) => f.id === input.id)
+        if (!existing) {
+          return fail(
+            new StalwartError("Forwarding rule not found.", "not_found"),
+            src
+          )
+        }
+        const updated: ForwardingRule = {
+          ...existing,
+          scope: input.scope,
+          domainId: domain.id,
+          domainName: domain.name,
+          source,
+          sourceAccountId,
+          targets,
+          keepLocalCopy,
+          enabled,
+          updatedAt: now,
+        }
+        store.setForwards(
+          store.forwards.map((f) => (f.id === input.id ? updated : f))
+        )
+        return ok(updated, src)
+      }
+
+      const created: ForwardingRule = {
+        id: `fwd-${crypto.randomUUID().slice(0, 8)}`,
+        scope: input.scope,
+        domainId: domain.id,
+        domainName: domain.name,
+        source,
+        sourceAccountId,
+        targets,
+        keepLocalCopy,
+        enabled,
+        backend: "mock",
+        updatedAt: now,
+      }
+      store.setForwards([...store.forwards, created])
+      return ok(created, src)
+    }
+
+    // Live: domain forward with single internal target → catch-all.
+    // User forward to a mailbox via alias local-part → EmailAlias on target.
+    // External redirects need Sieve (Phase 4 filters).
+    const domains = await queryDomains()
+    const domain = domains.find((d) => d.id === input.domainId)
+    if (!domain) {
+      return fail(new StalwartError("Domain not found.", "not_found"), src)
+    }
+    const accounts = await queryAccounts(domains)
+    const knownEmails = new Set(accounts.map((a) => a.email.toLowerCase()))
+    const knownDomains = new Set(domains.map((d) => d.name.toLowerCase()))
+    const valid = validateForwardTargets(targets, knownEmails, knownDomains)
+    if (!valid.ok) {
+      return fail(new StalwartError(valid.error, "validation"), src)
+    }
+
+    const now = new Date().toISOString()
+
+    if (input.scope === "domain") {
+      if (targets.length !== 1 || isExternalEmail(targets[0], knownDomains)) {
+        return fail(
+          new StalwartError(
+            "Live domain forwards map to catch-all: use one internal mailbox target, or configure Sieve in Filters.",
+            "validation"
+          ),
+          src
+        )
+      }
+      await updateDomain(domain.id, { catchAllAddress: targets[0] })
+      const rule: ForwardingRule = {
+        id: `catchall-${domain.id}`,
+        scope: "domain",
+        domainId: domain.id,
+        domainName: domain.name,
+        source: `*@${domain.name}`,
+        sourceAccountId: null,
+        targets,
+        keepLocalCopy: false,
+        enabled: true,
+        backend: "catchall",
+        updatedAt: now,
+      }
+      return ok(rule, src)
+    }
+
+    // User scope: if source is a new local-part and single internal target → alias on target.
+    let source = input.source.trim().toLowerCase()
+    if (!source.includes("@")) source = `${source}@${domain.name}`
+    const parsed = parseEmailAddress(source)
+    if (!parsed || parsed.domain !== domain.name) {
+      return fail(
+        new StalwartError(
+          "Source must be a local address on the selected domain.",
+          "validation"
+        ),
+        src
+      )
+    }
+
+    const sourceAccount = accounts.find(
+      (a) => a.email.toLowerCase() === source
+    )
+    const allExternal = targets.every((t) => isExternalEmail(t, knownDomains))
+
+    if (sourceAccount && allExternal) {
+      return fail(
+        new StalwartError(
+          "External mailbox redirects need Sieve (Filters / ManageSieve). Aliases only accept alternate local-parts into a mailbox.",
+          "validation"
+        ),
+        src
+      )
+    }
+
+    if (targets.length === 1 && !isExternalEmail(targets[0], knownDomains)) {
+      const targetAccount = accounts.find(
+        (a) => a.email.toLowerCase() === targets[0]
+      )
+      if (!targetAccount) {
+        return fail(
+          new StalwartError("Target mailbox not found.", "not_found"),
+          src
+        )
+      }
+      if (sourceAccount && sourceAccount.id === targetAccount.id) {
+        return fail(
+          new StalwartError(
+            "Source and target are the same mailbox — nothing to forward.",
+            "validation"
+          ),
+          src
+        )
+      }
+      // Alias: deliver source local-part into target mailbox.
+      if (sourceAccount) {
+        return fail(
+          new StalwartError(
+            "Cannot alias an existing mailbox onto another. Create a free local-part as the source, or use Sieve for redirects.",
+            "validation"
+          ),
+          src
+        )
+      }
+      const domainsById = new Map(domains.map((d) => [d.id, d]))
+      const existing = parseEmailAliases(targetAccount.aliases, domainsById)
+      if (
+        existing.some(
+          (a) =>
+            a.name.toLowerCase() === parsed.local && a.domainId === domain.id
+        )
+      ) {
+        return fail(
+          new StalwartError(
+            `${source} is already an alias on ${targetAccount.email}.`,
+            "validation"
+          ),
+          src
+        )
+      }
+      const next = [
+        ...existing,
+        {
+          key: String(existing.length),
+          name: parsed.local,
+          domainId: domain.id,
+          enabled,
+          description: `Forward via alias → ${targetAccount.email}`,
+          email: source,
+        },
+      ]
+      await updateAccountAliases(targetAccount.id, serializeEmailAliases(next))
+      const rule: ForwardingRule = {
+        id: `alias-${targetAccount.id}-${parsed.local}`,
+        scope: "user",
+        domainId: domain.id,
+        domainName: domain.name,
+        source,
+        sourceAccountId: targetAccount.id,
+        targets: [targetAccount.email],
+        keepLocalCopy: true,
+        enabled,
+        backend: "alias",
+        updatedAt: now,
+      }
+      return ok(rule, src)
+    }
+
+    return fail(
+      new StalwartError(
+        "This forward shape is not representable on Stalwart Account/Domain fields. Use Filters (Sieve) or Stalwart Admin.",
+        "validation"
+      ),
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function destroyForwardingRuleAction(
+  id: string
+): Promise<ActionResult<void>> {
+  const denied = await denyUnlessAuthed<void>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    if (src === "mock") {
+      const store = getMockStore()
+      if (!store.forwards.some((f) => f.id === id)) {
+        return fail(
+          new StalwartError("Forwarding rule not found.", "not_found"),
+          src
+        )
+      }
+      store.setForwards(store.forwards.filter((f) => f.id !== id))
+      return ok(undefined, src)
+    }
+
+    if (id.startsWith("catchall-")) {
+      const domainId = id.slice("catchall-".length)
+      await updateDomain(domainId, { catchAllAddress: null })
+      return ok(undefined, src)
+    }
+
+    if (id.startsWith("alias-")) {
+      // alias-{accountId}-{keyOrLocal}
+      const rest = id.slice("alias-".length)
+      const dash = rest.indexOf("-")
+      if (dash <= 0) {
+        return fail(
+          new StalwartError("Malformed alias rule id.", "validation"),
+          src
+        )
+      }
+      const accountId = rest.slice(0, dash)
+      const aliasKey = rest.slice(dash + 1)
+      const domains = await queryDomains()
+      const account = await getAccount(accountId, domains)
+      if (!account) {
+        return fail(new StalwartError("Mailbox not found.", "not_found"), src)
+      }
+      const domainsById = new Map(domains.map((d) => [d.id, d]))
+      const existing = parseEmailAliases(account.aliases, domainsById)
+      const next = existing.filter(
+        (a) => a.key !== aliasKey && a.name !== aliasKey
+      )
+      await updateAccountAliases(accountId, serializeEmailAliases(next))
+      return ok(undefined, src)
+    }
+
+    return fail(
+      new StalwartError(
+        "This forward cannot be deleted via JMAP — manage it in Filters or Stalwart Admin.",
+        "validation"
+      ),
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function updateMailExchangerAction(
+  domainId: string,
+  mode: MailExchangerMode
+): Promise<ActionResult<{ mode: MailExchangerMode; note?: string }>> {
+  const denied = await denyUnlessAuthed<{
+    mode: MailExchangerMode
+    note?: string
+  }>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    const allowRelaying = mailExchangerToAllowRelaying(mode)
+    const note =
+      mode === "local"
+        ? "Local MX: unknown recipients follow catch-all / bounce."
+        : mode === "backup"
+          ? "Backup MX: allowRelaying on — unknown local recipients may be accepted and relayed."
+          : "Remote MX: domain still registered locally; point public MX elsewhere and keep allowRelaying on for split delivery."
+
+    if (src === "mock") {
+      const store = getMockStore()
+      if (!store.domains.some((d) => d.id === domainId)) {
+        return fail(new StalwartError("Domain not found.", "not_found"), src)
+      }
+      store.setDomains(
+        store.domains.map((d) =>
+          d.id === domainId
+            ? { ...d, mailExchanger: mode, allowRelaying }
+            : d
+        )
+      )
+      return ok({ mode, note }, src)
+    }
+
+    await updateDomain(domainId, { allowRelaying })
+    return ok({ mode: deriveMailExchanger({ allowRelaying, mailExchanger: mode }), note }, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function updateMailboxAliasesAction(
+  accountId: string,
+  aliases: Array<{
+    name: string
+    domainId: string
+    enabled?: boolean
+    description?: string
+    key?: string
+  }>
+): Promise<ActionResult<EmailAliasEntry[]>> {
+  const denied = await denyUnlessAuthed<EmailAliasEntry[]>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    const domains =
+      src === "mock" ? getMockStore().domains : await queryDomains()
+    const domainsById = new Map(domains.map((d) => [d.id, d]))
+    const knownEmails = new Set(
+      (src === "mock"
+        ? getMockStore().accounts
+        : await queryAccounts(domains)
+      ).map((a) => a.email.toLowerCase())
+    )
+
+    const normalized: EmailAliasEntry[] = []
+    for (let i = 0; i < aliases.length; i++) {
+      const raw = aliases[i]
+      const name = raw.name.trim().toLowerCase()
+      if (!name || name.includes("@") || !/^[a-z0-9._+-]+$/i.test(name)) {
+        return fail(
+          new StalwartError(
+            `Invalid alias local-part: ${raw.name || "(empty)"}`,
+            "validation"
+          ),
+          src
+        )
+      }
+      const domain = domainsById.get(raw.domainId)
+      if (!domain) {
+        return fail(
+          new StalwartError("Alias domain not found.", "not_found"),
+          src
+        )
+      }
+      const email = `${name}@${domain.name}`.toLowerCase()
+      if (knownEmails.has(email)) {
+        return fail(
+          new StalwartError(
+            `${email} is already a mailbox — pick a free local-part.`,
+            "validation"
+          ),
+          src
+        )
+      }
+      if (
+        normalized.some(
+          (a) => a.name === name && a.domainId === raw.domainId
+        )
+      ) {
+        return fail(
+          new StalwartError(`Duplicate alias ${email}.`, "validation"),
+          src
+        )
+      }
+      normalized.push({
+        key: raw.key && /^\d+$/.test(raw.key) ? raw.key : String(i),
+        name,
+        domainId: domain.id,
+        enabled: raw.enabled !== false,
+        description: raw.description?.trim() || undefined,
+        email,
+      })
+    }
+
+    if (src === "mock") {
+      const store = getMockStore()
+      const account = store.accounts.find((a) => a.id === accountId)
+      if (!account) {
+        return fail(new StalwartError("Mailbox not found.", "not_found"), src)
+      }
+      const previous = parseEmailAliases(account.aliases, domainsById)
+      const map = serializeEmailAliases(
+        normalized,
+        previous.map((a) => a.key)
+      )
+      // Drop nulls for mock storage — keep only live entries.
+      const stored: Record<string, Record<string, unknown>> = {}
+      for (const [k, v] of Object.entries(map)) {
+        if (v) stored[k] = v
+      }
+      store.setAccounts(
+        store.accounts.map((a) =>
+          a.id === accountId ? { ...a, aliases: stored } : a
+        )
+      )
+      return ok(normalized, src)
+    }
+
+    const account = await getAccount(accountId, domains)
+    if (!account) {
+      return fail(new StalwartError("Mailbox not found.", "not_found"), src)
+    }
+    const previous = parseEmailAliases(account.aliases, domainsById)
+    await updateAccountAliases(
+      accountId,
+      serializeEmailAliases(
+        normalized,
+        previous.map((a) => a.key)
+      )
+    )
+    return ok(normalized, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function updateCatchAllAction(
+  domainId: string,
+  input: {
+    mode: CatchAllMode
+    address?: string | null
+  }
+): Promise<ActionResult<{ mode: CatchAllMode; note?: string }>> {
+  const denied = await denyUnlessAuthed<{
+    mode: CatchAllMode
+    note?: string
+  }>()
+  if (denied) return denied
+
+  const result = await updateDomainAction(domainId, {
+    catchAllMode: input.mode,
+    catchAllAddress:
+      input.mode === "address" ? (input.address ?? null) : null,
+  })
+  if (!result.ok) return result
+
+  const note =
+    input.mode === "blackhole" && source() === "live"
+      ? "Stalwart has no discard-at-SMTP flag — blackhole clears catch-all (same as bounce). Use a discard mailbox or Sieve for true drop."
+      : input.mode === "bounce"
+        ? "Unknown recipients are rejected at SMTP."
+        : input.mode === "blackhole"
+          ? "Unknown recipients are discarded (mock)."
+          : undefined
+
+  return ok(
+    {
+      mode: input.mode,
+      note,
+    },
+    result.source
+  )
+}
+

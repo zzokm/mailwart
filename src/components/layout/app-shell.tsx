@@ -7,6 +7,7 @@ import {
   Import,
   Inbox,
   LayoutDashboard,
+  Route,
   Settings,
   Globe,
 } from "lucide-react"
@@ -45,6 +46,7 @@ const NAV: Array<{
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/dashboard/domains", label: "Domains", icon: Globe },
   { href: "/dashboard/mailboxes", label: "Mailboxes", icon: Inbox },
+  { href: "/dashboard/routing", label: "Routing", icon: Route },
   { href: "/dashboard/import", label: "Bulk import", icon: Import },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ]
