@@ -2,6 +2,8 @@ import type { Metadata } from "next"
 import Link from "next/link"
 
 import { LoginForm } from "@/components/auth/login-form"
+import { BrandMark } from "@/components/layout/brand-mark"
+import { ThemeToggle } from "@/components/layout/theme-toggle"
 import {
   Card,
   CardContent,
@@ -12,46 +14,55 @@ import {
 import { redirectIfAuthenticated } from "@/lib/actions/auth"
 
 export const metadata: Metadata = {
-  title: "Secure Admin Login · email.yehia.dev",
-  description: "Sign in to Email Manager",
+  title: "Secure Admin Login",
+  description: "Operator sign-in for the mailwart directory console.",
 }
 
 export default async function LoginPage() {
   await redirectIfAuthenticated()
 
   return (
-    <div className="relative flex min-h-full flex-1 flex-col items-center justify-center px-5 py-16">
+    <div className="relative flex min-h-full flex-1 flex-col">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_50%_0%,oklch(0.32_0.05_230/0.28),transparent)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[60vh] bg-[radial-gradient(ellipse_70%_60%_at_50%_-10%,var(--brand),transparent_62%)] opacity-[0.09] dark:opacity-[0.2]"
       />
-      <div className="relative z-10 w-full max-w-md">
-        <div className="mb-8 text-center">
+
+      <header className="relative z-10">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5 sm:px-8">
           <Link
             href="/"
-            className="font-mono text-sm tracking-tight text-muted-foreground transition-colors hover:text-foreground"
+            className="rounded-md text-base text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            email.yehia.dev
+            <BrandMark glyph />
           </Link>
-          <h1 className="mt-4 text-2xl font-semibold tracking-[-0.03em]">
-            Secure Admin Login
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Operator access to the Stalwart directory console.
-          </p>
+          <ThemeToggle />
         </div>
-        <Card className="border-border/80 bg-card/80 backdrop-blur-sm">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-medium">Sign in</CardTitle>
-            <CardDescription>
-              Use app admin credentials — not your mailbox password.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <LoginForm />
-          </CardContent>
-        </Card>
-      </div>
+      </header>
+
+      <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-5 pb-20 pt-8">
+        <div className="w-full max-w-md">
+          <div className="mb-8">
+            <h1 className="text-2xl font-semibold tracking-[-0.03em]">
+              Secure Admin Login
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Operator access to the Stalwart directory console.
+            </p>
+          </div>
+          <Card className="border-border/80 bg-card/80 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base font-medium">Sign in</CardTitle>
+              <CardDescription>
+                Use app admin credentials, not a mailbox password.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <LoginForm />
+            </CardContent>
+          </Card>
+        </div>
+      </main>
     </div>
   )
 }

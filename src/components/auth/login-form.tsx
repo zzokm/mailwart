@@ -103,7 +103,10 @@ export function LoginForm() {
         </Button>
         <p className="text-center text-xs text-muted-foreground">
           App credentials are separate from Stalwart admin.{" "}
-          <Link href="/" className="text-foreground/80 underline-offset-4 hover:underline">
+          <Link
+            href="/"
+            className="text-foreground/80 underline-offset-4 hover:underline"
+          >
             Back to home
           </Link>
         </p>
