@@ -5,6 +5,7 @@ import { DASHBOARD_CRUMB } from "@/components/layout/breadcrumbs"
 import { DataSourceBanner } from "@/components/layout/data-source-banner"
 import { PageHeader } from "@/components/layout/page-header"
 import { CreateDomainDialog } from "@/components/mail/create-domain-dialog"
+import { DnsHealthBadge } from "@/components/mail/dns-health-badge"
 import { EmptyState, ErrorState } from "@/components/mail/empty-state"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -43,7 +44,7 @@ export default async function DomainsPage() {
     <div>
       <PageHeader
         title="Domains"
-        description="Add domains, inspect catch-alls, and verify DNS checklist."
+        description="Add, suspend, or remove domains — and verify MX, SPF, DKIM, and DMARC."
         breadcrumbs={[DASHBOARD_CRUMB, { label: "Domains" }]}
         actions={<CreateDomainDialog />}
       />
@@ -65,6 +66,9 @@ export default async function DomainsPage() {
                 </TableHead>
                 <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
                   Status
+                </TableHead>
+                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                  DNS
                 </TableHead>
                 <TableHead className="hidden font-mono text-[10px] uppercase tracking-[0.14em] md:table-cell">
                   Catch-all
@@ -95,8 +99,17 @@ export default async function DomainsPage() {
                           : "border-success/40 text-success"
                       )}
                     >
-                      {d.isEnabled === false ? "disabled" : "enabled"}
+                      {d.isEnabled === false ? "suspended" : "active"}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {d.dnsSummary ? (
+                      <DnsHealthBadge status={d.dnsSummary.worst} compact />
+                    ) : (
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        —
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="hidden font-mono text-[12px] text-muted-foreground md:table-cell">
                     {d.catchAllAddress ?? "none"}

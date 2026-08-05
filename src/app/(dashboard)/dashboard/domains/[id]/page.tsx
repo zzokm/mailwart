@@ -5,10 +5,13 @@ import { notFound } from "next/navigation"
 import { DASHBOARD_CRUMB } from "@/components/layout/breadcrumbs"
 import { DataSourceBanner } from "@/components/layout/data-source-banner"
 import { PageHeader } from "@/components/layout/page-header"
+import { DnsHealthBadge } from "@/components/mail/dns-health-badge"
 import { DomainDetailClient } from "@/components/mail/domain-detail-client"
 import { ErrorState } from "@/components/mail/empty-state"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getDomainDetailAction } from "@/lib/actions/mail"
+import { cn } from "@/lib/utils"
 
 const DOMAINS_CRUMB = { label: "Domains", href: "/dashboard/domains" }
 
@@ -49,12 +52,16 @@ export default async function DomainDetailPage({
   }
 
   const { domain, mailboxes, dns } = result.data
+  const suspended = domain.isEnabled === false
 
   return (
     <div>
       <PageHeader
         title={domain.name}
-        description={domain.description || "Domain detail, catch-all, DNS checklist."}
+        description={
+          domain.description ||
+          "Catch-all, suspend, DNS health, and record generators."
+        }
         breadcrumbs={[
           DASHBOARD_CRUMB,
           DOMAINS_CRUMB,
@@ -62,16 +69,30 @@ export default async function DomainDetailPage({
         ]}
         back={{ href: "/dashboard/domains", label: "Domains" }}
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            nativeButton={false}
-            render={
-              <Link href={`/dashboard/mailboxes?domain=${domain.id}`} />
-            }
-          >
-            Mailboxes on this domain
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="outline"
+              className={cn(
+                "font-mono text-[10px]",
+                suspended
+                  ? "border-destructive/40 text-destructive"
+                  : "border-success/40 text-success"
+              )}
+            >
+              {suspended ? "suspended" : "active"}
+            </Badge>
+            <DnsHealthBadge status={dns.worst} />
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={
+                <Link href={`/dashboard/mailboxes?domain=${domain.id}`} />
+              }
+            >
+              Mailboxes
+            </Button>
+          </div>
         }
       />
       <DataSourceBanner source={result.source} />

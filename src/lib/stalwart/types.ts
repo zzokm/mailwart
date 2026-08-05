@@ -51,6 +51,8 @@ export type StalwartAccount = {
 
 export type DomainListItem = StalwartDomain & {
   mailboxCount: number
+  /** Compact DNS health when list action runs checks (optional). */
+  dnsSummary?: DnsHealthSummary
 }
 
 export type OverviewStats = {
@@ -83,12 +85,43 @@ export type HealthStatus = {
   source: DataSource
 }
 
+/** Pass / warn / fail rubric per ARCHITECTURE §10. `unknown` = not checked. */
+export type DnsCheckStatus = "pass" | "warn" | "fail" | "unknown"
+
 export type DnsCheckItem = {
   type: "MX" | "TXT" | "SPF" | "DKIM" | "DMARC"
   label: string
   expected: string
-  status: "ok" | "unknown" | "missing" | "warn"
+  status: DnsCheckStatus
   note?: string
+  /** Observed raw record snippet(s) for copy. */
+  observed?: string
+}
+
+export type DnsHealthSummary = {
+  worst: DnsCheckStatus
+  checks: DnsCheckItem[]
+  checkedAt: string
+  fromCache: boolean
+}
+
+export type DkimGeneratedRecord = {
+  selector: string
+  privateKeyPem: string
+  publicKeyPem: string
+  dnsName: string
+  dnsType: "TXT"
+  dnsValue: string
+  /** Zone-file style one-liner for paste. */
+  zoneLine: string
+}
+
+export type DmarcGeneratedRecord = {
+  policy: "none" | "quarantine" | "reject"
+  dnsName: string
+  dnsType: "TXT"
+  dnsValue: string
+  zoneLine: string
 }
 
 export type BulkImportRow = {

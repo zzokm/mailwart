@@ -20,7 +20,7 @@ export {
   bulkCreateAccounts,
 } from "./accounts"
 export { hydrateAccounts, parseEmailAddress, resolveAccountEmail } from "./email"
-export { buildDnsChecklist } from "./dns"
+export { buildDnsChecklist, getDomainDnsHealth } from "./dns"
 export {
   MOCK_DOMAINS,
   MOCK_ACCOUNTS,

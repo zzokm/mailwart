@@ -10,6 +10,11 @@ import {
 import { hostFromUrl, parseCsv, quotaSummary } from "@/lib/format"
 import { buildRoundcubeUrl } from "@/lib/roundcube"
 import {
+  generateDkimRecord,
+  generateDmarcRecord,
+  generateSpfRecord,
+} from "@/lib/dns"
+import {
   bulkCreateAccounts,
   createAccount,
   createDomain,
@@ -17,6 +22,7 @@ import {
   destroyDomain,
   getAccount,
   getDomain,
+  getDomainDnsHealth,
   getMockStore,
   mockHealth,
   parseEmailAddress,
@@ -29,13 +35,14 @@ import {
   type ActionResult,
   type BulkImportResultRow,
   type DataSource,
-  type DnsCheckItem,
+  type DkimGeneratedRecord,
+  type DmarcGeneratedRecord,
+  type DnsHealthSummary,
   type DomainListItem,
   type HealthStatus,
   type OverviewStats,
   type StalwartAccount,
   type StalwartDomain,
-  buildDnsChecklist,
 } from "@/lib/stalwart"
 import { jmapCall } from "@/lib/stalwart/client"
 
@@ -202,16 +209,31 @@ export async function listDomainsAction(): Promise<
   ActionResult<DomainListItem[]>
 > {
   const src = source()
+  const mailHost = configuredMailHost()
   try {
     const { domains, accounts } =
       src === "live" ? await loadLiveDirectory() : loadMockDirectory()
-    return ok(
-      domains.map((d) => ({
-        ...d,
-        mailboxCount: accounts.filter((a) => a.domainId === d.id).length,
-      })),
-      src
+
+    const list = await Promise.all(
+      domains.map(async (d) => {
+        const dns = await getDomainDnsHealth(d.name, {
+          mailHostHint: mailHost,
+          mock: src === "mock",
+        })
+        return {
+          ...d,
+          mailboxCount: accounts.filter((a) => a.domainId === d.id).length,
+          dnsSummary: {
+            worst: dns.worst,
+            checks: dns.checks,
+            checkedAt: dns.checkedAt,
+            fromCache: dns.fromCache,
+          },
+        } satisfies DomainListItem
+      })
     )
+
+    return ok(list, src)
   } catch (err) {
     return fail(err, src)
   }
@@ -232,7 +254,7 @@ export async function getDomainDetailAction(id: string): Promise<
   ActionResult<{
     domain: StalwartDomain
     mailboxes: StalwartAccount[]
-    dns: DnsCheckItem[]
+    dns: DnsHealthSummary
   }>
 > {
   const src = source()
@@ -244,11 +266,15 @@ export async function getDomainDetailAction(id: string): Promise<
       if (!domain) {
         return fail(new StalwartError("Domain not found.", "not_found"), src)
       }
+      const dns = await getDomainDnsHealth(domain.name, {
+        mailHostHint: mailHost,
+        mock: true,
+      })
       return ok(
         {
           domain,
           mailboxes: store.accounts.filter((a) => a.domainId === id),
-          dns: buildDnsChecklist(domain.name, mailHost),
+          dns,
         },
         src
       )
@@ -259,11 +285,110 @@ export async function getDomainDetailAction(id: string): Promise<
       return fail(new StalwartError("Domain not found.", "not_found"), src)
     }
     const accounts = await queryAccounts([domain])
+    const dns = await getDomainDnsHealth(domain.name, {
+      mailHostHint: mailHost,
+    })
     return ok(
       {
         domain,
         mailboxes: accounts.filter((a) => a.domainId === id),
-        dns: buildDnsChecklist(domain.name, mailHost),
+        dns,
+      },
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function refreshDomainDnsAction(
+  domainName: string
+): Promise<ActionResult<DnsHealthSummary>> {
+  const denied = await denyUnlessAuthed<DnsHealthSummary>()
+  if (denied) return denied
+
+  const src = source()
+  const name = domainName.trim().toLowerCase()
+  if (!name) {
+    return fail(new StalwartError("Domain name required.", "validation"), src)
+  }
+
+  try {
+    const dns = await getDomainDnsHealth(name, {
+      bustCache: true,
+      mailHostHint: configuredMailHost(),
+      mock: src === "mock",
+    })
+    return ok(dns, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function generateDkimAction(input: {
+  domain: string
+  selector?: string
+}): Promise<ActionResult<DkimGeneratedRecord>> {
+  const denied = await denyUnlessAuthed<DkimGeneratedRecord>()
+  if (denied) return denied
+
+  const src = source()
+  const domain = input.domain.trim().toLowerCase()
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
+    return fail(
+      new StalwartError("Enter a valid domain name.", "validation"),
+      src
+    )
+  }
+  try {
+    return ok(
+      generateDkimRecord({
+        domain,
+        selector: input.selector,
+      }),
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function generateDmarcAction(input: {
+  domain: string
+  policy?: "none" | "quarantine" | "reject"
+  rua?: string
+}): Promise<
+  ActionResult<{
+    dmarc: DmarcGeneratedRecord
+    spf: { dnsName: string; dnsValue: string; zoneLine: string }
+  }>
+> {
+  const denied = await denyUnlessAuthed<{
+    dmarc: DmarcGeneratedRecord
+    spf: { dnsName: string; dnsValue: string; zoneLine: string }
+  }>()
+  if (denied) return denied
+
+  const src = source()
+  const domain = input.domain.trim().toLowerCase()
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
+    return fail(
+      new StalwartError("Enter a valid domain name.", "validation"),
+      src
+    )
+  }
+  try {
+    return ok(
+      {
+        dmarc: generateDmarcRecord({
+          domain,
+          policy: input.policy,
+          rua: input.rua,
+        }),
+        spf: generateSpfRecord({
+          domain,
+          mailHost: configuredMailHost(),
+        }),
       },
       src
     )

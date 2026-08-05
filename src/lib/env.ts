@@ -13,6 +13,12 @@ const envSchema = z.object({
   APP_ADMIN_USER: z.string().optional(),
   APP_ADMIN_PASSWORD: z.string().optional(),
   SESSION_SECRET: z.string().optional(),
+  /** Expected MX target hostname (optional rubric). */
+  DNS_EXPECTED_MX: z.string().min(1).optional(),
+  /** CSV of DKIM selectors to probe (e.g. stalwart,default). */
+  DNS_DKIM_SELECTORS: z.string().optional(),
+  /** Expected SPF include/ip/a mechanism substring (optional). */
+  DNS_EXPECTED_SPF: z.string().min(1).optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -28,6 +34,9 @@ function readRawEnv(): Record<string, string | undefined> {
     APP_ADMIN_USER: process.env.APP_ADMIN_USER,
     APP_ADMIN_PASSWORD: process.env.APP_ADMIN_PASSWORD,
     SESSION_SECRET: process.env.SESSION_SECRET,
+    DNS_EXPECTED_MX: process.env.DNS_EXPECTED_MX,
+    DNS_DKIM_SELECTORS: process.env.DNS_DKIM_SELECTORS,
+    DNS_EXPECTED_SPF: process.env.DNS_EXPECTED_SPF,
   };
 }
 
@@ -68,4 +77,24 @@ export function getStalwartAdminUiUrl(): string {
 
 export function hasStalwartConfig(): boolean {
   return getStalwartConfig() !== null;
+}
+
+export type DnsExpectations = {
+  expectedMx?: string;
+  dkimSelectors: string[];
+  expectedSpf?: string;
+};
+
+/** Optional DNS health rubric from env (Architecture §10). */
+export function getDnsExpectations(): DnsExpectations {
+  const env = getEnv();
+  const selectors = (env.DNS_DKIM_SELECTORS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return {
+    expectedMx: env.DNS_EXPECTED_MX?.trim().toLowerCase() || undefined,
+    dkimSelectors: selectors,
+    expectedSpf: env.DNS_EXPECTED_SPF?.trim() || undefined,
+  };
 }

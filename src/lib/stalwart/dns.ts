@@ -1,6 +1,12 @@
+import "server-only"
+
+import { checkDomainDns } from "@/lib/dns"
 import type { DnsCheckItem } from "./types"
 
-/** Read-only DNS verification checklist — no live DNS lookups in Phase 3. */
+/**
+ * @deprecated Prefer checkDomainDns from @/lib/dns — kept for callers that
+ * only need a static expected-record guide without live lookups.
+ */
 export function buildDnsChecklist(
   domain: string,
   mailHost?: string
@@ -17,23 +23,23 @@ export function buildDnsChecklist(
     },
     {
       type: "TXT",
+      label: "Apex TXT",
+      expected: `${d} TXT (SPF / verification)`,
+      status: "unknown",
+    },
+    {
+      type: "SPF",
       label: "SPF",
       expected: `v=spf1 mx a:${host} ~all`,
       status: "unknown",
       note: "SPF TXT on the apex; adjust includes to match your outbound path.",
     },
     {
-      type: "SPF",
-      label: "SPF policy",
-      expected: `Pass for ${host} and authorized relays`,
-      status: "unknown",
-    },
-    {
       type: "DKIM",
       label: "DKIM",
-      expected: `selector._domainkey.${d} TXT (Stalwart Automatic)`,
+      expected: `selector._domainkey.${d} TXT`,
       status: "unknown",
-      note: "DKIM often managed by Stalwart dnsManagement / external zone.",
+      note: "Set DNS_DKIM_SELECTORS to enable live DKIM checks.",
     },
     {
       type: "DMARC",
@@ -42,4 +48,12 @@ export function buildDnsChecklist(
       status: "unknown",
     },
   ]
+}
+
+/** Live (or mock) DNS health for a managed domain. */
+export async function getDomainDnsHealth(
+  domain: string,
+  options?: { bustCache?: boolean; mailHostHint?: string; mock?: boolean }
+) {
+  return checkDomainDns(domain, options)
 }
