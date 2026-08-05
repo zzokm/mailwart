@@ -87,37 +87,37 @@ function loadMockDirectory(): {
   return { domains: store.domains, accounts: store.accounts }
 }
 
+async function probeRoundcube(): Promise<HealthStatus["roundcube"]> {
+  try {
+    const res = await fetch(getRoundcubeUrl(), {
+      method: "GET",
+      signal: AbortSignal.timeout(5000),
+      cache: "no-store",
+    })
+    return { ok: res.ok }
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Roundcube unreachable",
+    }
+  }
+}
+
 export async function getHealth(): Promise<HealthStatus> {
   if (!hasStalwartConfig()) {
     return mockHealth()
   }
 
   const started = Date.now()
+  const roundcubePromise = probeRoundcube()
   try {
     await jmapCall([["x:Domain/query", { filter: null, limit: 1 }, "h0"]], {
       retry: true,
       timeoutMs: 10_000,
     })
-    const latencyMs = Date.now() - started
-
-    let roundcube: HealthStatus["roundcube"] = { ok: null }
-    try {
-      const res = await fetch(getRoundcubeUrl(), {
-        method: "GET",
-        signal: AbortSignal.timeout(5000),
-        cache: "no-store",
-      })
-      roundcube = { ok: res.ok }
-    } catch (err) {
-      roundcube = {
-        ok: false,
-        error: err instanceof Error ? err.message : "Roundcube unreachable",
-      }
-    }
-
     return {
-      jmap: { ok: true, latencyMs },
-      roundcube,
+      jmap: { ok: true, latencyMs: Date.now() - started },
+      roundcube: await roundcubePromise,
       source: "live",
     }
   } catch (err) {
@@ -127,7 +127,7 @@ export async function getHealth(): Promise<HealthStatus> {
         latencyMs: Date.now() - started,
         error: err instanceof Error ? err.message : "JMAP health failed",
       },
-      roundcube: { ok: null },
+      roundcube: await roundcubePromise,
       source: "live",
     }
   }
