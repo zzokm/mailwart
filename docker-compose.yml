@@ -1,14 +1,18 @@
 # Dokploy project: Email — service: email-manager
 # Domain: email.yehia.dev → port 3000 (Traefik / Let's Encrypt via Dokploy)
 #
-# Build once on the VPS (or CI), then deploy this compose with the image:
-#   docker build -t email-manager:latest /root/email-manager
+# Source: https://github.com/zzokm/yehia-email-manager (GitHub App auto-deploy on push to main)
+# Dokploy clones this repo and runs `docker compose up --build`.
 #
 # JMAP: in-cluster URL reaches Stalwart on the shared compose network.
 # Public https://mail.yehia.dev/jmap also works if internal DNS fails.
+# Secrets stay in Dokploy compose env — never commit them.
 
 services:
   email-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: email-manager:latest
     container_name: email-manager
     restart: unless-stopped
