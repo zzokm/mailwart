@@ -120,13 +120,17 @@ No top-level `/aliases` — aliases live on mailbox detail + routing summary.
 
 **Columns:** `email,password,description` (+ optional `quota`).
 
-**Flow:** upload → validate → preview duplicates → commit chunks → results + failure CSV download.
+**Limits:** 2 MB / 5 000 rows max per job.
+
+**Flow:** upload → validate → preview duplicates → create `jobId` → commit **one chunk per action** (25) with React Query watching job report → results + failure CSV download. Pause/abort allowed; no rollback of successes. Chunk `(jobId, chunkIndex)` idempotent.
 
 **Modes:** create-only (skip existing) · create-or-reset-password (explicit opt-in).
 
+**While bulk runs:** disable conflicting directory mutations in UI; honor Stalwart 429/503 backoff (Architecture §9.1).
+
 ### 5.7 DNS health (Phase 2+)
 
-Per-domain and cross-domain matrix: MX, SPF, DKIM, DMARC with pass/warn/fail and raw record snippets for copy. Advisory only — no DNS write UI in v1 (Cloudflare/ops scripts remain source of DNS mutations).
+Per-domain and cross-domain matrix: MX, SPF, DKIM, DMARC with pass/warn/fail rubric (Architecture §10) and raw record snippets for copy. Env-tunable expectations: `DNS_EXPECTED_MX`, `DNS_DKIM_SELECTORS`. Banner: results reflect **server resolver view**. Advisory only — no DNS write UI in v1.
 
 ### 5.8 Delivery logs & audit (Phase 4–5)
 
@@ -196,6 +200,11 @@ Login, session cookie, logout, rate limit. Unauthenticated users cannot reach `/
 | Duplicate create | Clear conflict / skip in bulk |
 | Admin account | Badge; destroy dual-confirm or disabled |
 | DNS split-horizon | Warn that checks use server resolver view |
+| DKIM multi-selector | Pass if any configured selector hits; warn if partial |
+| Bulk proxy timeout | Chunked job survives; do not rely on one 60s request |
+| Stalwart 429 mid-bulk | Backoff then resume chunk; surface waits in progress UI |
+| SSO replay / expired | Plugin rejects; dashboard offers “Open again” |
+| SSO as privileged admin | Dual-confirm or block |
 | 2FA/app-password unsupported | Honest empty + Admin link |
 | Theme | No flash of wrong theme on load (as practical) |
 
@@ -209,7 +218,7 @@ Managed domains, public hosts, and Admin/Webmail URLs are **environment / Dokplo
 
 ## 9. Success metrics
 
-- Create mailbox + copy password &lt; 30s.
+- Create mailbox + copy password in under 30 seconds.
 - Bulk 50 accounts with clear failure report without SSH.
 - Catch-all and DNS health visible without Stalwart Admin.
 - SSO open works without mailbox password in browser Network tab.

@@ -92,11 +92,13 @@ UI strings, package display name (later), and docs refer to **mailwart**. Docker
          ▼
 ┌─ React Query (client) ────────────────────────────────────────┐
 │ Use when: search/filter debounce, live health polling,        │
-│ progressive bulk-import progress, DNS check refresh,          │
+│ bulk-import job progress (`jobId` report), DNS refresh,       │
 │ detail panes that refetch without full RSC round-trip.        │
 │ queryFn → thin /api/* GET wrappers OR server-action readers.  │
 │ invalidateQueries on mutation settle; do not duplicate        │
 │ Stalwart state in a second client store.                      │
+│ Bulk: React Query is read-only observer; chunk Server Actions │
+│ are the only writers to the job report.                       │
 └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -232,9 +234,21 @@ On `notCreated` for missing fields, retry once with explicit defaults (`Manual` 
 Existing flow — do not regress:
 
 1. Authenticated operator clicks “Open webmail” on a mailbox.
-2. `GET/POST /api/webmail/sso` mints HMAC token (`WEBMAIL_SSO_SECRET`): mailbox, expiry (~30s), nonce.
+2. `GET/POST /api/webmail/sso` mints HMAC token (`WEBMAIL_SSO_SECRET`).
 3. Browser opens Roundcube with token; `em_sso` verifies and authenticates as `target%impersonator` using server-only impersonator credentials.
 4. Roundcube session is independent of mailwart session.
+
+### 8.1 Token claims & abuse controls
+
+| Claim / control | Rule |
+|-----------------|------|
+| `mailbox` | Full email; must exist in directory at mint time |
+| `exp` | ≤ **30 seconds** from mint |
+| `nonce` | Unique; plugin should reject replay when practical |
+| `aud` | Fixed audience string e.g. `roundcube-em-sso` |
+| Authz | Mint only if mailwart session valid; optional: operator cannot SSO as admin@ unless dual-confirm |
+| Impersonator | Prefer dedicated `WEBMAIL_IMPERSONATOR_*` principal with **impersonate-only** rights; fall back to Stalwart admin only if unavoidable |
+| Audit | Log SSO mint: timestamp, operator session id, target mailbox (never token or secrets) |
 
 Health: best-effort GET of Roundcube URL expecting HTML 200 — never POST mailbox or impersonator passwords from health jobs.
 
@@ -242,31 +256,45 @@ Health: best-effort GET of Roundcube URL expecting HTML 200 — never POST mailb
 
 ## 9. CSV bulk operations
 
-1. Parse CSV/JSON client-side + server-side (never trust client alone).
+1. Parse CSV/JSON client-side + server-side (never trust client alone). Max upload size: **2 MB** / **5 000 rows** (reject above with clear error).
 2. Validate: email → local + domain; domain must exist; password policy hints.
 3. Preview duplicates against live directory.
-4. Commit in chunks of **25** accounts per `x:Account/set`.
+4. **Job session (not one giant request):**
+   - Server creates `jobId` + in-memory report (TTL **1 hour**).
+   - Wizard commits **one chunk per Server Action** (default **25** rows).
+   - Client (React Query) polls/refetches `getBulkJob(jobId)` between chunks.
+   - Operator can pause/abort; completed rows stay created (no distributed rollback).
 5. Per-row report: created | skipped | failed + reason; download failure CSV.
-6. No automatic rollback of successful creates.
-7. Idempotency: skip existing unless operator chose overwrite-password mode.
+6. Idempotency: skip existing unless operator chose overwrite-password mode.
+7. **Double-submit guard:** chunk action is idempotent on `(jobId, chunkIndex)`; ignore replay.
 
-Job progress UI uses React Query or action polling (Phase 3+); see review log for persistence decisions.
+**Upgrade path:** if Dokploy runs multiple replicas or jobs must survive restarts, move job store to SQLite/Redis — default stays memory for single-node simplicity (Pass 3).
+
+### 9.1 Stalwart pacing / rate limits
+
+| Signal | Behavior |
+|--------|----------|
+| HTTP 429 / 503 | Backoff using `Retry-After` when present, else 1s → 2s → 4s (max 3 waits), then fail chunk |
+| Sustained >10s latency | Health pill → amber; do not open parallel mutating pipelines |
+| Concurrency | **One** mutating JMAP pipeline process-wide for bulk; interactive single-row mutations queue behind or run only when no bulk job active (UI disables conflicting actions) |
+
+Login rate limit (auth) remains separate: **5 / 15 min / IP**.
 
 ---
 
 ## 10. DNS validation
 
-Read-only health for each managed domain (Phase 2+):
+Read-only health for each managed domain (Phase 2+). Checks use the **mailwart server’s resolver view** (often the VPS) — UI must warn that split-horizon DNS may differ from public checkers.
 
-| Check | Expectation (typical) |
-|-------|------------------------|
-| MX | Points at Stalwart MX hostname (from env/config) |
-| SPF | TXT includes sending include/ip |
-| DKIM | Selector TXT present (selector from env or Stalwart) |
-| DMARC | TXT `_dmarc` present (policy advisory) |
-| PTR / A | Optional advisory for mail host |
+| Check | Pass | Warn | Fail |
+|-------|------|------|------|
+| MX | ≥1 MX; target matches `DNS_EXPECTED_MX` (env, optional) or non-empty | MX exists but target ≠ expected | No MX |
+| SPF | TXT `v=spf1` present and includes expected mechanism from env when set | Present but missing expected include/ip | Missing / multiple conflicting hard-fail stories |
+| DKIM | At least one configured selector (`DNS_DKIM_SELECTORS` CSV env) resolves `selector._domainkey` | Some selectors missing | All selectors missing when selectors configured; or none configured → warn “not checked” |
+| DMARC | `_dmarc` TXT `v=DMARC1` present | `p=none` only | Missing |
+| PTR / A | Optional advisory for mail host | Mismatch | — |
 
-Implementation: Node DNS (`dns.promises`) or DoH from server — never expose recursive resolver abuse. Cache results ~5 minutes; manual refresh button. Complex multi-record / split-horizon cases documented in review log Pass 2+.
+Implementation: Node `dns.promises` from server — never open an unauthenticated recursive resolver to the public internet beyond normal lookups. Cache ~5 minutes; manual refresh busts cache. Show raw snippets for copy; **no DNS write UI in v1**.
 
 ---
 
@@ -291,6 +319,19 @@ Brand wordmark: **mailwart** in Bricolage Grotesque ExtraLight 200. Light/dark v
 - Traefik labels attach public host + `/webmail` path (deployment-specific hosts in compose/env).
 - Shared Docker network with Stalwart for internal JMAP/IMAP.
 - Secrets via Dokploy env — never git.
+
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `STALWART_JMAP_URL` | yes | In-cluster or public `/jmap` |
+| `STALWART_ADMIN_USER` / `STALWART_ADMIN_PASSWORD` | yes | Server-only JMAP Basic Auth |
+| `STALWART_ADMIN_UI_URL` | optional | Deep-link out |
+| `ROUNDCUBE_URL` | yes | Public webmail base |
+| `WEBMAIL_SSO_SECRET` | yes | ≥32 chars HMAC |
+| `WEBMAIL_IMPERSONATOR_USER` / `PASSWORD` | recommended | Least-privilege impersonate |
+| `APP_ADMIN_USER` / `APP_ADMIN_PASSWORD` | yes (prod) | Dashboard login |
+| `SESSION_SECRET` | yes | iron-session seal |
+| `DNS_EXPECTED_MX` | optional | DNS health rubric |
+| `DNS_DKIM_SELECTORS` | optional | CSV selectors |
 
 Phase 1: **document only; no redeploy; no git push.**
 
