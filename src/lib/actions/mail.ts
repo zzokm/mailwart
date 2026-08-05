@@ -28,10 +28,13 @@ import {
   getDomainDnsHealth,
   getMockStore,
   isExternalEmail,
+  loadLiveSpamSettings,
   mailExchangerToAllowRelaying,
   mockHealth,
+  normalizeAddressList,
   parseEmailAddress,
   parseEmailAliases,
+  probeSieveJmapSupport,
   queryAccounts,
   queryAppPasswordsLive,
   queryDomains,
@@ -44,6 +47,7 @@ import {
   validateForwardTargets,
   type ActionResult,
   type AppPassword,
+  type Autoresponder,
   type BulkImportResultRow,
   type CatchAllMode,
   type DataSource,
@@ -52,10 +56,15 @@ import {
   type DnsHealthSummary,
   type DomainListItem,
   type EmailAliasEntry,
+  type FilterAction,
+  type FilterCondition,
+  type FilterRule,
+  type FilterScope,
   type ForwardingRule,
   type HealthStatus,
   type MailExchangerMode,
   type OverviewStats,
+  type SpamSettings,
   type StalwartAccount,
   type StalwartDomain,
   type TwoFactorStatus,
@@ -1956,5 +1965,423 @@ export async function updateCatchAllAction(
     },
     result.source
   )
+}
+
+// ─── Filters / autoresponders / spam (Phase 3.5) ─────────────────────────────
+
+export async function getFiltersOverviewAction(): Promise<
+  ActionResult<{
+    accounts: StalwartAccount[]
+    domains: StalwartDomain[]
+    autoresponders: Autoresponder[]
+    filterRules: FilterRule[]
+    spam: SpamSettings
+    sieveAvailable: boolean
+    sieveNote: string
+    adminUiUrl: string
+    roundcubeUrl: string
+  }>
+> {
+  const src = source()
+  try {
+    if (src === "mock") {
+      const store = getMockStore()
+      return ok(
+        {
+          accounts: store.accounts,
+          domains: store.domains,
+          autoresponders: store.autoresponders,
+          filterRules: [...store.filterRules].sort(
+            (a, b) => a.priority - b.priority
+          ),
+          spam: store.spamSettings,
+          sieveAvailable: true,
+          sieveNote: "Mock mode — rules stored in-memory and rendered as Sieve.",
+          adminUiUrl: getStalwartAdminUiUrl(),
+          roundcubeUrl: getRoundcubeUrl(),
+        },
+        src
+      )
+    }
+
+    const { domains, accounts } = await loadLiveDirectory()
+    const sieve = await probeSieveJmapSupport()
+    const spam = await loadLiveSpamSettings()
+    return ok(
+      {
+        accounts,
+        domains,
+        autoresponders: [],
+        filterRules: [],
+        spam,
+        sieveAvailable: sieve.available,
+        sieveNote: sieve.note,
+        adminUiUrl: getStalwartAdminUiUrl(),
+        roundcubeUrl: getRoundcubeUrl(),
+      },
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function upsertAutoresponderAction(input: {
+  id?: string
+  accountId: string
+  enabled?: boolean
+  subject: string
+  body: string
+  startAt?: string | null
+  endAt?: string | null
+  daysBetween?: number
+}): Promise<ActionResult<Autoresponder>> {
+  const denied = await denyUnlessAuthed<Autoresponder>()
+  if (denied) return denied
+
+  const src = source()
+  const subject = input.subject.trim()
+  const body = input.body.trim()
+  if (!subject || !body) {
+    return fail(
+      new StalwartError("Subject and body are required.", "validation"),
+      src
+    )
+  }
+
+  const daysBetween = Math.max(0, Math.min(365, input.daysBetween ?? 7))
+
+  try {
+    if (src === "mock") {
+      const store = getMockStore()
+      const account = store.accounts.find((a) => a.id === input.accountId)
+      if (!account || !account.domainId) {
+        return fail(new StalwartError("Mailbox not found.", "not_found"), src)
+      }
+
+      const now = new Date().toISOString()
+      if (input.id) {
+        const existing = store.autoresponders.find((a) => a.id === input.id)
+        if (!existing) {
+          return fail(
+            new StalwartError("Autoresponder not found.", "not_found"),
+            src
+          )
+        }
+        const updated: Autoresponder = {
+          ...existing,
+          accountId: account.id,
+          email: account.email,
+          domainId: account.domainId,
+          enabled: input.enabled !== false,
+          subject,
+          body,
+          startAt: input.startAt || null,
+          endAt: input.endAt || null,
+          daysBetween,
+          updatedAt: now,
+        }
+        store.setAutoresponders(
+          store.autoresponders.map((a) => (a.id === input.id ? updated : a))
+        )
+        return ok(updated, src)
+      }
+
+      // One autoresponder per mailbox in mock.
+      const without = store.autoresponders.filter(
+        (a) => a.accountId !== account.id
+      )
+      const created: Autoresponder = {
+        id: `ar-${crypto.randomUUID().slice(0, 8)}`,
+        accountId: account.id,
+        email: account.email,
+        domainId: account.domainId,
+        enabled: input.enabled !== false,
+        subject,
+        body,
+        startAt: input.startAt || null,
+        endAt: input.endAt || null,
+        daysBetween,
+        backend: "mock",
+        updatedAt: now,
+      }
+      store.setAutoresponders([...without, created])
+      return ok(created, src)
+    }
+
+    const sieve = await probeSieveJmapSupport()
+    return fail(
+      new StalwartError(
+        sieve.available
+          ? "SieveScript JMAP is present but vacation sync is not wired yet. Open Roundcube ManageSieve to edit the vacation script."
+          : "Live autoresponders require ManageSieve. Open Roundcube (SSO) → Settings → Filters, or configure vacation in Stalwart Admin.",
+        "jmap"
+      ),
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function destroyAutoresponderAction(
+  id: string
+): Promise<ActionResult<{ id: string }>> {
+  const denied = await denyUnlessAuthed<{ id: string }>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    if (src === "mock") {
+      const store = getMockStore()
+      if (!store.autoresponders.some((a) => a.id === id)) {
+        return fail(
+          new StalwartError("Autoresponder not found.", "not_found"),
+          src
+        )
+      }
+      store.setAutoresponders(store.autoresponders.filter((a) => a.id !== id))
+      return ok({ id }, src)
+    }
+    return fail(
+      new StalwartError(
+        "Live autoresponder delete is not available via JMAP. Remove the vacation script in Roundcube ManageSieve.",
+        "jmap"
+      ),
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+function validateFilterParts(
+  condition: FilterCondition,
+  action: FilterAction
+): string | null {
+  if (!condition.value.trim()) return "Condition value is required."
+  if (condition.field === "header" && !condition.headerName?.trim()) {
+    return "Header name is required for header conditions."
+  }
+  if (action.type === "fileinto" && !action.folder?.trim()) {
+    return "Folder is required for fileinto."
+  }
+  if (action.type === "redirect" && !action.redirectTo?.trim()) {
+    return "Redirect address is required."
+  }
+  if (
+    action.type === "redirect" &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(action.redirectTo!.trim())
+  ) {
+    return "Redirect address must be a valid email."
+  }
+  return null
+}
+
+export async function upsertFilterRuleAction(input: {
+  id?: string
+  scope: FilterScope
+  accountId?: string | null
+  name: string
+  enabled?: boolean
+  condition: FilterCondition
+  action: FilterAction
+  priority?: number
+}): Promise<ActionResult<FilterRule>> {
+  const denied = await denyUnlessAuthed<FilterRule>()
+  if (denied) return denied
+
+  const src = source()
+  const name = input.name.trim()
+  if (!name) {
+    return fail(new StalwartError("Rule name is required.", "validation"), src)
+  }
+
+  const condition: FilterCondition = {
+    field: input.condition.field,
+    op: input.condition.op,
+    value: input.condition.value.trim(),
+    headerName: input.condition.headerName?.trim() || undefined,
+  }
+  const action: FilterAction = {
+    type: input.action.type,
+    folder: input.action.folder?.trim() || undefined,
+    redirectTo: input.action.redirectTo?.trim().toLowerCase() || undefined,
+  }
+  const invalid = validateFilterParts(condition, action)
+  if (invalid) {
+    return fail(new StalwartError(invalid, "validation"), src)
+  }
+
+  try {
+    if (src === "mock") {
+      const store = getMockStore()
+      let accountId: string | null = null
+      let email: string | null = null
+
+      if (input.scope === "user") {
+        const account = store.accounts.find((a) => a.id === input.accountId)
+        if (!account) {
+          return fail(
+            new StalwartError("Mailbox required for user filters.", "validation"),
+            src
+          )
+        }
+        accountId = account.id
+        email = account.email
+      }
+
+      const now = new Date().toISOString()
+      const priority = input.priority ?? 50
+
+      if (input.id) {
+        const existing = store.filterRules.find((r) => r.id === input.id)
+        if (!existing) {
+          return fail(
+            new StalwartError("Filter rule not found.", "not_found"),
+            src
+          )
+        }
+        const updated: FilterRule = {
+          ...existing,
+          scope: input.scope,
+          accountId,
+          email,
+          name,
+          enabled: input.enabled !== false,
+          condition,
+          action,
+          priority,
+          updatedAt: now,
+        }
+        store.setFilterRules(
+          store.filterRules.map((r) => (r.id === input.id ? updated : r))
+        )
+        return ok(updated, src)
+      }
+
+      const created: FilterRule = {
+        id: `flt-${crypto.randomUUID().slice(0, 8)}`,
+        scope: input.scope,
+        accountId,
+        email,
+        name,
+        enabled: input.enabled !== false,
+        condition,
+        action,
+        priority,
+        backend: "mock",
+        updatedAt: now,
+      }
+      store.setFilterRules([...store.filterRules, created])
+      return ok(created, src)
+    }
+
+    const sieve = await probeSieveJmapSupport()
+    return fail(
+      new StalwartError(
+        sieve.available
+          ? "SieveScript JMAP responded but rule sync is not wired yet. Use Roundcube ManageSieve for now."
+          : "Live filter rules require ManageSieve. Open Roundcube (SSO) → Settings → Filters.",
+        "jmap"
+      ),
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function destroyFilterRuleAction(
+  id: string
+): Promise<ActionResult<{ id: string }>> {
+  const denied = await denyUnlessAuthed<{ id: string }>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    if (src === "mock") {
+      const store = getMockStore()
+      if (!store.filterRules.some((r) => r.id === id)) {
+        return fail(
+          new StalwartError("Filter rule not found.", "not_found"),
+          src
+        )
+      }
+      store.setFilterRules(store.filterRules.filter((r) => r.id !== id))
+      return ok({ id }, src)
+    }
+    return fail(
+      new StalwartError(
+        "Live filter delete is not available via JMAP. Remove the script in Roundcube ManageSieve.",
+        "jmap"
+      ),
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function updateSpamSettingsAction(input: {
+  rejectThreshold: number
+  markAsSpamThreshold: number
+  denylist: string[]
+  allowlist: string[]
+}): Promise<ActionResult<SpamSettings>> {
+  const denied = await denyUnlessAuthed<SpamSettings>()
+  if (denied) return denied
+
+  const src = source()
+  const rejectThreshold = Number(input.rejectThreshold)
+  const markAsSpamThreshold = Number(input.markAsSpamThreshold)
+
+  if (
+    !Number.isFinite(rejectThreshold) ||
+    !Number.isFinite(markAsSpamThreshold) ||
+    rejectThreshold < 0 ||
+    markAsSpamThreshold < 0
+  ) {
+    return fail(
+      new StalwartError("Thresholds must be non-negative numbers.", "validation"),
+      src
+    )
+  }
+  if (markAsSpamThreshold > rejectThreshold) {
+    return fail(
+      new StalwartError(
+        "Mark-as-spam threshold must be ≤ reject threshold.",
+        "validation"
+      ),
+      src
+    )
+  }
+
+  try {
+    if (src === "mock") {
+      const store = getMockStore()
+      const next: SpamSettings = {
+        rejectThreshold,
+        markAsSpamThreshold,
+        denylist: normalizeAddressList(input.denylist),
+        allowlist: normalizeAddressList(input.allowlist),
+        backend: "mock",
+        note: "Mock spam posture — not pushed to a real MTA.",
+        updatedAt: new Date().toISOString(),
+      }
+      store.setSpamSettings(next)
+      return ok(next, src)
+    }
+
+    return fail(
+      new StalwartError(
+        "Live spam thresholds and lists are not writable via this JMAP surface. Configure them in Stalwart Admin.",
+        "jmap"
+      ),
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
 }
 

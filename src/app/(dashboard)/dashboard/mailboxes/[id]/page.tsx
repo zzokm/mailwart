@@ -79,6 +79,14 @@ export default async function MailboxDetailPage({
             >
               Routing
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={<Link href="/dashboard/filters" />}
+            >
+              Filters
+            </Button>
             {account.domainId ? (
               <Button
                 variant="outline"

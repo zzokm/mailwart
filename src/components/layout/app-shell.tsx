@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   ExternalLink,
+  Filter,
   Import,
   Inbox,
   LayoutDashboard,
@@ -47,6 +48,7 @@ const NAV: Array<{
   { href: "/dashboard/domains", label: "Domains", icon: Globe },
   { href: "/dashboard/mailboxes", label: "Mailboxes", icon: Inbox },
   { href: "/dashboard/routing", label: "Routing", icon: Route },
+  { href: "/dashboard/filters", label: "Filters", icon: Filter },
   { href: "/dashboard/import", label: "Bulk import", icon: Import },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ]

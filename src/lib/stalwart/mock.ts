@@ -1,8 +1,11 @@
 import type {
+  Autoresponder,
   DomainListItem,
+  FilterRule,
   ForwardingRule,
   HealthStatus,
   OverviewStats,
+  SpamSettings,
   StalwartAccount,
   StalwartDomain,
 } from "./types"
@@ -288,6 +291,89 @@ export const MOCK_FORWARDING_RULES: ForwardingRule[] = [
   },
 ]
 
+export const MOCK_AUTORESPONDERS: Autoresponder[] = [
+  {
+    id: "ar-hello",
+    accountId: "acc-hello",
+    email: "hello@example.com",
+    domainId: "dom-example-com",
+    enabled: true,
+    subject: "Out of office",
+    body: "Thanks for your message. I am away and will reply when I return.",
+    startAt: "2026-08-01T00:00:00Z",
+    endAt: "2026-08-15T23:59:59Z",
+    daysBetween: 7,
+    backend: "mock",
+    updatedAt: "2026-07-28T10:00:00Z",
+  },
+  {
+    id: "ar-support",
+    accountId: "acc-support",
+    email: "support@example.net",
+    domainId: "dom-example-net",
+    enabled: false,
+    subject: "Support hours",
+    body: "Our support desk is currently closed. We will respond on the next business day.",
+    startAt: null,
+    endAt: null,
+    daysBetween: 1,
+    backend: "mock",
+    updatedAt: "2026-06-01T08:00:00Z",
+  },
+]
+
+export const MOCK_FILTER_RULES: FilterRule[] = [
+  {
+    id: "flt-global-unsub",
+    scope: "global",
+    accountId: null,
+    email: null,
+    name: "Drop unsubscribe noise",
+    enabled: true,
+    condition: { field: "subject", op: "contains", value: "unsubscribe" },
+    action: { type: "discard" },
+    priority: 10,
+    backend: "mock",
+    updatedAt: "2026-05-01T12:00:00Z",
+  },
+  {
+    id: "flt-hello-news",
+    scope: "user",
+    accountId: "acc-hello",
+    email: "hello@example.com",
+    name: "Newsletters to folder",
+    enabled: true,
+    condition: { field: "from", op: "contains", value: "newsletter" },
+    action: { type: "fileinto", folder: "INBOX.News" },
+    priority: 20,
+    backend: "mock",
+    updatedAt: "2026-05-12T09:00:00Z",
+  },
+  {
+    id: "flt-billing-invoice",
+    scope: "user",
+    accountId: "acc-billing",
+    email: "billing@example.com",
+    name: "Invoices",
+    enabled: true,
+    condition: { field: "subject", op: "contains", value: "invoice" },
+    action: { type: "fileinto", folder: "INBOX.Invoices" },
+    priority: 15,
+    backend: "mock",
+    updatedAt: "2026-05-20T14:00:00Z",
+  },
+]
+
+export const MOCK_SPAM_SETTINGS: SpamSettings = {
+  rejectThreshold: 10,
+  markAsSpamThreshold: 5,
+  denylist: ["spam@evil.example", "bad.example"],
+  allowlist: ["partner@example.org", "example.net"],
+  backend: "mock",
+  note: "Sample spam posture for local/mock mode.",
+  updatedAt: "2026-04-01T00:00:00Z",
+}
+
 export function mockDomainList(): DomainListItem[] {
   return MOCK_DOMAINS.map((d) => ({
     ...d,
@@ -344,16 +430,25 @@ export function mockHealth(): HealthStatus {
 let mockDomains = structuredClone(MOCK_DOMAINS)
 let mockAccounts = structuredClone(MOCK_ACCOUNTS)
 let mockForwards = structuredClone(MOCK_FORWARDING_RULES)
+let mockAutoresponders = structuredClone(MOCK_AUTORESPONDERS)
+let mockFilterRules = structuredClone(MOCK_FILTER_RULES)
+let mockSpamSettings = structuredClone(MOCK_SPAM_SETTINGS)
 
 export function getMockStore() {
   return {
     domains: mockDomains,
     accounts: mockAccounts,
     forwards: mockForwards,
+    autoresponders: mockAutoresponders,
+    filterRules: mockFilterRules,
+    spamSettings: mockSpamSettings,
     reset() {
       mockDomains = structuredClone(MOCK_DOMAINS)
       mockAccounts = structuredClone(MOCK_ACCOUNTS)
       mockForwards = structuredClone(MOCK_FORWARDING_RULES)
+      mockAutoresponders = structuredClone(MOCK_AUTORESPONDERS)
+      mockFilterRules = structuredClone(MOCK_FILTER_RULES)
+      mockSpamSettings = structuredClone(MOCK_SPAM_SETTINGS)
     },
     setDomains(next: StalwartDomain[]) {
       mockDomains = next
@@ -363,6 +458,15 @@ export function getMockStore() {
     },
     setForwards(next: ForwardingRule[]) {
       mockForwards = next
+    },
+    setAutoresponders(next: Autoresponder[]) {
+      mockAutoresponders = next
+    },
+    setFilterRules(next: FilterRule[]) {
+      mockFilterRules = next
+    },
+    setSpamSettings(next: SpamSettings) {
+      mockSpamSettings = next
     },
   }
 }

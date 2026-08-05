@@ -31,6 +31,9 @@ export {
   MOCK_DOMAINS,
   MOCK_ACCOUNTS,
   MOCK_FORWARDING_RULES,
+  MOCK_AUTORESPONDERS,
+  MOCK_FILTER_RULES,
+  MOCK_SPAM_SETTINGS,
   mockDomainList,
   mockOverviewStats,
   mockHealth,
@@ -48,3 +51,12 @@ export {
   updateDomainRouting,
   updateAccountAliases,
 } from "./routing"
+export {
+  buildFilterSieve,
+  buildVacationSieve,
+  summarizeFilter,
+  normalizeAddressList,
+  parseAddressListText,
+  probeSieveJmapSupport,
+  loadLiveSpamSettings,
+} from "./filters"

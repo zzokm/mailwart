@@ -83,6 +83,84 @@ export type ForwardingRule = {
   updatedAt: string
 }
 
+/** Per-mailbox vacation / out-of-office autoresponder. */
+export type Autoresponder = {
+  id: string
+  accountId: string
+  email: string
+  domainId: string
+  enabled: boolean
+  subject: string
+  body: string
+  /** ISO date (inclusive). Null = immediate. */
+  startAt?: string | null
+  /** ISO date (inclusive). Null = no end. */
+  endAt?: string | null
+  /** Minimum days between replies to the same sender. */
+  daysBetween: number
+  backend: "mock" | "sieve" | "sieve-pending"
+  updatedAt: string
+}
+
+export type FilterScope = "global" | "user"
+
+export type FilterConditionField = "subject" | "from" | "to" | "header"
+export type FilterConditionOp = "contains" | "is" | "matches"
+export type FilterActionType =
+  | "fileinto"
+  | "discard"
+  | "redirect"
+  | "keep"
+  | "stop"
+
+export type FilterCondition = {
+  field: FilterConditionField
+  op: FilterConditionOp
+  value: string
+  /** Required when field is `header`. */
+  headerName?: string
+}
+
+export type FilterAction = {
+  type: FilterActionType
+  /** Destination folder for fileinto (e.g. INBOX.Spam). */
+  folder?: string
+  /** Redirect target address. */
+  redirectTo?: string
+}
+
+/** Sieve-style filter rule (global or per-mailbox). */
+export type FilterRule = {
+  id: string
+  scope: FilterScope
+  /** Set when scope is user. */
+  accountId?: string | null
+  email?: string | null
+  name: string
+  enabled: boolean
+  condition: FilterCondition
+  action: FilterAction
+  /** Lower runs first. */
+  priority: number
+  backend: "mock" | "sieve" | "sieve-pending"
+  updatedAt: string
+}
+
+/** Global spam posture — thresholds + address lists. */
+export type SpamSettings = {
+  /** Score at/above which mail is rejected. */
+  rejectThreshold: number
+  /** Score at/above which mail is marked as spam. */
+  markAsSpamThreshold: number
+  /** Blocked senders / domains. */
+  denylist: string[]
+  /** Trusted senders / domains (safelist). */
+  allowlist: string[]
+  backend: "mock" | "live" | "unavailable"
+  note?: string
+  updatedAt: string
+}
+
 export type AccountQuotas = Record<string, number | string | unknown>
 
 /**
