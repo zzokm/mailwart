@@ -60,10 +60,12 @@ function SelectContent({
   className,
   children,
   side = "bottom",
-  sideOffset = 4,
-  align = "center",
+  sideOffset = 6,
+  align = "start",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  // Base UI defaults this to true, which parks the popup on top of the trigger.
+  // Open below the input instead and let the positioner flip when space runs out.
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
