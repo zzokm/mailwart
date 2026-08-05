@@ -1,437 +1,336 @@
-# Email Manager — Architecture
+# mailwart — System Architecture
 
-> Phase 1 foundation doc. App: `d:\Yehia Uni\vpsredo\email-manager`  
-> Stack target: **Stalwart v0.16.16** (JMAP management) + **Roundcube 1.6.11**  
-> Live endpoints: Admin/API `https://mail.yehia.dev`, Webmail `https://email.yehia.dev/webmail/`
-> Domains: `yehia.dev`, `hiy.me`, `zokm.me`, `restoqd.com`  
-> Dokploy project: **Email**
+> Phase 1 foundation. Product brand: **mailwart** (all lowercase).  
+> Repo / deploy folder: `email-manager` (historical path; product name is mailwart).  
+> Stack: **Next.js 16+** App Router · Tailwind · Stalwart **v0.16.x** JMAP · Roundcube **1.6.x**  
+> Mode: **Operate** (Impeccable) for `/dashboard/*`; **Persuade** for public landing (later phases).
+
+Personal/deployment hostnames (e.g. operator domains, Traefik hosts) belong in **env / Dokploy only**. They are not product identity.
 
 ---
 
 ## 1. Purpose and non-goals
 
-**Purpose.** A production admin dashboard that manages Stalwart domains, accounts (mailboxes), aliases, catch-alls, quotas, and passwords — with safe Roundcube deep-links for “open webmail” — without replacing Stalwart Admin UI or Roundcube itself.
+**Purpose.** Production-grade email management dashboard for a Stalwart Mail Server deployment: cPanel-class directory ops (domains, mailboxes, quotas, routing, DNS health, bulk CSV, delivery visibility) with Roundcube as the webmail surface via short-lived SSO — not a replacement for Stalwart Admin or Roundcube itself.
 
-**Non-goals (Phase 1–N).**
-- Not a full webmail client (no message list/compose UI).
-- Not a replacement for Stalwart’s built-in `/admin` console for low-level MTA/queue/DNS ACME ops (those stay optional deep-links).
-- No mail-tester automation in-app (ops scripts remain in `scripts/mail-restore/`).
-- No multi-tenant SaaS; single operator deployment against one Stalwart instance.
+**Non-goals.**
+- Not an in-app webmail client (no message list/compose).
+- Not a full replacement for Stalwart `/admin` MTA/queue/IP/ACME low-level ops (deep-link out).
+- No mail-tester / deliverability scoring automation in-app.
+- Phase 1 does not ship feature UI redesigns; this document defines the target architecture.
 
 ---
 
-## 2. Constraints from the live VPS
+## 2. Product identity vs deployment config
 
-| Fact | Implication |
-|------|-------------|
-| Stalwart image `stalwartlabs/stalwart:v0.16.16` | **REST `/api/...` is gone.** All management is JMAP at `/jmap` with capability `urn:stalwart:jmap`. |
-| Public admin URL `https://mail.yehia.dev`; HTTP API also on VPS `127.0.0.1:8080` | Dashboard server talks to Stalwart via `STALWART_JMAP_URL` (prefer private URL when co-located; public HTTPS when remote). |
-| Admin principal `admin@zokm.me`; bootstrap/recovery historically used bare `admin` via `STALWART_RECOVERY_ADMIN` | Env must use the **current** admin email principal for JMAP. App stores Stalwart admin creds **server-side** only; never ship them to the browser. |
-| Roundcube at `https://email.yehia.dev/webmail/` | Same-origin sibling service. A custom plugin verifies Email Manager tokens and uses Stalwart impersonation for IMAP/SMTP. |
-| Traefik terminates TLS for both | Dashboard will also sit behind Traefik/Dokploy when deployed (Phase later). |
-| Catch-all mailboxes `catch@{domain}` + `Domain.catchAllAddress` already provisioned | Dashboard must treat catch-all as a first-class domain setting, not an afterthought. |
-| Proven scripts in `scripts/mail-restore/` | Integration layer must mirror their JMAP shapes (`x:Domain/*`, `x:Account/*`, `x:Authentication/*`). |
+| Layer | What lives here |
+|-------|-----------------|
+| **Brand** | `mailwart` wordmark · font **Bricolage Grotesque ExtraLight 200** · generalized copy |
+| **Deployment** | `STALWART_JMAP_URL`, Traefik hostnames, managed domain inventory, Roundcube public URL |
+| **Secrets** | Dokploy / `.env.local` only — never committed, never `NEXT_PUBLIC_*` |
+
+UI strings, package display name (later), and docs refer to **mailwart**. Docker image/service names may remain `email-manager` until a deliberate rename PR; that rename is optional and not Phase 1.
 
 ---
 
 ## 3. High-level system diagram
 
 ```
-┌─────────────────────┐     HTTPS      ┌──────────────────────────┐
-│ Operator browser    │ ─────────────► │ Next.js Email Manager    │
-│ (session cookie)    │ ◄───────────── │ App Router (Node runtime)│
-└─────────────────────┘                │  /api/* route handlers   │
-                                       └────────────┬─────────────┘
-                                                    │ Basic Auth + JSON
-                                                    │ POST /jmap
-                                                    ▼
-                                       ┌──────────────────────────┐
-                                       │ Stalwart v0.16.16        │
-                                       │ mail.yehia.dev / :8080   │
-                                       └────────────┬─────────────┘
-                                                    │ IMAP/SMTP/Sieve
-                                                    ▼
-                                       ┌──────────────────────────┐
-                                       │ Roundcube (integrated)   │
-                                       │ /webmail                 │
-                                       └──────────────────────────┘
+┌──────────────────────┐   HTTPS    ┌─────────────────────────────────┐
+│ Operator browser     │ ─────────► │ mailwart (Next.js App Router)   │
+│ iron-session cookie  │ ◄───────── │ RSC · Server Actions · /api/*   │
+└──────────────────────┘            │ React Query (client islands)    │
+                                    └────────────┬────────────────────┘
+                                                 │ Basic Auth + JSON
+                                                 │ POST /jmap  (Node)
+                                                 ▼
+                                    ┌─────────────────────────────────┐
+                                    │ Stalwart Mail Server            │
+                                    │ JMAP management + IMAP/SMTP     │
+                                    └────────────┬────────────────────┘
+                                                 │ IMAP/SMTP/Sieve
+                                                 ▼
+                                    ┌─────────────────────────────────┐
+                                    │ Roundcube (/webmail)            │
+                                    │ em_sso plugin + impersonation   │
+                                    └─────────────────────────────────┘
 ```
 
-**Data flow rule:** Browser → Next.js Route Handlers / Server Actions only. Stalwart credentials and JMAP calls never leave the server.
+**Hard rule:** Browser → Next.js only. Stalwart admin credentials and JMAP calls never leave the server. Webmail SSO tokens are short-lived HMAC payloads; mailbox passwords never enter the browser.
 
 ---
 
-## 4. Folder structure (target)
+## 4. Stack and runtime boundaries
 
-Minimal Phase 1 scaffold exists today (`src/app`, Tailwind, TS). Target layout for later phases — **do not invent abstractions early**; grow into this:
+| Concern | Choice | Why |
+|---------|--------|-----|
+| Framework | Next.js **16+** App Router, React 19, TypeScript | Already in repo; RSC + Server Actions fit admin CRUD |
+| Styling | Tailwind v4 + shadcn/ui | Existing; Operate density console |
+| Session | **iron-session** HttpOnly cookie | Sealed payload; no Stalwart secret in cookie |
+| Validation | zod | Env + form + CSV row schemas |
+| Stalwart I/O | Node.js runtime only | Private Docker DNS + long bulk jobs; **not Edge** |
+| Client cache | **TanStack React Query** (Phase 2+) | Interactive tables, polling health, mutation invalidation |
+| Deploy | Dokploy + Docker Compose + Traefik | Existing `Dockerfile` / `docker-compose.yml` / Roundcube |
+
+### 4.1 RSC / Server Actions / React Query — responsibility split
 
 ```
-email-manager/
+┌─ Server Components (RSC) ─────────────────────────────────────┐
+│ First paint for authenticated shells: layout chrome,          │
+│ overview counts, domain/mailbox lists when filters are simple.│
+│ Call stalwart/* helpers directly. No React Query on server.   │
+└───────────────────────────────────────────────────────────────┘
+         │ navigate / soft refresh
+         ▼
+┌─ Server Actions ("use server") ───────────────────────────────┐
+│ Mutations: create/update/destroy domain & account, catch-all, │
+│ password reset, CSV commit chunks, SSO token mint (or /api).  │
+│ return { ok, data } | { ok:false, error } — never throw raw   │
+│ secrets. revalidatePath / revalidateTag after success.        │
+└───────────────────────────────────────────────────────────────┘
+         │ optional client islands
+         ▼
+┌─ React Query (client) ────────────────────────────────────────┐
+│ Use when: search/filter debounce, live health polling,        │
+│ progressive bulk-import progress, DNS check refresh,          │
+│ detail panes that refetch without full RSC round-trip.        │
+│ queryFn → thin /api/* GET wrappers OR server-action readers.  │
+│ invalidateQueries on mutation settle; do not duplicate        │
+│ Stalwart state in a second client store.                      │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**Simplicity gate:** Prefer RSC + Server Action until a page needs client polling or multi-step wizard state. Do not wrap every list in React Query by default.
+
+### 4.2 API route handlers
+
+Keep `/api/*` for:
+- Cookie session login/logout (if not purely Server Action).
+- Webmail SSO mint (`/api/webmail/sso`) — Roundcube plugin consumes URL/token.
+- Health probes suitable for uptime monitors.
+- Optional streaming/progress endpoints for long CSV jobs.
+
+CRUD that the dashboard owns should prefer Server Actions; avoid a parallel REST surface unless a non-browser client appears.
+
+---
+
+## 5. Folder structure (evolve, do not wipe)
+
+Preserve production-critical paths: `roundcube/plugins/em_sso`, `src/app/api/webmail/sso`, `Dockerfile`, `docker-compose.yml` (Roundcube service).
+
+```
+email-manager/                    # repo root (git)
 ├── docs/
-│   ├── ARCHITECTURE.md          ← this file
+│   ├── ARCHITECTURE.md           ← this file
 │   ├── PRODUCT_SPEC.md
 │   └── ARCHITECTURE_REVIEW_LOG.md
-├── public/
+├── PRODUCT.md                    # Impeccable product context (mailwart)
+├── DESIGN.md                     # visual world (evolves Phase 2+)
+├── roundcube/                    # KEEP — em_sso plugin + config
 ├── src/
 │   ├── app/
+│   │   ├── (auth)/login/
+│   │   ├── (dashboard)/dashboard/…
+│   │   ├── api/webmail/sso/      # KEEP
 │   │   ├── layout.tsx
-│   │   ├── page.tsx             ← Phase 1: placeholder only
-│   │   ├── (auth)/
-│   │   │   └── login/page.tsx
-│   │   ├── (dashboard)/
-│   │   │   ├── layout.tsx       ← shell: nav, domain switcher
-│   │   │   ├── page.tsx         ← overview
-│   │   │   ├── domains/
-│   │   │   ├── mailboxes/       ← aliases edited on mailbox detail (no /aliases route)
-│   │   │   ├── import/
-│   │   │   └── settings/
-│   │   └── api/
-│   │       ├── auth/
-│   │       ├── domains/
-│   │       ├── accounts/
-│   │       └── health/
-│   ├── components/              ← UI primitives + feature widgets
-│   │   ├── ui/                  ← button, input, table, dialog, toast
-│   │   ├── layout/              ← AppShell, Sidebar, TopBar
-│   │   └── mail/                ← DomainTable, MailboxForm, QuotaBar…
+│   │   └── page.tsx              # landing (Persuade — later polish)
+│   ├── components/
+│   │   ├── ui/                   # shadcn primitives
+│   │   ├── layout/               # AppShell, breadcrumbs, theme
+│   │   └── mail/                 # domain/mailbox/DNS/import widgets
 │   ├── lib/
-│   │   ├── env.ts               ← zod-validated env
-│   │   ├── auth/                ← iron-session sealed cookie
-│   │   ├── stalwart/
-│   │   │   ├── client.ts        ← JMAP POST helper (timeouts, retries)
-│   │   │   ├── types.ts         ← Domain, Account, method envelopes
-│   │   │   ├── domains.ts
-│   │   │   ├── accounts.ts
-│   │   │   └── errors.ts        ← map notCreated / HTTP / timeout
-│   │   └── roundcube.ts         ← deep-link URL builder only
-│   └── styles/                  ← tokens if not in CSS vars
-├── .env.example
-├── package.json
-└── …
+│   │   ├── env.ts                # zod env (deployment URLs as config)
+│   │   ├── auth/                 # session, credentials, rate-limit
+│   │   ├── stalwart/             # single JMAP client + domain/account modules
+│   │   ├── dns/                  # SPF/DKIM/DMARC/MX validators (Phase 2+)
+│   │   ├── bulk/                 # CSV parse, chunk, job report
+│   │   └── webmail-sso.ts        # KEEP — token sign/verify helpers
+│   └── middleware.ts             # session gate for /dashboard
+├── docker-compose.yml            # KEEP — email-manager + roundcube
+├── Dockerfile                    # KEEP
+└── package.json                  # next 16+
 ```
 
-**Simplicity gate (Karpathy):** Until a second consumer appears, keep one `stalwart/client.ts`. Do not add a repository pattern, DI container, or ORM.
+**Karpathy gate:** One `stalwart/client.ts` until a second consumer forces extraction. No DI container, no repository layer for fashion.
 
 ---
 
-## 5. Stalwart integration strategy (JMAP — match live VPS)
+## 6. Stalwart integration (JMAP)
 
-### 5.1 Endpoint and capabilities
+### 6.1 Endpoint
 
-| Item | Value used on this VPS |
-|------|------------------------|
-| URL | `POST {STALWART_JMAP_URL}` where default production candidate is `https://mail.yehia.dev/jmap` (scripts used `http://127.0.0.1:8080/jmap` on-host) |
-| Content-Type | `application/json` |
-| Auth | HTTP Basic: `Authorization: Basic base64(user:pass)` |
-| `using` | Always include `urn:ietf:params:jmap:core` and `urn:stalwart:jmap` for management objects. Add `urn:ietf:params:jmap:mail` only if reading mail-protocol objects (usually not needed for admin CRUD). |
+| Item | Value |
+|------|-------|
+| URL | `POST {STALWART_JMAP_URL}` — typically `http://stalwart-mail:8080/jmap` in-cluster or public `https://{mail-host}/jmap` |
+| Auth | HTTP Basic from **server env** `STALWART_ADMIN_USER` / `STALWART_ADMIN_PASSWORD` |
+| `using` | `urn:ietf:params:jmap:core` + `urn:stalwart:jmap` |
 
-**Note on docs vs practice:** Official Stalwart docs sometimes show `https://mail.example.com/api` in curl samples; **this deployment’s working path is `/jmap`**, as proven by `scripts/mail-restore/*.py`. Prefer `/jmap`. If a future Stalwart build aliases `/api` → JMAP, treat that as optional — do not hard-code both without a single config knobs.
+Stalwart v0.16.x management is **JMAP**, not legacy REST `/api`. Prefer `/jmap` as the single configured path.
 
-### 5.2 Request envelope
+### 6.2 Method map (product surface)
 
-```json
-{
-  "using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
-  "methodCalls": [
-    ["x:Domain/query", { "filter": null, "limit": 50 }, "d0"]
-  ]
-}
-```
+| Object | Methods | mailwart use |
+|--------|---------|--------------|
+| `x:Domain` | query, get, set | Domains, catch-all, enabled, description, sub-addressing |
+| `x:Account` | query, get, set | Mailboxes, passwords, quotas, aliases, app passwords, destroy |
+| `x:Authentication` | get, set | Password policy (danger zone) |
+| `x:Bootstrap` | get | Readiness only — never re-bootstrap from UI |
+| Sieve / filters | via ManageSieve or Stalwart objects as available | Autoresponders / filter summaries — prefer Roundcube ManageSieve deep-link when API is awkward |
+| Telemetry / logs | Stalwart admin APIs or log ship | Delivery/audit views — read-only adapters |
 
-Response shape: `{ "methodResponses": [ ["x:Domain/query", { "ids": [...] }, "d0"] ] }`.
+### 6.3 Domain & account shapes (proven patterns)
 
-Client helper must:
-1. Parse `methodResponses` by call id.
-2. Surface `notCreated` / `notUpdated` / `notDestroyed` maps (JMAP partial failure).
-3. Treat HTTP 401/403 as auth failure; 5xx and network errors as transport failure.
-
-### 5.3 Objects and methods we will use
-
-| Object | Methods | Dashboard use |
-|--------|---------|---------------|
-| `x:Domain` | `query`, `get`, `set` | List domains; create; update `catchAllAddress`, `description`, `isEnabled`, sub-addressing |
-| `x:Account` | `query`, `get`, `set` | Mailboxes: create User accounts, update password/credentials, quotas, aliases, destroy |
-| `x:Authentication` | `get`, `set` | Optional: password policy (`passwordMinLength`, `passwordMinStrength`) — read-mostly; mutate only with explicit danger UI |
-| `x:Bootstrap` | `get` | Health/readiness diagnostics only (do not re-bootstrap from the app) |
-
-**Domain create — VPS-proven minimal (prefer first):**
+**Domain create — try minimal first:**
 
 ```json
 { "name": "example.com", "description": "example.com" }
 ```
 
-`provision.py` created domains with only these fields on this deployment. Official docs also show required `certificateManagement`, `dkimManagement`, `dnsManagement`, `subAddressing`. Implementation rule: attempt **minimal create**; if `notCreated` cites missing fields, retry once with explicit defaults (`Manual` cert/DNS, `Automatic` DKIM, `Enabled` sub-addressing) matching [stalw.art Domain docs](https://stalw.art/docs/ref/object/domain/).
+On `notCreated` for missing fields, retry once with explicit defaults (`Manual` cert/DNS, `Automatic` DKIM, `Enabled` sub-addressing) per Stalwart Domain docs.
 
-**Account email resolution algorithm (must match restore scripts):**
+**Account create (User):** local `name` + `domainId` + credentials + roles; UI always displays **full email** (`local@domain`).
 
-1. Collect candidates from `description` when it contains `@`.
-2. Normalize `emails`: if array, take string entries or `email` keys on objects; if dict, take values the same way.
-3. Reconstruct `name@{domainName}` when `domainId` maps to a known domain.
-4. Primary display address: prefer reconstructed `name@domain` if domain known; else first email candidate; else `description`.
-5. Index maps are **case-insensitive** (scripts lowercased keys).
+**Email resolution algorithm** (for list/detail keys):
+1. Candidates from `description` when it contains `@`.
+2. Normalize `emails` (array or dict).
+3. Reconstruct `name@{domainName}` from `domainId`.
+4. Prefer reconstructed address when domain known; else first candidate; else description.
+5. Index maps **case-insensitive**.
 
-**Account create shape (proven on VPS):**
-
-```json
-{
-  "@type": "User",
-  "name": "localpart",
-  "description": "localpart@domain.tld",
-  "domainId": "<Domain id>",
-  "credentials": { "0": { "@type": "Password", "secret": "<plaintext or hash>" } },
-  "memberGroupIds": {},
-  "roles": { "@type": "User" },
-  "permissions": { "@type": "Inherit" },
-  "quotas": {},
-  "aliases": {},
-  "encryptionAtRest": { "@type": "Disabled" }
-}
-```
-
-**Email identity resolution:** Stalwart v0.16 accounts use local `name` + `domainId`. Scripts reconstruct `name@domain` and also store full address in `description`. Dashboard UI must always display **full email**, never bare local-part alone across multi-domain.
-
-**Domain catch-all (proven):**
-
-```json
-["x:Domain/set", { "update": { "<domainId>": { "catchAllAddress": "catch@yehia.dev" } } }, "d2"]
-```
-
-Catch-all target mailbox should exist first (`catch@{domain}` pattern already used).
-
-### 5.4 Batching and bulk upload
-
-JMAP allows many creates in one `x:Account/set` `create` map. Strategy:
-
-1. **Validate CSV/JSON client-side** (format, domain membership, duplicate local-parts).
-2. **Chunk** server-side — **default 25** accounts per JMAP call (configurable later only if needed).
-3. **Per-chunk result:** collect `created` vs `notCreated`; continue remaining chunks; return a structured job report.
-4. **Idempotency:** before create, `query`+`get` existing accounts; skip or update password only when operator chose “overwrite passwords”.
-5. **No silent policy bypass:** if Stalwart rejects weak passwords, return the `notCreated` type/description; optional admin-only path to adjust `x:Authentication` (danger zone) matching restore-script behavior — default **off**.
-
-### 5.5 Timeouts, retries, concurrency
+### 6.4 Timeouts, retries, concurrency
 
 | Concern | Policy |
 |---------|--------|
-| Per-request timeout | 15s default (`AbortSignal`); bulk chunk 30s |
-| Retry | Idempotent `query`/`get`: 1 retry on network/5xx with 500ms backoff. Mutations: **no automatic retry** (avoid duplicate creates); operator re-runs with idempotent skip. |
-| Concurrency | Single in-flight mutation per resource from UI; server serializes bulk chunks. |
-| Circuit | After 3 consecutive transport failures, `/api/health` reports Stalwart unreachable; UI shows banner. |
+| Timeout | 15s default; bulk chunk 30s |
+| Retry | Idempotent query/get: 1× on network/5xx, 500ms backoff. Mutations: **no auto-retry** |
+| Concurrency | One in-flight mutation per resource from UI; bulk chunks serial |
+| Health | After 3 consecutive transport failures, health = unreachable |
 
-### 5.6 What we will not call from the dashboard (initially)
+### 6.5 Local vs cluster URLs
 
-- MTA queue purge, blocked-IP lists, DNS provider secrets, Bootstrap/set — keep in ops scripts / Stalwart Admin until product need is proven.
-- End-user JMAP Mail methods for reading mailboxes — Roundcube owns that UX.
-
-### 5.7 Runtime and local development
-
-- All Stalwart route handlers / server actions use **Node.js runtime** (`runtime = "nodejs"`). Edge is unsuitable for private Docker DNS names and long bulk calls.
-- **On VPS / Docker Compose:** `STALWART_JMAP_URL=http://stalwart-mail:8080/jmap` (or `http://127.0.0.1:8080/jmap` on host network).
-- **Windows local dev:** host cannot reach VPS loopback. Use `https://mail.yehia.dev/jmap` over HTTPS, or an SSH tunnel to `8080`. Document the chosen URL in `.env.local` (gitignored).
-- Dokploy compose reference for Stalwart: project **Email**, compose id `ZHxvknPKmn9V0LDDL5GFh`.
-
-### 5.8 Source of truth (existing automation)
-
-Mirror method shapes from these proven scripts before inventing new payloads:
-
-- `scripts/mail-restore/provision.py` — Domain/Account create
-- `scripts/mail-restore/catchall-setup.py` — catch-all + identity parsing
-- `scripts/mail-restore/create-hashed.py` — credential / password-policy interplay
-- `scripts/mail-restore/bootstrap.py` — Bootstrap (read-only from app)
-- `scripts/mail-restore/verify-roundcube-login.py` — Roundcube login limitations
+- **Docker/Dokploy:** internal hostname on shared network.
+- **Local Windows:** public HTTPS JMAP URL or SSH tunnel — never assume VPS loopback.
 
 ---
 
-## 6. Admin authentication flow
+## 7. Admin authentication
 
-### 6.1 Threat model (simple)
+1. Operator logs in with `APP_ADMIN_USER` / `APP_ADMIN_PASSWORD` (distinct from Stalwart).
+2. Rate limit login: **5 attempts / 15 minutes / IP** (in-memory OK for single node).
+3. Session: iron-session `{ role: "admin", exp }` — **never** Stalwart password.
+4. Middleware `requireSession` for `/dashboard/*` and protected APIs.
+5. Server builds Stalwart Basic Auth from env only.
 
-- Operator is trusted human with Stalwart admin rights.
-- Browser is hostile; XSS must not exfiltrate Stalwart admin password.
-- Network path Next.js → Stalwart may be private Docker network or public HTTPS.
+**CSRF:** SameSite cookies + Server Action origin checks; same-origin for cookie POSTs.
 
-### 6.2 Chosen approach: App session + server-held Stalwart admin
-
-**Phase 2 implementation plan (documented now, not coded yet):**
-
-1. **Env (deployment secrets):**
-   - `STALWART_JMAP_URL`
-   - `STALWART_ADMIN_USER` (e.g. `admin@zokm.me`)
-   - `STALWART_ADMIN_PASSWORD`
-   - `SESSION_SECRET` (≥32 random bytes)
-   - `ROUNDCUBE_URL` (`https://mail.zokm.me`)
-   - Optional: `ADMIN_LOGIN_USER` / `ADMIN_LOGIN_PASSWORD` if we want an app-level password **distinct** from Stalwart (recommended for production so rotating Stalwart recovery does not equal dashboard login — **default recommendation: separate app credentials**).
-
-2. **Login:**
-   - Operator submits dashboard credentials (`APP_ADMIN_USER` / `APP_ADMIN_PASSWORD`).
-   - Server verifies against app credentials (constant-time compare).
-   - Rate limit: **5 attempts / 15 minutes / IP** on `POST /api/auth/login` (in-memory is fine for single-node; Redis only if we multi-instance later).
-   - On success: set **HttpOnly, Secure, SameSite=Lax** cookie via **iron-session**. Session payload: `{ role: "admin", exp }` — **never** Stalwart password.
-
-3. **Authenticated API:**
-   - Middleware / helper `requireSession()`.
-   - Route handlers call `stalwartClient` using **env** `STALWART_ADMIN_USER` / `STALWART_ADMIN_PASSWORD` (typically `admin@zokm.me`).
-
-4. **Logout:** destroy session cookie.
-
-5. **No client-side Stalwart Basic auth.** Ever.
-
-### 6.3 Alternatives considered
-
-| Option | Verdict |
-|--------|---------|
-| Pass-through: user types Stalwart admin into browser each time; proxy with those creds | Rejected for Phase 1–2: harder XSS blast radius; session still needed. May revisit for “break-glass”. |
-| OAuth/OIDC | Overkill for single-operator VPS; defer. |
-| Stalwart OAuth tokens | Possible later if Stalwart issues API tokens; not required while Basic works for admin. |
-
-### 6.4 CSRF
-
-SameSite cookies + Next.js Server Actions origin checks. For cookie-auth POST APIs, require same-origin or CSRF token.
+**Deferred:** OAuth/OIDC, multi-operator RBAC (document hooks for later multi-tenant — see review log).
 
 ---
 
-## 7. Roundcube integration
+## 8. Roundcube SSO (preserve)
 
-| Capability | Support |
-|------------|---------|
-| Open webmail home | `ROUNDCUBE_URL` → `https://email.yehia.dev/webmail/` |
-| SSO token | Authenticated `/api/webmail/sso` signs mailbox, expiry, and nonce with `WEBMAIL_SSO_SECRET`; lifetime is 30 seconds. |
-| IMAP/SMTP auth | `em_sso` verifies the token and authenticates as `target%impersonator` using server-only Stalwart credentials. |
-| Per-mailbox “Open” | Button opens a new tab already authenticated as that mailbox. No mailbox password is stored or sent to the browser. |
-| Health probe | Best-effort `GET ROUNDCUBE_URL/` expecting HTTP 200 HTML. **Never** POST login credentials from the dashboard health job. |
+Existing flow — do not regress:
 
-Roundcube auth boundaries:
-- Roundcube keeps its own session cookie under `/webmail/`.
-- Session timeout independent of dashboard.
-- IMAP SSL to `stalwart-mail:993` is internal; dashboard must not assume Roundcube uptime equals Stalwart JMAP uptime — JMAP health is authoritative for admin ops; Roundcube health is advisory.
+1. Authenticated operator clicks “Open webmail” on a mailbox.
+2. `GET/POST /api/webmail/sso` mints HMAC token (`WEBMAIL_SSO_SECRET`): mailbox, expiry (~30s), nonce.
+3. Browser opens Roundcube with token; `em_sso` verifies and authenticates as `target%impersonator` using server-only impersonator credentials.
+4. Roundcube session is independent of mailwart session.
+
+Health: best-effort GET of Roundcube URL expecting HTML 200 — never POST mailbox or impersonator passwords from health jobs.
 
 ---
 
-## 8. UI/UX component hierarchy (Operate mode)
+## 9. CSV bulk operations
 
-**Design read (Impeccable Operate + taste-skill dials):** Mail ops console for a technical operator. Density mid-high (`VISUAL_DENSITY: 6`), motion low (`MOTION_INTENSITY: 3`), variance restrained (`DESIGN_VARIANCE: 4`). Brand = typography + precise chrome, not marketing hero. Avoid purple-gradient SaaS clichés; prefer a cool editorial ops palette (ink / paper / signal amber for warnings) — finalized in Phase 2 `DESIGN.md`.
+1. Parse CSV/JSON client-side + server-side (never trust client alone).
+2. Validate: email → local + domain; domain must exist; password policy hints.
+3. Preview duplicates against live directory.
+4. Commit in chunks of **25** accounts per `x:Account/set`.
+5. Per-row report: created | skipped | failed + reason; download failure CSV.
+6. No automatic rollback of successful creates.
+7. Idempotency: skip existing unless operator chose overwrite-password mode.
+
+Job progress UI uses React Query or action polling (Phase 3+); see review log for persistence decisions.
+
+---
+
+## 10. DNS validation
+
+Read-only health for each managed domain (Phase 2+):
+
+| Check | Expectation (typical) |
+|-------|------------------------|
+| MX | Points at Stalwart MX hostname (from env/config) |
+| SPF | TXT includes sending include/ip |
+| DKIM | Selector TXT present (selector from env or Stalwart) |
+| DMARC | TXT `_dmarc` present (policy advisory) |
+| PTR / A | Optional advisory for mail host |
+
+Implementation: Node DNS (`dns.promises`) or DoH from server — never expose recursive resolver abuse. Cache results ~5 minutes; manual refresh button. Complex multi-record / split-horizon cases documented in review log Pass 2+.
+
+---
+
+## 11. UI shell (Operate — later phases)
 
 ```
 AppShell
-├── TopBar (product name, Stalwart health pill, operator menu)
-├── Sidebar
-│   ├── Overview
-│   ├── Domains
-│   ├── Mailboxes
-│   ├── Bulk import
-│   └── Settings (Roundcube URL, danger: password policy)
-└── Main
-    ├── PageHeader (title, one sentence, primary actions)
-    ├── FilterBar (domain select, search, status)
-    ├── DataTable | EmptyState | ErrorState | Skeleton
-    └── Overlays: CreateMailboxDialog, ConfirmDestroy, BulkImportWizard, ToastRegion
+├── TopBar (mailwart wordmark, theme toggle, health, operator menu)
+├── Breadcrumbs (section › domain › mailbox)
+├── Sidebar (Overview, Domains, Mailboxes, Routing, DNS, Logs, Import, Settings)
+└── Main (PageHeader, filters, tables, wizards, toasts)
 ```
 
-**Hierarchy rules:**
-- One primary action per page header.
-- Destructive actions require typed confirm (email address).
-- Quota shown as compact meter, not a card farm.
-- Catch-all controls live on Domain detail, not buried in global settings.
+Brand wordmark: **mailwart** in Bricolage Grotesque ExtraLight 200. Light/dark via `next-themes` (already a dependency). Density: Operate mid-high; motion restrained.
 
 ---
 
-## 9. Edge cases (must handle)
+## 12. Deployment (Dokploy)
 
-### 9.1 API timeouts / Stalwart down
-- Abort after timeout; UI toast + inline error with “Retry”.
-- Distinguish: DNS failure, TLS failure, HTTP 401, HTTP 5xx, JMAP method error.
-- Overview health: green/amber/red for JMAP reachability.
+- Build from repo `Dockerfile` (standalone Next).
+- Compose services: `email-manager` + `roundcube` (existing).
+- Traefik labels attach public host + `/webmail` path (deployment-specific hosts in compose/env).
+- Shared Docker network with Stalwart for internal JMAP/IMAP.
+- Secrets via Dokploy env — never git.
 
-### 9.2 Bulk upload failures
-- Partial success is normal: show table of rows → `created` | `skipped` | `failed` + Stalwart reason.
-- Allow download of failure CSV.
-- Do not roll back successful creates automatically (no distributed transaction).
-
-### 9.3 Quota errors
-- On set/update, if Stalwart returns quota-related `notUpdated`/`notCreated`, map to human copy: “Quota rejected by mail server.”
-- Display current quotas from `Account.quotas` when present; empty `{}` means default/unlimited per server policy — label as “Default (server)”.
-
-### 9.4 Catch-all domains
-- Setting `catchAllAddress` to a non-existent mailbox → mail may bounce or reject; UI validates target exists in account list for that domain.
-- Clearing catch-all: set null/omit per API; confirm dialog warns unknown recipients will reject.
-- `catch@` mailboxes are normal Users; deleting them while still referenced by catch-all is blocked in UI.
-
-### 9.5 Multi-domain local-part collisions
-- `support@zokm.me` and `support@yehia.dev` are different accounts. Tables always show domain column; create form requires domain select first.
-
-### 9.6 Password policy
-- Weak passwords may fail `x:Account/set`. Surface server error. Do not auto-weaken `x:Authentication` without explicit Settings › Danger action + audit log note.
-
-### 9.7 Roundcube deep-link / auth limitations
-- No password in URL.
-- No guarantee of logged-in session.
-- If Roundcube is down, button still opens URL; optional HEAD/GET health check soft-warns.
-
-### 9.8 Admin principal safety
-- UI never offers Destroy on `admin@…` or accounts with admin roles without dual confirm.
-- Domain destroy requires empty (or force) and typed domain name.
-
-### 9.9 Pagination / limits
-- Scripts used `limit: 200`. Client must page or raise limit consciously; if `ids` truncated, follow with another query or document max.
-
-### 9.10 Concurrent edits
-- Last-write-wins via JMAP `set`. Optimistic UI; on conflict/error, refetch row.
+Phase 1: **document only; no redeploy; no git push.**
 
 ---
 
-## 10. Environment & deployment posture
+## 13. Security checklist
 
-| Variable | Required | Notes |
-|----------|----------|-------|
-| `STALWART_JMAP_URL` | yes | e.g. `http://stalwart-mail:8080/jmap` in Docker, or `https://mail.yehia.dev/jmap` |
-| `STALWART_ADMIN_USER` | yes | `admin@zokm.me` |
-| `STALWART_ADMIN_PASSWORD` | yes | from secrets — never commit |
-| `SESSION_SECRET` | yes | app session |
-| `ROUNDCUBE_URL` | yes | `https://email.yehia.dev/webmail/` |
-| `WEBMAIL_SSO_SECRET` | yes | Shared HMAC secret, at least 32 characters |
-| `ROUNDCUBE_DES_KEY` | yes | Roundcube session credential encryption key |
-| `WEBMAIL_IMPERSONATOR_USER` / `WEBMAIL_IMPERSONATOR_PASSWORD` | optional | Dedicated Stalwart principal with `impersonate`; compose falls back to `STALWART_ADMIN_*` |
-| `APP_ADMIN_USER` / `APP_ADMIN_PASSWORD` | recommended | dashboard login |
-
-Deploy later via Dokploy (same **Email** project or sibling). Phase 1: **no deploy**.
+- [ ] Secrets only in env / Dokploy
+- [ ] HttpOnly Secure SameSite session
+- [ ] Server-only Stalwart Basic Auth construction
+- [ ] Login rate limit
+- [ ] SSO tokens short-lived + single-use nonce when feasible
+- [ ] Impersonator principal least-privilege (`impersonate` only) when available
+- [ ] No credentials in client bundles
+- [ ] Audit log for destructive/directory mutations (Phase 4+)
+- [ ] CSP when UI polish ships
 
 ---
 
-## 11. Security checklist
-
-- [ ] Secrets only in env / Dokploy secrets
-- [ ] HttpOnly session cookie
-- [ ] Server-only Stalwart Basic auth header construction
-- [ ] Rate-limit login route
-- [ ] Audit log (later): who created/deleted which mailbox
-- [ ] No credentials in client bundles / Next public env
-- [ ] Disable directory listing; strict CSP when UI ships
-
----
-
-## 12. Testing strategy (later phases)
+## 14. Testing strategy (later)
 
 | Layer | What |
 |-------|------|
-| Unit | JMAP response parsers; email/domain validators; bulk chunker |
-| Integration | Against Stalwart in Docker or staging URL with throwaway domain |
-| E2E | Login → create mailbox → appear in list → Roundcube link href |
-| Manual | Catch-all set/clear; quota edge; bulk partial failure |
+| Unit | JMAP parsers, email/DNS validators, CSV chunker |
+| Integration | Stalwart Docker or staging throwaway domain |
+| E2E | Login → create mailbox → list → SSO open |
+| Manual | Catch-all, bulk partial failure, DNS amber states |
 
-Do **not** run mail-tester from this app in Phase 1.
+No mail-tester from this app.
 
 ---
 
-## 13. Phase boundary
+## 15. Phase map
 
 | Phase | Scope |
 |-------|--------|
-| **1 (this)** | Next.js scaffold + docs + review log. Placeholder page only. |
-| 2 | Design tokens, AppShell, auth, domain/mailbox read UI |
-| 3 | Create/update/delete, catch-all, quotas, Roundcube links |
-| 4 | Bulk import, harden errors, deploy to Dokploy |
+| **1 (this)** | Architecture + product spec + 3 review passes; foundation healthy; no feature UI push |
+| **2** | Design system (mailwart brand), auth polish, theme, breadcrumbs, read views, DNS health |
+| **3** | Mutations: mailboxes, quotas, app passwords, 2FA hooks, catch-all, forwarding/routing |
+| **4** | Autoresponders/Sieve/spam controls, CSV bulk harden, delivery logs/audit |
+| **5** | Analytics overview, polish, Dokploy production cutover readiness |
 
-**Success criteria for Phase 1:**
-- Next.js **16+** App Router + TS + Tailwind at `email-manager/`
-- Docs: `docs/ARCHITECTURE.md`, `docs/PRODUCT_SPEC.md`, `docs/ARCHITECTURE_REVIEW_LOG.md` (3 passes)
-- Placeholder page only; no dashboard feature UI; no deploy; no mail-tester
-- Docs match live JMAP usage (`/jmap`, `x:Domain/*`, `x:Account/*`)
+**Phase 1 success:** Next 16+ builds conceptually; docs exhaustive; review log has 3 passes; Roundcube/SSO/compose preserved; **no push**.

@@ -1,16 +1,17 @@
-# Email Manager — Product Specification
+# mailwart — Product Specification
 
-> Phase 1 product brief. Companion to [ARCHITECTURE.md](./ARCHITECTURE.md).  
-> Mode: **Operate** (Impeccable) — task completion for a mail operator, not a marketing site.  
-> Design dials (taste-skill): `DESIGN_VARIANCE: 4` · `MOTION_INTENSITY: 3` · `VISUAL_DENSITY: 6`
+> Companion to [ARCHITECTURE.md](./ARCHITECTURE.md).  
+> Brand: **mailwart** (lowercase). Wordmark font: **Bricolage Grotesque ExtraLight 200**.  
+> Mode: **Operate** for dashboard · **Persuade** for landing (Phase 2+).  
+> Design dials (taste-skill, Operate): `DESIGN_VARIANCE: 4` · `MOTION_INTENSITY: 3` · `VISUAL_DENSITY: 6`
 
-**Design read:** B2B ops console for a single technical operator managing Stalwart mailboxes across four personal/business domains, with Roundcube as the webmail escape hatch — Linear-adjacent density, editorial restraint, zero SaaS-landing tropes.
+**Design read:** B2B mail-ops console for a technical operator managing Stalwart across one or more domains — Linear-adjacent density, editorial restraint, zero SaaS-landing tropes inside the dashboard. Deployment hostnames are config, not brand.
 
 ---
 
 ## 1. Problem
 
-Mail on this VPS is already healthy (Stalwart + Roundcube + DNS). Day-to-day pain is **directory ops**: creating mailboxes, resetting passwords, inspecting domains/catch-alls, and bulk-adding accounts — today done via Python one-offs against JMAP or Stalwart’s dense `/admin` UI. Operators need a focused, safer, faster surface that speaks the same JMAP objects the restore scripts already use.
+Stalwart + Roundcube already deliver mail. Day-to-day pain is **directory and policy ops**: mailboxes, quotas, catch-alls, forwarding, DNS health, bulk provisioning, and safe webmail entry — today split across dense Admin UI, ManageSieve, and one-off scripts. Operators need a focused cPanel-grade surface that speaks Stalwart JMAP and preserves Roundcube SSO.
 
 ---
 
@@ -18,191 +19,213 @@ Mail on this VPS is already healthy (Stalwart + Roundcube + DNS). Day-to-day pai
 
 | Persona | Need |
 |---------|------|
-| **Primary — Operator** (you) | CRUD domains/mailboxes, catch-all, quotas, bulk import, open Roundcube for a user |
-| **Secondary — Future helper** | Same, with audit clarity; no separate RBAC in v1 |
-| **Out of scope** | End-users reading mail (they use Roundcube) |
+| **Primary — Operator** | Full directory/routing/DNS/bulk/audit control for the Stalwart instance |
+| **Secondary — Helper** | Same tasks with audit clarity; no separate RBAC in v1 |
+| **Out of scope** | End-users reading mail (Roundcube) |
 
 ---
 
 ## 3. Product principles
 
-1. **Server truth is Stalwart.** UI never invents mailbox state; always JMAP.
+1. **Server truth is Stalwart.** UI never invents mailbox state.
 2. **Full email addresses everywhere.** Multi-domain local-parts are ambiguous.
 3. **Partial success is honest.** Bulk ops report per-row outcomes.
-4. **Danger is labeled.** Password policy / destroy domain / delete catch target.
-5. **Roundcube SSO is explicit and short-lived.** Signed tokens select a mailbox; server-only Stalwart impersonation performs mail authentication.
-6. **Minimum surface.** Prefer one good mailboxes table over five overlapping pages.
+4. **Danger is labeled.** Policy, destroy, impersonation, catch-all clear.
+5. **SSO is short-lived.** Signed tokens + server-only impersonation; no mailbox passwords in browser.
+6. **Brand is mailwart.** Domains/hosts are deployment config.
+7. **Minimum surface that still feels cPanel-complete.** Prefer depth on mailboxes/routing over decorative pages.
 
 ---
 
 ## 4. Information architecture
 
 ```
-/login
-/                     Overview (counts, health, recent actions later)
-/domains              Domain list
-/domains/[id]         Domain detail (catch-all, enabled, DNS summary read-only later)
-/mailboxes            Cross-domain mailbox table (filter by domain)
-/mailboxes/new        or dialog on list
-/mailboxes/[id]       Detail: password reset, quota, aliases (edit after live shape probe), open Roundcube
-/import               Bulk CSV/JSON wizard
-/settings             Roundcube URL (read), session, danger zone
+/                         Landing (Persuade — later)
+/login                    App auth
+/dashboard                Overview / analytics
+/dashboard/domains
+/dashboard/domains/[id]   Detail: catch-all, DNS health, enabled
+/dashboard/mailboxes
+/dashboard/mailboxes/[id] Password, quota, aliases, app passwords, 2FA, webmail
+/dashboard/routing        Forwarding, aliases overview, catch-alls summary
+/dashboard/filters        Autoresponders / Sieve / spam (or deep-links)
+/dashboard/dns            Cross-domain DNS health
+/dashboard/logs           Delivery / audit
+/dashboard/import         CSV/JSON bulk wizard
+/dashboard/settings       Session, URLs (host only), theme, danger zone
 ```
 
-No top-level `/aliases` in v1 — aliases belong to mailbox detail.
+Breadcrumbs on all dashboard routes: `Dashboard › Section › Entity`.
+
+No top-level `/aliases` — aliases live on mailbox detail + routing summary.
 
 ---
 
-## 5. Feature specifications
+## 5. Feature specifications (Phases 2–5)
 
-### 5.1 Overview
+### 5.1 Overview & analytics (Phase 2 / 5)
 
-**Job:** Answer “is mail admin reachable, and how big is the directory?”
+**Job:** “Is mail admin healthy, and what is the shape of the directory?”
 
-- Stalwart JMAP health (latency / ok / fail).
-- Optional Roundcube HEAD soft-check.
-- Counts: domains, accounts (Users).
-- Links: Stalwart Admin (`https://mail.yehia.dev/admin`), Roundcube home.
+- Stalwart JMAP health (ok / latency / fail).
+- Roundcube soft health (advisory).
+- Counts: domains, mailboxes, catch-alls configured.
+- Quota pressure: mailboxes near limit (when quotas present).
+- Phase 5: simple time-window charts (creates, failures, SSO opens) from audit log — not marketing vanity metrics.
+- Outbound links: Stalwart Admin UI URL from env (not hardcoded brand domains).
 
-**Not on Overview:** deliverability scores, queue depth, mail-tester (ops scripts).
+**Not on Overview:** mail-tester scores, queue depth (unless cheap read-only later).
 
-### 5.2 Domains
+### 5.2 Domains (Phase 2–3)
 
-**List columns:** name, enabled, catch-all address, mailbox count (derived), actions.
+**List:** name, enabled, catch-all, mailbox count, DNS health pill, actions.
 
-**Create domain:** name (+ description). Prefer **minimal** `x:Domain/set` create `{ name, description }` as proven by `provision.py` on this VPS. If Stalwart returns `notCreated` for missing fields, retry with full defaults (`certificateManagement`/`dnsManagement` Manual, `dkimManagement` Automatic, `subAddressing` Enabled). DNS/DKIM on this deployment are often managed outside the dashboard — do not build a DNS editor in v1.
+**Create:** name + description; minimal JMAP create then fallback defaults (see Architecture).
 
 **Detail:**
-- Edit description, `isEnabled`.
-- Catch-all: select existing mailbox on domain or clear.
-- Sub-addressing toggle if exposed cleanly.
-- Read-only: createdAt; later DNS zone snippet if useful.
+- Edit description, `isEnabled`, sub-addressing when exposed.
+- Catch-all: select existing mailbox on domain or clear (typed warn).
+- DNS health panel (MX/SPF/DKIM/DMARC) with refresh.
+- Destroy: typed domain name; block if accounts remain unless force + second confirm.
 
-**Destroy:** typed confirm; block if accounts remain (unless force with second confirm).
+### 5.3 Mailboxes (Phase 2–3)
 
-### 5.3 Mailboxes (Accounts)
+**List:** email, domain, quota summary, status, actions.
 
-**List:** email (computed), domain, description, quota summary, actions (edit, reset password, open Roundcube, delete).
+**Create:** domain select → local-part → password (generate) → optional quota → optional description.
 
-**Create:**
-- Domain (required select).
-- Local-part (validate RFC-ish: allowed chars, no `@`).
-- Password (generate button; show once).
-- Optional description (default `local@domain`).
-- Optional initial quota fields if we map Stalwart `quotas` keys clearly after probing live objects.
+**Detail:**
+- Reset password (show once; never store plaintext client-side beyond that moment).
+- Quota edit / clear to server default.
+- Aliases editor after live shape probe.
+- **App passwords:** list/create/revoke application-specific credentials when Stalwart supports them on the account object (or document deep-link to Admin if not).
+- **2FA / TOTP:** enable/disable/status when Stalwart exposes it; otherwise status + Admin deep-link — do not fake UI.
+- Open Roundcube via SSO.
+- Delete: typed full email; block if catch-all target.
 
-**Update password:** replace credentials via `x:Account/set` update; never display stored hash.
+### 5.4 Catch-alls, forwarding, routing (Phase 3)
 
-**Aliases:** Phase 2 probes live `Account/get` for `aliases` shape. Until confirmed: show raw/read-only if present; **do not** ship an editor that guesses the map format. Edit lands in Phase 3 after probe.
+- Domain catch-all as first-class control.
+- Forwarding rules: external or internal targets where Stalwart account/domain fields allow; otherwise Sieve-based forward via filters module.
+- Routing summary page: catch-alls + high-signal aliases/forwards across domains.
+- Validate targets exist (internal) or warn (external).
 
-**Delete:** typed full email confirm; block if account is domain catch-all target.
+### 5.5 Autoresponders, Sieve, spam (Phase 4)
 
-**Open Roundcube:** new tab already authenticated as the selected mailbox; copy-email remains available.
+- Autoresponder: subject/body/dates when representable via ManageSieve or Stalwart; else “Open in Roundcube ManageSieve” with SSO.
+- Sieve: list scripts / active flag if API allows; full editor may remain Roundcube.
+- Spam: expose available Stalwart spam/policy toggles readably; no pretend Bayesian UI without API.
 
-### 5.4 Bulk import
+### 5.6 CSV bulk (Phase 3–4)
 
-**Input:** CSV columns `email,password,description` (description optional) or JSON array.
+**Columns:** `email,password,description` (+ optional `quota`).
 
-**Flow:**
-1. Upload / paste.
-2. Validate rows (parse email → local + domain; domain must exist).
-3. Preview with duplicate detection against live directory.
-4. Commit in chunks; progress UI.
-5. Results table + download failures.
+**Flow:** upload → validate → preview duplicates → commit chunks → results + failure CSV download.
 
-**Failure modes:** invalid email, unknown domain, duplicate, password policy, timeout mid-chunk (resume guidance: re-import skips existing).
+**Modes:** create-only (skip existing) · create-or-reset-password (explicit opt-in).
 
-### 5.5 Settings
+### 5.7 DNS health (Phase 2+)
 
-- Display configured Roundcube URL & Stalwart URL (host only in UI).
-- Change app login password (when app credentials are separate).
-- Danger: view/edit authentication password policy (`x:Authentication`) — collapsed, warning copy.
-- Link out to Stalwart Admin for everything else.
+Per-domain and cross-domain matrix: MX, SPF, DKIM, DMARC with pass/warn/fail and raw record snippets for copy. Advisory only — no DNS write UI in v1 (Cloudflare/ops scripts remain source of DNS mutations).
 
-### 5.6 Auth (app)
+### 5.8 Delivery logs & audit (Phase 4–5)
 
-- Login form; session cookie; logout.
-- Unauthenticated users only see `/login`.
-- No public marketing pages in v1 (placeholder home redirects to login or shows “Email Manager — Phase 1 scaffold”).
+- **Audit (mailwart):** who logged in; who created/deleted/reset which mailbox; bulk job summaries; SSO opens (mailbox id, not token).
+- **Delivery (Stalwart):** read-only recent delivery/reject snippets if API or log adapter available; else deep-link to Admin + honest empty state.
+
+### 5.9 Webmail SSO (existing — preserve)
+
+Per-mailbox Open → short-lived token → Roundcube authenticated session. Copy-email still available. Errors never reveal impersonator secrets.
+
+### 5.10 Theme, chrome, breadcrumbs (Phase 2)
+
+- Light / dark toggle (`next-themes`); persist preference.
+- **mailwart** wordmark (Bricolage Grotesque ExtraLight 200) in shell.
+- Breadcrumbs on entity pages.
+- Responsive Operate layout (sidebar collapse on small screens).
+
+### 5.11 Settings (Phase 2+)
+
+- Show configured Stalwart/Roundcube **hosts** (not full secrets).
+- App login password change when using `APP_ADMIN_*`.
+- Danger: authentication password policy (`x:Authentication`).
+- Session logout-all (single node: destroy cookie).
+
+### 5.12 Auth (app)
+
+Login, session cookie, logout, rate limit. Unauthenticated users cannot reach `/dashboard/*`.
 
 ---
 
-## 6. UI/UX component hierarchy (product view)
-
-Matches Architecture §8. Concrete component jobs:
+## 6. Component hierarchy (product view)
 
 | Component | Job |
 |-----------|-----|
-| `AppShell` | Persistent nav + main landmark |
-| `HealthPill` | Compact Stalwart status |
-| `DomainSwitcher` | Filter context for mailboxes |
+| `AppShell` | Nav + breadcrumbs + theme + main landmark |
+| `BrandMark` | mailwart wordmark |
+| `HealthPill` | Stalwart / Roundcube status |
+| `DnsHealthBadge` | Compact MX/SPF/DKIM/DMARC |
 | `MailboxTable` | Primary working surface |
-| `MailboxCreateDialog` | Single create |
+| `QuotaBar` | Compact meter |
 | `PasswordField` | Generate / show once / copy |
-| `CatchAllSelect` | Domain detail control |
-| `BulkImportWizard` | 4-step: upload → validate → commit → report |
-| `ConfirmDestroy` | Typed confirm pattern |
-| `EmptyState` | First mailbox / no filter results — action-oriented copy |
-| `ErrorState` | Timeout vs auth vs validation — different recovery CTAs |
-| `ToastRegion` | Transient success/failure |
+| `AppPasswordPanel` | List/create/revoke |
+| `CatchAllSelect` | Domain catch-all |
+| `BulkImportWizard` | Upload → validate → commit → report |
+| `ConfirmDestroy` | Typed confirm |
+| `AuditTable` / `DeliveryTable` | Logs |
+| `EmptyState` / `ErrorState` / `ToastRegion` | Recovery UX |
 
-**Copy voice:** Active, specific, no apology fluff.  
-- Error: “Stalwart did not respond within 15s. Retry.”  
-- Empty: “No mailboxes in yehia.dev. Create one.”  
-- Success: “Created me@yehia.dev.”
+**Copy voice:** Active, specific.  
+- “Stalwart did not respond within 15s. Retry.”  
+- “No mailboxes in this domain. Create one.”  
+- “Created user@example.com.”
 
 ---
 
-## 7. Edge cases (product acceptance)
+## 7. Edge cases (acceptance)
 
 | Scenario | Expected UX |
 |----------|-------------|
 | Stalwart timeout | Toast + inline retry; no infinite spinner |
-| Stalwart 401 | “Mail server rejected admin credentials” — check env; do not loop |
-| Bulk 10 fail / 40 ok | Summary “40 created, 10 failed”; download failed rows |
-| Quota rejected | Field-level or row-level message from server reason |
-| Catch-all → missing mailbox | Block save; explain |
-| Delete catch mailbox | Block; must clear/retarget catch-all first |
-| Roundcube down | Soft warning; link still available |
-| Roundcube SSO unavailable | Show the route error; never fall back to exposing a mailbox or impersonator password |
-| Duplicate `hi@yehia.dev` create | Skip or fail clearly in bulk; single create shows conflict |
-| Admin account in list | Badge; destroy disabled or dual-confirm |
-| Domain filter empty | Empty state, not error |
-| Very long account list | Search + pagination or virtualize (≥200) |
+| Stalwart 401 | “Mail server rejected admin credentials” |
+| Bulk partial | Summary + download failed rows |
+| Quota rejected | Row/field message from server reason |
+| Catch-all → missing mailbox | Block save |
+| Delete catch mailbox | Block until retarget/clear |
+| SSO unavailable | Route error; no password fallback |
+| Duplicate create | Clear conflict / skip in bulk |
+| Admin account | Badge; destroy dual-confirm or disabled |
+| DNS split-horizon | Warn that checks use server resolver view |
+| 2FA/app-password unsupported | Honest empty + Admin link |
+| Theme | No flash of wrong theme on load (as practical) |
 
 ---
 
-## 8. Domains & inventory (current production truth)
+## 8. Deployment inventory (config, not brand)
 
-**Domains:** yehia.dev, hiy.me, zokm.me, restoqd.com  
-
-**Known mailboxes (non-exhaustive; live query is source of truth):**  
-hi@, me@, noreply@ on yehia.dev; coolify@, support@, appflowy@, games@ on zokm.me; catch@ on each domain (catch-all).
-
-**Webmail:** integrated at https://email.yehia.dev/webmail/; mailbox buttons use signed SSO.
-
-**Admin UI:** https://mail.yehia.dev/admin  
+Managed domains, public hosts, and Admin/Webmail URLs are **environment / Dokploy configuration**. Document them in deploy runbooks and `.env.example` placeholders (`https://mail.example.com`), not as mailwart product identity.
 
 ---
 
-## 9. Success metrics (qualitative v1)
+## 9. Success metrics
 
-- Create a mailbox in under 30 seconds including password copy.
-- Bulk 50 accounts with clear failure report without SSH/Python.
-- Catch-all visible and editable without Stalwart Admin.
-- Zero incidents of Stalwart admin password appearing in browser Network tab (except dashboard’s own login).
+- Create mailbox + copy password &lt; 30s.
+- Bulk 50 accounts with clear failure report without SSH.
+- Catch-all and DNS health visible without Stalwart Admin.
+- SSO open works without mailbox password in browser Network tab.
+- Zero Stalwart admin Basic Auth headers visible to the browser.
 
 ---
 
 ## 10. Explicit out of scope
 
 - Reading/sending mail in-app  
-- Sieve script editor (Roundcube ManageSieve remains)  
-- DNS record editing UI (Cloudflare scripts / Stalwart DNS automation)  
 - mail-tester / deliverability automation  
-- Multi-operator RBAC / SSO  
-- Mobile-native app (responsive web only)  
+- Full DNS write/edit UI (v1)  
+- Multi-operator RBAC / OIDC (v1) — architecture leaves seams  
+- Mobile-native apps  
 - Replacing Stalwart Admin for MTA/queue/IP allowlists  
+- Renaming Docker service paths in Phase 1  
 
 ---
 
@@ -210,30 +233,28 @@ hi@, me@, noreply@ on yehia.dev; coolify@, support@, appflowy@, games@ on zokm.m
 
 | Phase | Deliverable | Verify |
 |-------|-------------|--------|
-| **1** | Next.js 16 scaffold + architecture/product docs + 3 review passes | `package.json` has Next 16+; docs at `email-manager/docs/{ARCHITECTURE,PRODUCT_SPEC,ARCHITECTURE_REVIEW_LOG}.md`; placeholder only |
-| **2** | Design system + auth + read-only domains/mailboxes | Login works; lists match Stalwart |
-| **3** | Mutations + catch-all + Roundcube links | Create/reset/delete verified on staging or VPS |
-| **4** | Bulk import + harden + Dokploy deploy | Partial failure report; HTTPS behind Traefik |
+| **1** | Architecture + product + 3 review passes; foundation intact | Docs at `docs/*`; Next 16+; Roundcube/SSO/compose preserved; no push |
+| **2** | mailwart brand chrome, theme, breadcrumbs, auth polish, read views, DNS health | Login; lists match Stalwart; DNS badges |
+| **3** | Mutations, quotas, app passwords/2FA hooks, catch-all, forwarding/routing, CSV v1 | CRUD verified on staging/VPS |
+| **4** | Filters/Sieve/spam, bulk harden, delivery/audit logs | Partial failure + audit rows |
+| **5** | Analytics polish, a11y/CSP, Dokploy cutover readiness | Metrics + deploy checklist |
 
-**Phase 1 complete criterion:** scaffold + docs + review log; ready for Phase 2 UI — **no deploy, no mail-tester.**
+**Phase 1 complete:** docs + review log; ready for Phase 2 UI — **no deploy, no push, no mail-tester.**
 
 ---
 
 ## 12. Open questions (do not block Phase 1)
 
-1. App-level login distinct from Stalwart admin? **Decision for Phase 2: yes** (`APP_ADMIN_*` separate from `STALWART_ADMIN_*`).
-2. Exact `quotas` and `aliases` object shapes from a live `Account/get` — confirm in Phase 2 with one authenticated probe.
-3. Hostname for the dashboard itself (e.g. `mailadmin.yehia.dev`) — decide at deploy time.
-4. Local Windows `STALWART_JMAP_URL`: public `https://mail.yehia.dev/jmap` vs SSH tunnel — choose per developer machine.
-
-These are logged so Phase 2 does not silently guess.
+1. Exact live `quotas`, `aliases`, app-password, 2FA field shapes — probe in Phase 2–3.
+2. Dashboard public hostname — deploy-time env.
+3. Whether forwarding is native Stalwart fields vs Sieve-only on this build.
+4. Audit storage: file/SQLite vs Stalwart-only — decide Phase 4 (prefer simplest that survives restart).
 
 ---
 
 ## 13. Source of truth
 
-Product behavior for Stalwart must stay consistent with:
-
 - [ARCHITECTURE.md](./ARCHITECTURE.md)
-- `../docs/mail/stalwart-restore.md` (repo root docs)
-- `scripts/mail-restore/provision.py`, `catchall-setup.py`, `verify-roundcube-login.py`
+- [ARCHITECTURE_REVIEW_LOG.md](./ARCHITECTURE_REVIEW_LOG.md)
+- Existing integration: `src/lib/stalwart/*`, `src/lib/webmail-sso.ts`, `roundcube/plugins/em_sso`
+- Stalwart docs for Domain/Account objects; live JMAP probe before inventing field editors
