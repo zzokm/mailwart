@@ -132,6 +132,42 @@
   --sidebar-ring: oklch(0.65 0.08 230);
 }
 
+@layer utilities {
+  /* Copilot "thinking" — light sweeps across the label while the model works. */
+  @keyframes copilot-sweep {
+    0% {
+      background-position: 180% 0;
+    }
+    100% {
+      background-position: -80% 0;
+    }
+  }
+
+  .copilot-sweep {
+    background-image: linear-gradient(
+      100deg,
+      var(--muted-foreground) 0%,
+      var(--muted-foreground) 36%,
+      var(--brand) 50%,
+      var(--muted-foreground) 64%,
+      var(--muted-foreground) 100%
+    );
+    background-size: 260% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: copilot-sweep 1.9s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .copilot-sweep {
+      animation: none;
+      background-image: none;
+      color: var(--muted-foreground);
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

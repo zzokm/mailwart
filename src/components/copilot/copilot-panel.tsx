@@ -1,8 +1,10 @@
 "use client"
 
 import type { CSSProperties } from "react"
-import { Sparkles, XIcon } from "lucide-react"
+import { SquarePen, Sparkles, XIcon } from "lucide-react"
 
+import { CopilotComposer } from "@/components/copilot/copilot-composer"
+import { CopilotConversation } from "@/components/copilot/copilot-conversation"
 import { useCopilot } from "@/components/copilot/copilot-context"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,6 +23,8 @@ function CopilotChrome({
   className?: string
   onClose: () => void
 }) {
+  const { messages, reset } = useCopilot()
+
   return (
     <div
       className={cn(
@@ -39,6 +43,17 @@ function CopilotChrome({
           type="button"
           variant="ghost"
           size="icon-sm"
+          onClick={reset}
+          disabled={messages.length === 0}
+          aria-label="New conversation"
+          title="New conversation"
+        >
+          <SquarePen />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
           onClick={onClose}
           aria-label="Close Copilot"
         >
@@ -46,13 +61,8 @@ function CopilotChrome({
         </Button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col items-start justify-center gap-2 px-5 py-8">
-        <p className="text-sm font-medium text-foreground">Ready when you are</p>
-        <p className="max-w-[28ch] text-sm leading-relaxed text-muted-foreground">
-          Ask about domains, mailboxes, and directory ops. Chat and tools arrive
-          in later phases.
-        </p>
-      </div>
+      <CopilotConversation />
+      <CopilotComposer />
     </div>
   )
 }
@@ -67,6 +77,8 @@ export function CopilotDesktopRail() {
       data-slot="copilot-rail"
       data-state={open ? "open" : "closed"}
       aria-hidden={!open}
+      // Collapsed rail keeps its DOM (and chat state) but must stay out of the tab order.
+      inert={!open}
       className={cn(
         "hidden shrink-0 flex-col overflow-hidden border-border/70 bg-surface/40 transition-[width] duration-200 ease-out motion-reduce:transition-none lg:flex",
         open ? "w-[var(--copilot-width,22rem)] border-l" : "w-0 border-l-0"

@@ -1,11 +1,18 @@
 "use client"
 
 import * as React from "react"
+import { usePathname, useRouter } from "next/navigation"
+import { useChat } from "@ai-sdk/react"
+import { DefaultChatTransport, isToolUIPart, type UIMessage } from "ai"
 
 import { useLgUp } from "@/hooks/use-lg-up"
+import { readNavIntent, type CopilotNavIntent } from "@/lib/copilot/tool-ui"
 
 const STORAGE_OPEN_KEY = "mailwart_copilot_open"
 const KEYBOARD_SHORTCUT = "j"
+const CHAT_ENDPOINT = "/api/copilot/chat"
+
+type CopilotChat = ReturnType<typeof useChat<UIMessage>>
 
 type CopilotContextValue = {
   open: boolean
@@ -13,6 +20,19 @@ type CopilotContextValue = {
   toggle: () => void
   /** Desktop (≥ lg): inline shrink. Mobile: sheet overlay. */
   isDesktop: boolean
+  messages: CopilotChat["messages"]
+  status: CopilotChat["status"]
+  error: CopilotChat["error"]
+  /** Send operator text as a new user turn. */
+  send: (text: string) => void
+  stop: CopilotChat["stop"]
+  regenerate: CopilotChat["regenerate"]
+  clearError: CopilotChat["clearError"]
+  respondToApproval: CopilotChat["addToolApprovalResponse"]
+  /** Clear the transcript and start a fresh run. */
+  reset: () => void
+  /** Last route the model opened in the left workspace, for in-stream feedback. */
+  lastNavIntent: CopilotNavIntent | null
 }
 
 const CopilotContext = React.createContext<CopilotContextValue | null>(null)
@@ -87,9 +107,105 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [open, setOpen])
 
+  const {
+    messages,
+    status,
+    error,
+    sendMessage,
+    stop,
+    regenerate,
+    clearError,
+    setMessages,
+    addToolApprovalResponse,
+  } = useChat<UIMessage>({
+    transport: React.useMemo(
+      () => new DefaultChatTransport<UIMessage>({ api: CHAT_ENDPOINT }),
+      []
+    ),
+  })
+
+  const router = useRouter()
+  const pathname = usePathname()
+  const pathnameRef = React.useRef(pathname)
+  pathnameRef.current = pathname
+
+  const [lastNavIntent, setLastNavIntent] =
+    React.useState<CopilotNavIntent | null>(null)
+  const navigatedCalls = React.useRef<Set<string>>(new Set())
+
+  // §16.8 — tools emit an allowlisted href; the left workspace follows while the
+  // panel keeps streaming. Each tool call is applied at most once.
+  React.useEffect(() => {
+    let target: CopilotNavIntent | null = null
+
+    for (const message of messages) {
+      if (message.role !== "assistant") continue
+      for (const part of message.parts) {
+        if (!isToolUIPart(part) || part.state !== "output-available") continue
+        if (navigatedCalls.current.has(part.toolCallId)) continue
+        navigatedCalls.current.add(part.toolCallId)
+        const intent = readNavIntent(part.output)
+        if (intent) target = intent
+      }
+    }
+
+    if (!target) return
+    setLastNavIntent(target)
+    if (target.href !== pathnameRef.current) {
+      router.push(target.href)
+    }
+  }, [messages, router])
+
+  const send = React.useCallback(
+    (text: string) => {
+      const trimmed = text.trim()
+      if (!trimmed) return
+      void sendMessage({ text: trimmed })
+    },
+    [sendMessage]
+  )
+
+  const reset = React.useCallback(() => {
+    stop()
+    navigatedCalls.current.clear()
+    setLastNavIntent(null)
+    clearError()
+    setMessages([])
+  }, [clearError, setMessages, stop])
+
   const value = React.useMemo(
-    () => ({ open, setOpen, toggle, isDesktop }),
-    [open, setOpen, toggle, isDesktop]
+    () => ({
+      open,
+      setOpen,
+      toggle,
+      isDesktop,
+      messages,
+      status,
+      error,
+      send,
+      stop,
+      regenerate,
+      clearError,
+      respondToApproval: addToolApprovalResponse,
+      reset,
+      lastNavIntent,
+    }),
+    [
+      open,
+      setOpen,
+      toggle,
+      isDesktop,
+      messages,
+      status,
+      error,
+      send,
+      stop,
+      regenerate,
+      clearError,
+      addToolApprovalResponse,
+      reset,
+      lastNavIntent,
+    ]
   )
 
   return (
