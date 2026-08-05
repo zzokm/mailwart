@@ -1,12 +1,20 @@
 "use client"
 
 import type { CSSProperties } from "react"
-import { SquarePen, Sparkles, XIcon } from "lucide-react"
+import { History, SquarePen, Sparkles, Trash2, XIcon } from "lucide-react"
 
 import { CopilotComposer } from "@/components/copilot/copilot-composer"
 import { CopilotConversation } from "@/components/copilot/copilot-conversation"
 import { useCopilot } from "@/components/copilot/copilot-context"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Sheet,
   SheetContent,
@@ -23,7 +31,17 @@ function CopilotChrome({
   className?: string
   onClose: () => void
 }) {
-  const { messages, reset } = useCopilot()
+  const {
+    conversationId,
+    conversations,
+    deleteConversation,
+    historyError,
+    historyLoading,
+    messages,
+    model,
+    newConversation,
+    openConversation,
+  } = useCopilot()
 
   return (
     <div
@@ -38,13 +56,81 @@ function CopilotChrome({
           <div className="truncate font-brand text-sm font-[200] lowercase tracking-[-0.015em] text-foreground">
             mailwart Copilot
           </div>
+          <div className="truncate text-[10px] text-muted-foreground">
+            {model
+              ? `${model.provider} · ${model.model || "model not selected"}`
+              : "Loading model…"}
+          </div>
         </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Conversation history"
+                title="Conversation history"
+              />
+            }
+          >
+            <History />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-72"
+            aria-label="Recent conversations"
+          >
+            <DropdownMenuLabel>Recent conversations</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {historyLoading ? (
+              <DropdownMenuItem disabled>Loading history…</DropdownMenuItem>
+            ) : conversations.length === 0 ? (
+              <DropdownMenuItem disabled>No saved conversations</DropdownMenuItem>
+            ) : (
+              conversations.slice(0, 12).map((conversation) => (
+                <DropdownMenuItem
+                  key={conversation.id}
+                  className="group/history min-w-0"
+                  onClick={() => void openConversation(conversation.id)}
+                >
+                  <span
+                    className={
+                      conversation.id === conversationId
+                        ? "min-w-0 flex-1 truncate font-medium text-foreground"
+                        : "min-w-0 flex-1 truncate"
+                    }
+                  >
+                    {conversation.title}
+                  </span>
+                  <button
+                    type="button"
+                    className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={`Delete ${conversation.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (
+                        window.confirm(
+                          `Delete “${conversation.title}”? This cannot be undone.`
+                        )
+                      ) {
+                        void deleteConversation(conversation.id)
+                      }
+                    }}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </DropdownMenuItem>
+              ))
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          onClick={reset}
-          disabled={messages.length === 0}
+          onClick={() => void newConversation()}
+          disabled={historyLoading && messages.length === 0}
           aria-label="New conversation"
           title="New conversation"
         >
@@ -61,6 +147,14 @@ function CopilotChrome({
         </Button>
       </div>
 
+      {historyError ? (
+        <div
+          className="shrink-0 border-b border-destructive/20 bg-destructive/5 px-3 py-1.5 text-[11px] text-destructive"
+          role="status"
+        >
+          {historyError}
+        </div>
+      ) : null}
       <CopilotConversation />
       <CopilotComposer />
     </div>
@@ -80,7 +174,7 @@ export function CopilotDesktopRail() {
       // Collapsed rail keeps its DOM (and chat state) but must stay out of the tab order.
       inert={!open}
       className={cn(
-        "hidden shrink-0 flex-col overflow-hidden border-border/70 bg-surface/40 transition-[width] duration-200 ease-out motion-reduce:transition-none lg:flex",
+        "hidden h-full min-h-0 shrink-0 flex-col self-stretch overflow-hidden border-border/70 bg-surface/40 transition-[width] duration-200 ease-out motion-reduce:transition-none lg:flex",
         open ? "w-[var(--copilot-width,22rem)] border-l" : "w-0 border-l-0"
       )}
       style={
@@ -110,7 +204,7 @@ export function CopilotMobileSheet() {
       <SheetContent
         side="right"
         showCloseButton={false}
-        className="w-[min(100%,22rem)] gap-0 p-0 sm:max-w-[22rem]"
+        className="h-dvh max-h-dvh w-[min(100%,22rem)] gap-0 p-0 sm:max-w-[22rem]"
       >
         <SheetHeader className="sr-only">
           <SheetTitle>mailwart Copilot</SheetTitle>

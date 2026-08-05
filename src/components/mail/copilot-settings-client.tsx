@@ -56,8 +56,10 @@ export function CopilotSettingsClient({ initial }: Props) {
   )
 
   useEffect(() => {
-    syncFromStatus(initial, initial.activeProvider)
-    setProvider(initial.activeProvider)
+    queueMicrotask(() => {
+      syncFromStatus(initial, initial.activeProvider)
+      setProvider(initial.activeProvider)
+    })
   }, [initial, syncFromStatus])
 
   const loadModels = useCallback(
@@ -89,16 +91,18 @@ export function CopilotSettingsClient({ initial }: Props) {
   )
 
   useEffect(() => {
-    if (!current?.configured) {
-      setModels([])
-      setModelsError(
-        current?.keyOptional
-          ? undefined
-          : "Enter an API key (or set COPILOT_* env) to load models."
-      )
-      return
-    }
-    void loadModels(provider)
+    queueMicrotask(() => {
+      if (!current?.configured) {
+        setModels([])
+        setModelsError(
+          current?.keyOptional
+            ? undefined
+            : "Enter an API key (or set COPILOT_* env) to load models."
+        )
+        return
+      }
+      void loadModels(provider)
+    })
     // Intentionally when provider / configured flips — not on every status tick.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, current?.configured])
@@ -126,6 +130,7 @@ export function CopilotSettingsClient({ initial }: Props) {
         return
       }
       syncFromStatus(result.data, provider)
+      window.dispatchEvent(new Event("mailwart:copilot-settings-changed"))
       void loadModels(provider)
       router.refresh()
     })
@@ -146,6 +151,7 @@ export function CopilotSettingsClient({ initial }: Props) {
         return
       }
       syncFromStatus(result.data, provider)
+      window.dispatchEvent(new Event("mailwart:copilot-settings-changed"))
       router.refresh()
     })
   }

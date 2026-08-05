@@ -141,10 +141,10 @@ export function AppShell({
           <SidebarRail />
         </Sidebar>
 
-        <SidebarInset className="min-w-0">
-          <div className="flex min-h-0 min-w-0 flex-1">
-            <div className="flex min-w-0 flex-1 flex-col">
-              <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/70 bg-background/90 px-4 backdrop-blur-sm">
+        <SidebarInset className="h-svh min-h-0 min-w-0 overflow-hidden">
+          <div className="flex h-full min-h-0 min-w-0 flex-1">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <header className="z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/70 bg-background/90 px-4 backdrop-blur-sm">
                 <SidebarTrigger className="-ml-1" />
                 <Separator orientation="vertical" className="h-4" />
                 <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
@@ -153,7 +153,7 @@ export function AppShell({
                   <ThemeToggle />
                 </div>
               </header>
-              <div className="flex flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 py-6 sm:px-6 lg:px-8">
                 {children}
               </div>
             </div>

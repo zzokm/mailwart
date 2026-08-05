@@ -1,17 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { useChat } from "@ai-sdk/react"
 import {
   DefaultChatTransport,
-  isToolUIPart,
   lastAssistantMessageIsCompleteWithApprovalResponses,
   type UIMessage,
 } from "ai"
 
 import { useLgUp } from "@/hooks/use-lg-up"
-import { readNavIntent, type CopilotNavIntent } from "@/lib/copilot/tool-ui"
+import type { CopilotConversationSummary } from "@/lib/copilot/history-store"
 
 const STORAGE_OPEN_KEY = "mailwart_copilot_open"
 const KEYBOARD_SHORTCUT = "j"
@@ -34,8 +33,14 @@ type CopilotContextValue = {
   regenerate: CopilotChat["regenerate"]
   clearError: CopilotChat["clearError"]
   respondToApproval: CopilotChat["addToolApprovalResponse"]
-  /** Clear the transcript and start a fresh run. */
-  reset: () => void
+  conversationId: string | null
+  conversations: CopilotConversationSummary[]
+  historyLoading: boolean
+  historyError: string | null
+  model: { provider: string; model: string } | null
+  newConversation: () => Promise<void>
+  openConversation: (id: string) => Promise<void>
+  deleteConversation: (id: string) => Promise<void>
 }
 
 const CopilotContext = React.createContext<CopilotContextValue | null>(null)
@@ -59,7 +64,7 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     try {
       const stored = localStorage.getItem(STORAGE_OPEN_KEY)
       if (stored === "1" && window.innerWidth >= 1024) {
-        setOpenState(true)
+        queueMicrotask(() => setOpenState(true))
       }
     } catch {
       /* ignore quota / private mode */
@@ -130,29 +135,173 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
   })
 
-  const router = useRouter()
   const pathname = usePathname()
-  const navigatedCalls = React.useRef<Set<string>>(new Set())
+  const [conversationId, setConversationId] = React.useState<string | null>(null)
+  const [conversations, setConversations] = React.useState<
+    CopilotConversationSummary[]
+  >([])
+  const [historyLoading, setHistoryLoading] = React.useState(true)
+  const [historyError, setHistoryError] = React.useState<string | null>(null)
+  const [model, setModel] = React.useState<{
+    provider: string
+    model: string
+  } | null>(null)
+  const loadingConversation = React.useRef(false)
 
-  // §16.8 — tools emit an allowlisted href; the left workspace follows while the
-  // panel keeps streaming. Each tool call is applied at most once.
-  React.useEffect(() => {
-    let target: CopilotNavIntent | null = null
-
-    for (const message of messages) {
-      if (message.role !== "assistant") continue
-      for (const part of message.parts) {
-        if (!isToolUIPart(part) || part.state !== "output-available") continue
-        if (navigatedCalls.current.has(part.toolCallId)) continue
-        navigatedCalls.current.add(part.toolCallId)
-        const intent = readNavIntent(part.output)
-        if (intent) target = intent
-      }
+  const refreshIndex = React.useCallback(async () => {
+    const response = await fetch("/api/copilot/conversations", {
+      cache: "no-store",
+    })
+    if (!response.ok) throw new Error("Could not load conversation history.")
+    const data = (await response.json()) as {
+      conversations: CopilotConversationSummary[]
+      model: { provider: string; model: string }
     }
+    setConversations(data.conversations)
+    setModel(data.model)
+    return data.conversations
+  }, [])
 
-    if (!target || target.href === pathname) return
-    router.push(target.href)
-  }, [messages, pathname, router])
+  const loadConversation = React.useCallback(
+    async (id: string) => {
+      loadingConversation.current = true
+      try {
+        const response = await fetch(`/api/copilot/conversations/${id}`, {
+          cache: "no-store",
+        })
+        if (!response.ok) throw new Error("Could not open that conversation.")
+        const data = (await response.json()) as { messages: UIMessage[] }
+        await stop()
+        clearError()
+        setMessages(data.messages)
+        setConversationId(id)
+        setHistoryError(null)
+      } finally {
+        queueMicrotask(() => {
+          loadingConversation.current = false
+        })
+      }
+    },
+    [clearError, setMessages, stop]
+  )
+
+  const newConversation = React.useCallback(async () => {
+    setHistoryError(null)
+    const response = await fetch("/api/copilot/conversations", {
+      method: "POST",
+    })
+    if (!response.ok) {
+      setHistoryError("Could not start a new conversation.")
+      return
+    }
+    const created = (await response.json()) as CopilotConversationSummary
+    loadingConversation.current = true
+    await stop()
+    clearError()
+    setMessages([])
+    setConversationId(created.id)
+    setConversations((current) => [
+      created,
+      ...current.filter((item) => item.id !== created.id),
+    ])
+    queueMicrotask(() => {
+      loadingConversation.current = false
+    })
+  }, [clearError, setMessages, stop])
+
+  const openConversation = React.useCallback(
+    async (id: string) => {
+      if (id === conversationId) return
+      try {
+        await loadConversation(id)
+      } catch (error) {
+        setHistoryError(
+          error instanceof Error ? error.message : "Could not open conversation."
+        )
+      }
+    },
+    [conversationId, loadConversation]
+  )
+
+  const deleteConversation = React.useCallback(
+    async (id: string) => {
+      const response = await fetch(`/api/copilot/conversations/${id}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) {
+        setHistoryError("Could not delete that conversation.")
+        return
+      }
+      const remaining = conversations.filter((item) => item.id !== id)
+      setConversations(remaining)
+      if (id === conversationId) {
+        if (remaining[0]) await loadConversation(remaining[0].id)
+        else await newConversation()
+      }
+    },
+    [conversationId, conversations, loadConversation, newConversation]
+  )
+
+  React.useEffect(() => {
+    let cancelled = false
+    queueMicrotask(() => {
+      void refreshIndex()
+        .then(async (items) => {
+          if (cancelled) return
+          if (items[0]) await loadConversation(items[0].id)
+          else await newConversation()
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setHistoryError(
+              error instanceof Error ? error.message : "History unavailable."
+            )
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setHistoryLoading(false)
+        })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [loadConversation, newConversation, refreshIndex])
+
+  React.useEffect(() => {
+    if (!conversationId || loadingConversation.current || historyLoading) return
+    const timer = window.setTimeout(() => {
+      void fetch(`/api/copilot/conversations/${conversationId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages }),
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error()
+          return response.json() as Promise<CopilotConversationSummary>
+        })
+        .then((saved) => {
+          setConversations((current) =>
+            [saved, ...current.filter((item) => item.id !== saved.id)].sort(
+              (a, b) => b.updatedAt.localeCompare(a.updatedAt)
+            )
+          )
+          setHistoryError(null)
+        })
+        .catch(() => setHistoryError("Conversation changes could not be saved."))
+    }, status === "streaming" ? 800 : 250)
+    return () => window.clearTimeout(timer)
+  }, [conversationId, historyLoading, messages, status])
+
+  React.useEffect(() => {
+    queueMicrotask(() => void refreshIndex().catch(() => undefined))
+  }, [pathname, refreshIndex])
+
+  React.useEffect(() => {
+    const refresh = () => void refreshIndex().catch(() => undefined)
+    window.addEventListener("mailwart:copilot-settings-changed", refresh)
+    return () =>
+      window.removeEventListener("mailwart:copilot-settings-changed", refresh)
+  }, [refreshIndex])
 
   const send = React.useCallback(
     (text: string) => {
@@ -164,13 +313,6 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     },
     [sendMessage, stop]
   )
-
-  const reset = React.useCallback(() => {
-    stop()
-    navigatedCalls.current.clear()
-    clearError()
-    setMessages([])
-  }, [clearError, setMessages, stop])
 
   const value = React.useMemo(
     () => ({
@@ -186,7 +328,14 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       regenerate,
       clearError,
       respondToApproval: addToolApprovalResponse,
-      reset,
+      conversationId,
+      conversations,
+      historyLoading,
+      historyError,
+      model,
+      newConversation,
+      openConversation,
+      deleteConversation,
     }),
     [
       open,
@@ -201,7 +350,14 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       regenerate,
       clearError,
       addToolApprovalResponse,
-      reset,
+      conversationId,
+      conversations,
+      historyLoading,
+      historyError,
+      model,
+      newConversation,
+      openConversation,
+      deleteConversation,
     ]
   )
 
