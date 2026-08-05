@@ -34,6 +34,23 @@ export type AccountQuotas = Record<string, number | string | unknown>
  */
 export type AccountAliases = Record<string, unknown> | unknown[] | null
 
+/** App password for SMTP/IMAP clients — secret shown only at create time. */
+export type AppPassword = {
+  id: string
+  description: string
+  createdAt?: string
+  expiresAt?: string | null
+}
+
+/**
+ * 2FA / TOTP status derived from Account credentials probe.
+ * `unknown` = live shape not confirmed — show Admin deep-link.
+ */
+export type TwoFactorStatus = {
+  state: "enabled" | "disabled" | "unknown"
+  note?: string
+}
+
 export type StalwartAccount = {
   id: string
   name: string
@@ -43,6 +60,13 @@ export type StalwartAccount = {
   quotas?: AccountQuotas
   aliases?: AccountAliases
   roles?: unknown
+  /** When false, mailbox is suspended (login/routing blocked when API supports it). */
+  isEnabled?: boolean
+  /** Server-set used disk bytes when Account/get exposes usedDiskQuota. */
+  usedDiskQuota?: number
+  /** App passwords when mock or credentials probe succeeded. */
+  appPasswords?: AppPassword[]
+  twoFactor?: TwoFactorStatus
   /** Computed full address for UI — never bare local-part alone. */
   email: string
   domainName?: string

@@ -13,8 +13,11 @@ const ACCOUNT_PROPS = [
   "domainId",
   "emails",
   "quotas",
+  "usedDiskQuota",
   "aliases",
   "roles",
+  "isEnabled",
+  "credentials",
 ] as const
 
 export async function queryAccounts(
@@ -157,6 +160,7 @@ export async function updateAccount(
   patch: Partial<{
     description: string
     quotas: Record<string, unknown>
+    isEnabled: boolean
   }>
 ): Promise<void> {
   const r = await jmapCall([

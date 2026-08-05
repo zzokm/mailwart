@@ -17,8 +17,10 @@ import {
 import {
   bulkCreateAccounts,
   createAccount,
+  createAppPasswordLive,
   createDomain,
   destroyAccount,
+  destroyAppPasswordLive,
   destroyDomain,
   getAccount,
   getDomain,
@@ -27,12 +29,14 @@ import {
   mockHealth,
   parseEmailAddress,
   queryAccounts,
+  queryAppPasswordsLive,
   queryDomains,
   StalwartError,
   updateAccount,
   updateAccountPassword,
   updateDomain,
   type ActionResult,
+  type AppPassword,
   type BulkImportResultRow,
   type DataSource,
   type DkimGeneratedRecord,
@@ -43,6 +47,7 @@ import {
   type OverviewStats,
   type StalwartAccount,
   type StalwartDomain,
+  type TwoFactorStatus,
 } from "@/lib/stalwart"
 import { jmapCall } from "@/lib/stalwart/client"
 
@@ -602,9 +607,14 @@ export async function getMailboxDetailAction(id: string): Promise<
     domains: StalwartDomain[]
     roundcubeUrl: string
     aliasesEditable: boolean
+    appPasswords: AppPassword[]
+    appPasswordsMutable: boolean
+    twoFactor: TwoFactorStatus
+    adminUiUrl: string
   }>
 > {
   const src = source()
+  const adminUiUrl = getStalwartAdminUiUrl()
   try {
     if (src === "mock") {
       const store = getMockStore()
@@ -619,6 +629,10 @@ export async function getMailboxDetailAction(id: string): Promise<
           roundcubeUrl: buildRoundcubeUrl(account.email),
           // TODO: enable after live Account/get aliases shape probe
           aliasesEditable: false,
+          appPasswords: account.appPasswords ?? [],
+          appPasswordsMutable: true,
+          twoFactor: account.twoFactor ?? { state: "disabled" },
+          adminUiUrl,
         },
         src
       )
@@ -629,12 +643,27 @@ export async function getMailboxDetailAction(id: string): Promise<
     if (!account) {
       return fail(new StalwartError("Mailbox not found.", "not_found"), src)
     }
+
+    const liveList = await queryAppPasswordsLive(id)
+    const appPasswords = liveList ?? account.appPasswords ?? []
+    const appPasswordsMutable = liveList != null
+    const twoFactor: TwoFactorStatus =
+      account.twoFactor ??
+      ({
+        state: "unknown",
+        note: "TODO: Confirm OtpAuth / Password.otpAuth shape on live Account/get.",
+      } satisfies TwoFactorStatus)
+
     return ok(
       {
         account,
         domains,
         roundcubeUrl: buildRoundcubeUrl(account.email),
         aliasesEditable: false,
+        appPasswords,
+        appPasswordsMutable,
+        twoFactor,
+        adminUiUrl,
       },
       src
     )
@@ -689,11 +718,14 @@ export async function createMailboxAction(input: {
         domainId: domain.id,
         email,
         domainName: domain.name,
+        isEnabled: true,
         quotas:
           input.diskQuotaBytes != null
             ? { diskQuota: input.diskQuotaBytes }
             : {},
         aliases: {},
+        appPasswords: [],
+        twoFactor: { state: "disabled" },
       }
       store.setAccounts([...store.accounts, account])
       return ok(account, src)
@@ -723,7 +755,11 @@ export async function createMailboxAction(input: {
 
 export async function updateMailboxAction(
   id: string,
-  patch: { description?: string; diskQuotaBytes?: number | null }
+  patch: {
+    description?: string
+    diskQuotaBytes?: number | null
+    isEnabled?: boolean
+  }
 ): Promise<ActionResult<void>> {
   const denied = await denyUnlessAuthed<void>()
   if (denied) return denied
@@ -745,6 +781,8 @@ export async function updateMailboxAction(
           ...a,
           description: patch.description ?? a.description,
           quotas: quotas ?? a.quotas,
+          isEnabled:
+            patch.isEnabled === undefined ? a.isEnabled : patch.isEnabled,
         }
       })
       if (!next.some((a) => a.id === id)) {
@@ -757,7 +795,107 @@ export async function updateMailboxAction(
     await updateAccount(id, {
       ...(patch.description != null ? { description: patch.description } : {}),
       ...(quotas != null ? { quotas } : {}),
+      ...(patch.isEnabled !== undefined ? { isEnabled: patch.isEnabled } : {}),
     })
+    return ok(undefined, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function createAppPasswordAction(
+  accountId: string,
+  description: string
+): Promise<ActionResult<{ password: AppPassword; secret: string }>> {
+  const denied = await denyUnlessAuthed<{
+    password: AppPassword
+    secret: string
+  }>()
+  if (denied) return denied
+
+  const src = source()
+  const label = description.trim()
+  if (!label) {
+    return fail(
+      new StalwartError("Describe the client (e.g. Thunderbird).", "validation"),
+      src
+    )
+  }
+
+  try {
+    if (src === "mock") {
+      const store = getMockStore()
+      const account = store.accounts.find((a) => a.id === accountId)
+      if (!account) {
+        return fail(new StalwartError("Mailbox not found.", "not_found"), src)
+      }
+      const secret = `mw-${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`
+      const password: AppPassword = {
+        id: `ap-${crypto.randomUUID().slice(0, 8)}`,
+        description: label,
+        createdAt: new Date().toISOString(),
+        expiresAt: null,
+      }
+      store.setAccounts(
+        store.accounts.map((a) =>
+          a.id === accountId
+            ? { ...a, appPasswords: [...(a.appPasswords ?? []), password] }
+            : a
+        )
+      )
+      return ok({ password, secret }, src)
+    }
+
+    const created = await createAppPasswordLive({
+      accountId,
+      description: label,
+    })
+    if (!created.secret) {
+      return fail(
+        new StalwartError(
+          "App password created but secret was not returned. Copy it from Stalwart Admin if shown there.",
+          "jmap"
+        ),
+        src
+      )
+    }
+    return ok({ password: created.password, secret: created.secret }, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function revokeAppPasswordAction(
+  accountId: string,
+  appPasswordId: string
+): Promise<ActionResult<void>> {
+  const denied = await denyUnlessAuthed<void>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    if (src === "mock") {
+      const store = getMockStore()
+      const account = store.accounts.find((a) => a.id === accountId)
+      if (!account) {
+        return fail(new StalwartError("Mailbox not found.", "not_found"), src)
+      }
+      store.setAccounts(
+        store.accounts.map((a) =>
+          a.id === accountId
+            ? {
+                ...a,
+                appPasswords: (a.appPasswords ?? []).filter(
+                  (p) => p.id !== appPasswordId
+                ),
+              }
+            : a
+        )
+      )
+      return ok(undefined, src)
+    }
+
+    await destroyAppPasswordLive(appPasswordId)
     return ok(undefined, src)
   } catch (err) {
     return fail(err, src)

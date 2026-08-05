@@ -22,6 +22,12 @@ export {
 export { hydrateAccounts, parseEmailAddress, resolveAccountEmail } from "./email"
 export { buildDnsChecklist, getDomainDnsHealth } from "./dns"
 export {
+  queryAppPasswordsLive,
+  createAppPasswordLive,
+  destroyAppPasswordLive,
+} from "./app-passwords"
+export { probeAccountCredentials } from "./credentials"
+export {
   MOCK_DOMAINS,
   MOCK_ACCOUNTS,
   mockDomainList,

@@ -1,4 +1,5 @@
-import type { StalwartAccount, StalwartDomain } from "./types"
+import { probeAccountCredentials } from "./credentials"
+import type { AccountQuotas, StalwartAccount, StalwartDomain } from "./types"
 
 /** Normalize emails field from Account/get (array | dict | objects). */
 export function collectEmailCandidates(account: {
@@ -82,6 +83,31 @@ export function hydrateAccounts(
 ): StalwartAccount[] {
   const domainsById = new Map(domains.map((d) => [d.id, d]))
   return raw.map((item) => {
+    const usedDiskQuota =
+      typeof item.usedDiskQuota === "number" ? item.usedDiskQuota : undefined
+    const rawQuotas =
+      item.quotas && typeof item.quotas === "object"
+        ? ({ ...(item.quotas as Record<string, unknown>) } as AccountQuotas)
+        : ({} as AccountQuotas)
+
+    // Normalize maxDiskQuota / usedDiskQuota into QuotaBar keys.
+    const diskFromMap =
+      typeof rawQuotas.diskQuota === "number"
+        ? rawQuotas.diskQuota
+        : typeof rawQuotas.maxDiskQuota === "number"
+          ? rawQuotas.maxDiskQuota
+          : undefined
+    if (diskFromMap != null) rawQuotas.diskQuota = diskFromMap
+    if (usedDiskQuota != null) rawQuotas.diskUsed = usedDiskQuota
+    else if (
+      typeof rawQuotas.diskUsed !== "number" &&
+      typeof rawQuotas.used === "number"
+    ) {
+      rawQuotas.diskUsed = rawQuotas.used
+    }
+
+    const credProbe = probeAccountCredentials(item.credentials)
+
     const base = {
       id: String(item.id),
       name: String(item.name ?? ""),
@@ -89,12 +115,16 @@ export function hydrateAccounts(
         typeof item.description === "string" ? item.description : undefined,
       domainId: typeof item.domainId === "string" ? item.domainId : undefined,
       emails: item.emails,
-      quotas:
-        item.quotas && typeof item.quotas === "object"
-          ? (item.quotas as Record<string, unknown>)
-          : undefined,
+      quotas: Object.keys(rawQuotas).length > 0 ? rawQuotas : undefined,
       aliases: (item.aliases as StalwartAccount["aliases"]) ?? null,
       roles: item.roles,
+      isEnabled:
+        typeof item.isEnabled === "boolean" ? item.isEnabled : true,
+      usedDiskQuota,
+      appPasswords: credProbe.credentialsPresent
+        ? credProbe.appPasswords
+        : undefined,
+      twoFactor: credProbe.twoFactor,
     }
     const { email, domainName } = resolveAccountEmail(base, domainsById)
     const isAdmin =

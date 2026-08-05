@@ -196,8 +196,11 @@ export function MailboxTable({
                 <TableHead className="hidden font-mono text-[10px] uppercase tracking-[0.14em] md:table-cell">
                   Domain
                 </TableHead>
+                <TableHead className="hidden font-mono text-[10px] uppercase tracking-[0.14em] sm:table-cell">
+                  Status
+                </TableHead>
                 <TableHead className="hidden font-mono text-[10px] uppercase tracking-[0.14em] lg:table-cell">
-                  Quota
+                  Space
                 </TableHead>
                 <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-right">
                   Actions
@@ -205,8 +208,13 @@ export function MailboxTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((a) => (
-                <TableRow key={a.id}>
+              {filtered.map((a) => {
+                const suspended = a.isEnabled === false
+                return (
+                <TableRow
+                  key={a.id}
+                  className={suspended ? "opacity-70" : undefined}
+                >
                   <TableCell>
                     <Checkbox
                       checked={selected.has(a.id)}
@@ -233,6 +241,14 @@ export function MailboxTable({
                   <TableCell className="hidden font-mono text-[12px] text-muted-foreground md:table-cell">
                     {a.domainName ?? "-"}
                   </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    <Badge
+                      variant={suspended ? "destructive" : "outline"}
+                      className="font-mono text-[10px]"
+                    >
+                      {suspended ? "suspended" : "active"}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="hidden lg:table-cell">
                     <QuotaBar quotas={a.quotas} />
                   </TableCell>
@@ -253,7 +269,8 @@ export function MailboxTable({
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                )
+              })}
             </TableBody>
           </Table>
         </div>

@@ -46,13 +46,21 @@ export default async function MailboxDetailPage({
     )
   }
 
-  const { account, roundcubeUrl, aliasesEditable } = result.data
+  const {
+    account,
+    roundcubeUrl,
+    aliasesEditable,
+    appPasswords,
+    appPasswordsMutable,
+    twoFactor,
+    adminUiUrl,
+  } = result.data
 
   return (
     <div>
       <PageHeader
         title={account.email}
-        description="Password reset, quota, aliases, Roundcube."
+        description="Suspend, quota, app passwords, 2FA status, Roundcube SSO."
         breadcrumbs={[
           DASHBOARD_CRUMB,
           MAILBOXES_CRUMB,
@@ -79,6 +87,10 @@ export default async function MailboxDetailPage({
         account={account}
         roundcubeUrl={roundcubeUrl}
         aliasesEditable={aliasesEditable}
+        appPasswords={appPasswords}
+        appPasswordsMutable={appPasswordsMutable}
+        twoFactor={twoFactor}
+        adminUiUrl={adminUiUrl}
       />
     </div>
   )
