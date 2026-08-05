@@ -507,7 +507,7 @@ function ForwardsSection({
             onValueChange={(v) => setScope((v as "user" | "domain") ?? "user")}
             disabled={pending}
           >
-            <SelectTrigger className="font-mono text-[13px]">
+            <SelectTrigger className="w-full font-mono text-[13px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -527,7 +527,7 @@ function ForwardsSection({
             onValueChange={(v) => setDomainId(v ?? "")}
             disabled={pending}
           >
-            <SelectTrigger className="font-mono text-[13px]">
+            <SelectTrigger className="w-full font-mono text-[13px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

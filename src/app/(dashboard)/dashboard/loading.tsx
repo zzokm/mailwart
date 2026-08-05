@@ -9,10 +9,10 @@ export default function OverviewLoading() {
         <Skeleton className="h-4 w-72 max-w-full" />
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border/80">
-        <div className="grid grid-cols-2 divide-x divide-y divide-border/50 lg:grid-cols-4 lg:divide-y-0">
+      <div className="overflow-hidden rounded-xl border border-border/80 bg-surface">
+        <div className="grid grid-cols-2 gap-px bg-border/50 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="space-y-2 px-4 py-4 sm:px-5">
+            <div key={i} className="space-y-2 bg-surface px-4 py-4 sm:px-5">
               <Skeleton className="h-2.5 w-16" />
               <Skeleton className="h-7 w-12" />
             </div>

@@ -131,10 +131,10 @@ export default async function OverviewPage() {
       ) : null}
 
       <section className="overflow-hidden rounded-xl border border-border/80 bg-surface">
-        <div className="grid grid-cols-2 divide-x divide-y divide-border/50 lg:grid-cols-4 lg:divide-y-0">
+        <div className="grid grid-cols-2 gap-px bg-border/50 lg:grid-cols-4">
           {metrics.map((m) => {
             const inner = (
-              <div className="px-4 py-4 sm:px-5">
+              <div className="h-full bg-surface px-4 py-4 sm:px-5">
                 <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
                   {m.label}
                 </div>

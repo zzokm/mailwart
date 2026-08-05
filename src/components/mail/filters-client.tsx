@@ -325,7 +325,7 @@ function AutorespondersSection({
               onValueChange={(v) => setAccountId(v ?? "")}
               disabled={pending || accounts.length === 0}
             >
-              <SelectTrigger className="font-mono text-[13px]">
+              <SelectTrigger className="w-full font-mono text-[13px]">
                 <SelectValue placeholder="Select mailbox" />
               </SelectTrigger>
               <SelectContent>
@@ -580,7 +580,7 @@ function FiltersSection({
               onValueChange={(v) => setScope((v as FilterScope) ?? "user")}
               disabled={pending}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -601,7 +601,7 @@ function FiltersSection({
                 onValueChange={(v) => setAccountId(v ?? "")}
                 disabled={pending || accounts.length === 0}
               >
-                <SelectTrigger className="font-mono text-[13px]">
+                <SelectTrigger className="w-full font-mono text-[13px]">
                   <SelectValue placeholder="Select mailbox" />
                 </SelectTrigger>
                 <SelectContent>
@@ -645,7 +645,7 @@ function FiltersSection({
               }
               disabled={pending}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -667,7 +667,7 @@ function FiltersSection({
               }
               disabled={pending}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -712,7 +712,7 @@ function FiltersSection({
               }
               disabled={pending}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
