@@ -169,3 +169,19 @@ Runtime races and persistence defaults are specified. Secret handling and mobile
 ### Pass 3 verdict
 
 Copilot architecture is edge-aware and C1-scoped. Ready to implement the sliding panel shell. **No git push** until Copilot C1–C5 complete.
+
+---
+
+## Copilot C2 — Multi-provider (2026-08-05)
+
+### Delivered
+- Provider catalog (10): OpenAI, Anthropic, Google, Cerebras, Groq, Mistral, DeepSeek, Moonshot, Ollama, OpenRouter.
+- Env-first resolve (`COPILOT_*`); Settings JSON fallback under `data/` (gitignored); UI shows last-4 only.
+- Dynamic model list via provider APIs; preference persisted server-side.
+- `getCopilotLanguageModelConfig()` thin adapter for Phase 3–4 Vercel AI SDK.
+- `.env.example` placeholders; Settings section on `/dashboard/settings`.
+
+### Non-goals held
+- No vault/DI framework; no `NEXT_PUBLIC_*` keys; no chat/stream yet (C4); no tool registry (C3).
+
+**No git push.**

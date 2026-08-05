@@ -4,16 +4,21 @@ import { ExternalLink } from "lucide-react"
 import { DASHBOARD_CRUMB } from "@/components/layout/breadcrumbs"
 import { DataSourceBanner } from "@/components/layout/data-source-banner"
 import { PageHeader } from "@/components/layout/page-header"
+import { CopilotSettingsClient } from "@/components/mail/copilot-settings-client"
 import { ErrorState } from "@/components/mail/empty-state"
 import { Button } from "@/components/ui/button"
 import { logoutAction } from "@/lib/actions/auth"
+import { getCopilotSettingsAction } from "@/lib/actions/copilot"
 import { getSettingsAction } from "@/lib/actions/mail"
 
 export const metadata: Metadata = { title: "Settings" }
 export const runtime = "nodejs"
 
 export default async function SettingsPage() {
-  const result = await getSettingsAction()
+  const [result, copilotResult] = await Promise.all([
+    getSettingsAction(),
+    getCopilotSettingsAction(),
+  ])
 
   if (!result.ok) {
     return (
@@ -33,12 +38,29 @@ export default async function SettingsPage() {
     <div>
       <PageHeader
         title="Settings"
-        description="Integrated webmail, Stalwart host, and danger zone."
+        description="Integrated webmail, Stalwart host, Copilot providers, and danger zone."
         breadcrumbs={[DASHBOARD_CRUMB, { label: "Settings" }]}
       />
       <DataSourceBanner source={result.source} />
 
       <div className="grid max-w-2xl gap-4">
+        <section className="rounded-xl border border-border/80 p-4 sm:p-5">
+          <h2 className="text-sm font-medium">mailwart Copilot</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Choose a provider and model. API keys stay server-side (Dokploy env
+            preferred; Settings store is a fallback under{" "}
+            <code className="font-mono text-[12px]">data/copilot-settings.json</code>
+            ).
+          </p>
+          <div className="mt-4">
+            {copilotResult.ok ? (
+              <CopilotSettingsClient initial={copilotResult.data} />
+            ) : (
+              <p className="text-sm text-destructive">{copilotResult.error}</p>
+            )}
+          </div>
+        </section>
+
         <section className="rounded-xl border border-border/80 p-4 sm:p-5">
           <h2 className="text-sm font-medium">Connections</h2>
           <dl className="mt-4 space-y-3 text-sm">
