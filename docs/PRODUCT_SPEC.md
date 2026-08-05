@@ -30,7 +30,7 @@ Mail on this VPS is already healthy (Stalwart + Roundcube + DNS). Day-to-day pai
 2. **Full email addresses everywhere.** Multi-domain local-parts are ambiguous.
 3. **Partial success is honest.** Bulk ops report per-row outcomes.
 4. **Danger is labeled.** Password policy / destroy domain / delete catch target.
-5. **Roundcube is a door, not a tunnel.** No fake SSO.
+5. **Roundcube SSO is explicit and short-lived.** Signed tokens select a mailbox; server-only Stalwart impersonation performs mail authentication.
 6. **Minimum surface.** Prefer one good mailboxes table over five overlapping pages.
 
 ---
@@ -97,7 +97,7 @@ No top-level `/aliases` in v1 — aliases belong to mailbox detail.
 
 **Delete:** typed full email confirm; block if account is domain catch-all target.
 
-**Open Roundcube:** new tab; copy-email affordance; tooltip about password.
+**Open Roundcube:** new tab already authenticated as the selected mailbox; copy-email remains available.
 
 ### 5.4 Bulk import
 
@@ -164,7 +164,7 @@ Matches Architecture §8. Concrete component jobs:
 | Catch-all → missing mailbox | Block save; explain |
 | Delete catch mailbox | Block; must clear/retarget catch-all first |
 | Roundcube down | Soft warning; link still available |
-| Prefill Roundcube user | Best-effort; always tell user password is required |
+| Roundcube SSO unavailable | Show the route error; never fall back to exposing a mailbox or impersonator password |
 | Duplicate `hi@yehia.dev` create | Skip or fail clearly in bulk; single create shows conflict |
 | Admin account in list | Badge; destroy disabled or dual-confirm |
 | Domain filter empty | Empty state, not error |
@@ -179,7 +179,7 @@ Matches Architecture §8. Concrete component jobs:
 **Known mailboxes (non-exhaustive; live query is source of truth):**  
 hi@, me@, noreply@ on yehia.dev; coolify@, support@, appflowy@, games@ on zokm.me; catch@ on each domain (catch-all).
 
-**Webmail login:** full email + mailbox password at https://mail.zokm.me  
+**Webmail:** integrated at https://email.yehia.dev/webmail/; mailbox buttons use signed SSO.
 
 **Admin UI:** https://mail.yehia.dev/admin  
 

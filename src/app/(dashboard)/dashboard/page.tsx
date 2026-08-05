@@ -83,7 +83,7 @@ export default async function OverviewPage() {
               render={<a href={roundcubeUrl} target="_blank" rel="noreferrer" />}
             >
               <ExternalLink data-icon="inline-start" />
-              Roundcube
+              Webmail
             </Button>
           </>
         }

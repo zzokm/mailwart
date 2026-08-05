@@ -2,7 +2,7 @@
 
 > Phase 1 foundation doc. App: `d:\Yehia Uni\vpsredo\email-manager`  
 > Stack target: **Stalwart v0.16.16** (JMAP management) + **Roundcube 1.6.11**  
-> Live endpoints: Admin/API `https://mail.yehia.dev`, Webmail `https://mail.zokm.me`  
+> Live endpoints: Admin/API `https://mail.yehia.dev`, Webmail `https://email.yehia.dev/webmail/`
 > Domains: `yehia.dev`, `hiy.me`, `zokm.me`, `restoqd.com`  
 > Dokploy project: **Email**
 
@@ -27,7 +27,7 @@
 | Stalwart image `stalwartlabs/stalwart:v0.16.16` | **REST `/api/...` is gone.** All management is JMAP at `/jmap` with capability `urn:stalwart:jmap`. |
 | Public admin URL `https://mail.yehia.dev`; HTTP API also on VPS `127.0.0.1:8080` | Dashboard server talks to Stalwart via `STALWART_JMAP_URL` (prefer private URL when co-located; public HTTPS when remote). |
 | Admin principal `admin@zokm.me`; bootstrap/recovery historically used bare `admin` via `STALWART_RECOVERY_ADMIN` | Env must use the **current** admin email principal for JMAP. App stores Stalwart admin creds **server-side** only; never ship them to the browser. |
-| Roundcube at `https://mail.zokm.me` | Separate origin; login is full email + mailbox password. No shared SSO out of the box. |
+| Roundcube at `https://email.yehia.dev/webmail/` | Same-origin sibling service. A custom plugin verifies Email Manager tokens and uses Stalwart impersonation for IMAP/SMTP. |
 | Traefik terminates TLS for both | Dashboard will also sit behind Traefik/Dokploy when deployed (Phase later). |
 | Catch-all mailboxes `catch@{domain}` + `Domain.catchAllAddress` already provisioned | Dashboard must treat catch-all as a first-class domain setting, not an afterthought. |
 | Proven scripts in `scripts/mail-restore/` | Integration layer must mirror their JMAP shapes (`x:Domain/*`, `x:Account/*`, `x:Authentication/*`). |
@@ -52,8 +52,8 @@
                                                     │ IMAP/SMTP/Sieve
                                                     ▼
                                        ┌──────────────────────────┐
-                                       │ Roundcube (deep-link)    │
-                                       │ mail.zokm.me             │
+                                       │ Roundcube (integrated)   │
+                                       │ /webmail                 │
                                        └──────────────────────────┘
 ```
 
@@ -289,18 +289,18 @@ SameSite cookies + Next.js Server Actions origin checks. For cookie-auth POST AP
 
 ---
 
-## 7. Roundcube integration (deep-link only)
+## 7. Roundcube integration
 
 | Capability | Support |
 |------------|---------|
-| Open webmail home | `ROUNDCUBE_URL` → `https://mail.zokm.me/` |
-| Prefill username | Roundcube accepts `_user` on login form; **cannot** safely deep-link password. Link: `https://mail.zokm.me/?_user=me%40yehia.dev` (best-effort; Roundcube may ignore query). |
-| SSO / auto-login | **Not supported** without custom Roundcube plugin or shared secret handshake. Out of scope. Document limitation in UI: “Opens Roundcube; user must enter mailbox password.” |
-| Per-mailbox “Open” | Button opens new tab to Roundcube; clipboard helper for email address only. |
+| Open webmail home | `ROUNDCUBE_URL` → `https://email.yehia.dev/webmail/` |
+| SSO token | Authenticated `/api/webmail/sso` signs mailbox, expiry, and nonce with `WEBMAIL_SSO_SECRET`; lifetime is 30 seconds. |
+| IMAP/SMTP auth | `em_sso` verifies the token and authenticates as `target%impersonator` using server-only Stalwart credentials. |
+| Per-mailbox “Open” | Button opens a new tab already authenticated as that mailbox. No mailbox password is stored or sent to the browser. |
 | Health probe | Best-effort `GET ROUNDCUBE_URL/` expecting HTTP 200 HTML. **Never** POST login credentials from the dashboard health job. |
 
-Roundcube auth limitations to encode in product UX:
-- Separate cookie jar / origin from dashboard.
+Roundcube auth boundaries:
+- Roundcube keeps its own session cookie under `/webmail/`.
 - Session timeout independent of dashboard.
 - IMAP SSL to `stalwart-mail:993` is internal; dashboard must not assume Roundcube uptime equals Stalwart JMAP uptime — JMAP health is authoritative for admin ops; Roundcube health is advisory.
 
@@ -386,7 +386,10 @@ AppShell
 | `STALWART_ADMIN_USER` | yes | `admin@zokm.me` |
 | `STALWART_ADMIN_PASSWORD` | yes | from secrets — never commit |
 | `SESSION_SECRET` | yes | app session |
-| `ROUNDCUBE_URL` | yes | `https://mail.zokm.me` |
+| `ROUNDCUBE_URL` | yes | `https://email.yehia.dev/webmail/` |
+| `WEBMAIL_SSO_SECRET` | yes | Shared HMAC secret, at least 32 characters |
+| `ROUNDCUBE_DES_KEY` | yes | Roundcube session credential encryption key |
+| `WEBMAIL_IMPERSONATOR_USER` / `WEBMAIL_IMPERSONATOR_PASSWORD` | optional | Dedicated Stalwart principal with `impersonate`; compose falls back to `STALWART_ADMIN_*` |
 | `APP_ADMIN_USER` / `APP_ADMIN_PASSWORD` | recommended | dashboard login |
 
 Deploy later via Dokploy (same **Email** project or sibling). Phase 1: **no deploy**.

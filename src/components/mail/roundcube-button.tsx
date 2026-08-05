@@ -33,9 +33,8 @@ export function RoundcubeButton({
         Open webmail
       </TooltipTrigger>
       <TooltipContent className="max-w-xs text-xs">
-        Opens Roundcube
-        {email ? ` with ${email} prefilled` : ""}. Enter the mailbox password —
-        no SSO.
+        Opens {email ?? "this mailbox"} in Roundcube with a short-lived signed
+        login.
       </TooltipContent>
     </Tooltip>
   )

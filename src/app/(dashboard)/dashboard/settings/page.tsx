@@ -29,7 +29,7 @@ export default async function SettingsPage() {
     <div>
       <PageHeader
         title="Settings"
-        description="Roundcube deep-link target, Stalwart host, and danger zone."
+        description="Integrated webmail, Stalwart host, and danger zone."
       />
       <DataSourceBanner source={result.source} />
 
@@ -64,7 +64,7 @@ export default async function SettingsPage() {
               }
             >
               <ExternalLink data-icon="inline-start" />
-              Open Roundcube
+              Open Webmail
             </Button>
             <Button
               size="sm"

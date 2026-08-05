@@ -20,20 +20,20 @@ Next.js 16 App Router + Tailwind CSS v4 + shadcn/ui (Node runtime). Deploy targe
 
 ## Product Purpose
 
-A production admin dashboard for Stalwart domains, accounts (mailboxes), aliases, catch-alls, quotas, and passwords — with safe Roundcube deep-links for “open webmail.” Does not replace Stalwart Admin or Roundcube.
+A production admin dashboard for Stalwart domains, accounts (mailboxes), aliases, catch-alls, quotas, and passwords — with integrated Roundcube webmail and mailbox-scoped SSO. Does not replace Stalwart Admin or Roundcube.
 
 Success: create a mailbox in under 30s including password copy; bulk 50 accounts with clear failure report; catch-all editable without Stalwart Admin.
 
 ## Positioning
 
-Server truth is Stalwart JMAP (`urn:stalwart:jmap`). UI never invents mailbox state. Full email addresses everywhere. Roundcube is a door, not a tunnel (no fake SSO). Single-operator deployment against one Stalwart instance — not multi-tenant SaaS.
+Server truth is Stalwart JMAP (`urn:stalwart:jmap`). UI never invents mailbox state. Full email addresses everywhere. Roundcube SSO uses signed, short-lived tokens and Stalwart impersonation; mailbox passwords never enter the browser. Single-operator deployment against one Stalwart instance — not multi-tenant SaaS.
 
 ## Brand Commitments
 
 - Product host / brand surface: **email.yehia.dev**
 - Domains managed: `yehia.dev`, `hiy.me`, `zokm.me`, `restoqd.com`
 - Stalwart Admin: `https://mail.yehia.dev/admin`
-- Webmail: `https://mail.zokm.me`
+- Webmail: `https://email.yehia.dev/webmail/`
 - Voice: active, specific, no apology fluff
 
 ## Constraints
@@ -52,7 +52,7 @@ Server truth is Stalwart JMAP (`urn:stalwart:jmap`). UI never invents mailbox st
 | Domain | Stalwart `x:Domain` |
 | Mailbox / Account | Stalwart `x:Account` (User) |
 | Catch-all | `Domain.catchAllAddress` |
-| Roundcube | External webmail at mail.zokm.me |
+| Roundcube | Integrated webmail at email.yehia.dev/webmail |
 
 ## Evidence
 

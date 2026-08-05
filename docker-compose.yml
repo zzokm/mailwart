@@ -21,7 +21,8 @@ services:
       STALWART_ADMIN_USER: ${STALWART_ADMIN_USER}
       STALWART_ADMIN_PASSWORD: ${STALWART_ADMIN_PASSWORD}
       STALWART_ADMIN_UI_URL: ${STALWART_ADMIN_UI_URL:-https://mail.yehia.dev/admin}
-      ROUNDCUBE_URL: ${ROUNDCUBE_URL:-https://mail.zokm.me}
+      ROUNDCUBE_URL: ${ROUNDCUBE_URL:-https://email.yehia.dev/webmail}
+      WEBMAIL_SSO_SECRET: ${WEBMAIL_SSO_SECRET}
       APP_ADMIN_USER: ${APP_ADMIN_USER:-admin}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET}
@@ -33,9 +34,51 @@ services:
       - dokploy-network
       - stalwart-net
 
+  roundcube:
+    image: roundcube/roundcubemail:1.6.11-apache
+    restart: unless-stopped
+    environment:
+      ROUNDCUBEMAIL_DEFAULT_HOST: ssl://stalwart-mail
+      ROUNDCUBEMAIL_DEFAULT_PORT: "993"
+      ROUNDCUBEMAIL_SMTP_SERVER: tls://stalwart-mail
+      ROUNDCUBEMAIL_SMTP_PORT: "587"
+      ROUNDCUBEMAIL_PLUGINS: archive,zipdownload,managesieve,em_sso
+      ROUNDCUBEMAIL_SKIN: elastic
+      ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE: 25M
+      ROUNDCUBEMAIL_DB_TYPE: sqlite
+      ROUNDCUBEMAIL_MANAGESIEVE_HOST: tls://stalwart-mail
+      ROUNDCUBEMAIL_MANAGESIEVE_PORT: "4190"
+      ROUNDCUBEMAIL_REQUEST_PATH: /webmail/
+      ROUNDCUBEMAIL_DES_KEY: ${ROUNDCUBE_DES_KEY}
+      WEBMAIL_SSO_SECRET: ${WEBMAIL_SSO_SECRET}
+      WEBMAIL_IMPERSONATOR_USER: ${WEBMAIL_IMPERSONATOR_USER:-${STALWART_ADMIN_USER}}
+      WEBMAIL_IMPERSONATOR_PASSWORD: ${WEBMAIL_IMPERSONATOR_PASSWORD:-${STALWART_ADMIN_PASSWORD}}
+    volumes:
+      - roundcube_db:/var/roundcube/db
+      - ./roundcube/config:/var/roundcube/config:ro
+      - ./roundcube/plugins/em_sso:/var/www/html/plugins/em_sso:ro
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.email-manager-webmail.rule=Host(`email.yehia.dev`) && PathPrefix(`/webmail`)
+      - traefik.http.routers.email-manager-webmail.entrypoints=websecure
+      - traefik.http.routers.email-manager-webmail.tls.certresolver=letsencrypt
+      - traefik.http.routers.email-manager-webmail.priority=100
+      - traefik.http.routers.email-manager-webmail.middlewares=email-manager-webmail-strip
+      - traefik.http.routers.email-manager-webmail.service=email-manager-webmail
+      - traefik.http.middlewares.email-manager-webmail-strip.stripprefix.prefixes=/webmail
+      - traefik.http.services.email-manager-webmail.loadbalancer.server.port=80
+    networks:
+      - default
+      - dokploy-network
+      - stalwart-net
+
 networks:
   dokploy-network:
     external: true
   stalwart-net:
     name: email-stalwart-y2hydv_default
     external: true
+
+volumes:
+  roundcube_db:
