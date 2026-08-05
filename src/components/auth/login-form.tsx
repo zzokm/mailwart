@@ -5,11 +5,10 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
 import { Lock, Loader2 } from "lucide-react"
-import { toast } from "sonner"
 
 import { loginAction } from "@/lib/actions/auth"
+import { toastActionResult } from "@/lib/action-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -20,13 +19,9 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form"
+import { loginSchema, type LoginInput } from "@/lib/validations/auth"
 
-const loginSchema = z.object({
-  username: z.string().min(1, "Enter your admin username."),
-  password: z.string().min(1, "Enter your password."),
-})
-
-type LoginValues = z.infer<typeof loginSchema>
+type LoginValues = LoginInput
 
 export function LoginForm() {
   const router = useRouter()
@@ -40,8 +35,7 @@ export function LoginForm() {
   async function onSubmit(values: LoginValues) {
     setPending(true)
     const result = await loginAction(values)
-    if (!result.ok) {
-      toast.error(result.error)
+    if (!toastActionResult(result, { success: "Signed in." })) {
       setPending(false)
       return
     }

@@ -2,10 +2,10 @@
 
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
-import { toast } from "sonner"
 import { Plus } from "lucide-react"
 
 import { createDomainAction } from "@/lib/actions/mail"
+import { toastActionResult } from "@/lib/action-toast"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -34,10 +34,10 @@ export function CreateDomainDialog() {
         description: description || undefined,
       })
       if (!result.ok) {
-        toast.error(result.error)
+        toastActionResult(result, { success: "" })
         return
       }
-      toast.success(`Created ${result.data.name}.`)
+      toastActionResult(result, { success: `Created ${result.data.name}.` })
       setOpen(false)
       setName("")
       setDescription("")

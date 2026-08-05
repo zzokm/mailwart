@@ -7,6 +7,12 @@ import {
   type AuditEvent,
 } from "@/lib/audit"
 import {
+  dataSource as source,
+  failResult as fail,
+  okResult as ok,
+  validateInput,
+} from "@/lib/actions/result"
+import {
   AuthError,
   requireSession,
   sessionActor,
@@ -17,6 +23,37 @@ import {
   getRoundcubeUrl,
   hasStalwartConfig,
 } from "@/lib/env"
+import {
+  ADMIN_DESTROY_CONFIRM,
+  bulkResetPasswordsSchema,
+  bulkSuspendSchema,
+  bulkJobIdSchema,
+  commitBulkChunkSchema,
+  createAppPasswordSchema,
+  createDomainSchema,
+  createMailboxSchema,
+  destroyByIdSchema,
+  destroyDomainSchema,
+  destroyForwardingSchema,
+  destroyMailboxSchema,
+  generateDkimSchema,
+  generateDmarcSchema,
+  mailboxIdsSchema,
+  prepareBulkForwardingSchema,
+  prepareBulkMailboxSchema,
+  refreshDnsSchema,
+  resetMailboxPasswordSchema,
+  revokeAppPasswordSchema,
+  updateAliasesSchema,
+  updateCatchAllSchema,
+  updateDomainSchema,
+  updateMailboxSchema,
+  updateMailExchangerSchema,
+  updateSpamSettingsSchema,
+  upsertAutoresponderSchema,
+  upsertFilterRuleSchema,
+  upsertForwardingSchema,
+} from "@/lib/validations"
 import { hostFromUrl, quotaSummary } from "@/lib/format"
 import {
   abortJob,
@@ -99,24 +136,6 @@ import {
   type TwoFactorStatus,
 } from "@/lib/stalwart"
 import { jmapCall } from "@/lib/stalwart/client"
-
-function source(): DataSource {
-  return hasStalwartConfig() ? "live" : "mock"
-}
-
-function fail<T>(error: unknown, src: DataSource): ActionResult<T> {
-  const message =
-    error instanceof StalwartError
-      ? error.message
-      : error instanceof Error
-        ? error.message
-        : "Unexpected error."
-  return { ok: false, error: message, source: src }
-}
-
-function ok<T>(data: T, src: DataSource): ActionResult<T> {
-  return { ok: true, data, source: src }
-}
 
 /** Deny unauthenticated mutations. Returns an ActionResult on failure, null when ok. */
 async function denyUnlessAuthed<T>(): Promise<ActionResult<T> | null> {
@@ -370,10 +389,9 @@ export async function refreshDomainDnsAction(
   if (denied) return denied
 
   const src = source()
-  const name = domainName.trim().toLowerCase()
-  if (!name) {
-    return fail(new StalwartError("Domain name required.", "validation"), src)
-  }
+  const parsed = validateInput(refreshDnsSchema, { domainName }, src)
+  if (!parsed.ok) return parsed.result
+  const name = parsed.data.domainName
 
   try {
     const dns = await getDomainDnsHealth(name, {
@@ -395,18 +413,14 @@ export async function generateDkimAction(input: {
   if (denied) return denied
 
   const src = source()
-  const domain = input.domain.trim().toLowerCase()
-  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
-    return fail(
-      new StalwartError("Enter a valid domain name.", "validation"),
-      src
-    )
-  }
+  const parsed = validateInput(generateDkimSchema, input, src)
+  if (!parsed.ok) return parsed.result
+
   try {
     return ok(
       generateDkimRecord({
-        domain,
-        selector: input.selector,
+        domain: parsed.data.domain,
+        selector: parsed.data.selector,
       }),
       src
     )
@@ -432,23 +446,19 @@ export async function generateDmarcAction(input: {
   if (denied) return denied
 
   const src = source()
-  const domain = input.domain.trim().toLowerCase()
-  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
-    return fail(
-      new StalwartError("Enter a valid domain name.", "validation"),
-      src
-    )
-  }
+  const parsed = validateInput(generateDmarcSchema, input, src)
+  if (!parsed.ok) return parsed.result
+
   try {
     return ok(
       {
         dmarc: generateDmarcRecord({
-          domain,
-          policy: input.policy,
-          rua: input.rua,
+          domain: parsed.data.domain,
+          policy: parsed.data.policy,
+          rua: parsed.data.rua,
         }),
         spf: generateSpfRecord({
-          domain,
+          domain: parsed.data.domain,
           mailHost: configuredMailHost(),
         }),
       },
@@ -467,13 +477,9 @@ export async function createDomainAction(input: {
   if (denied) return denied
 
   const src = source()
-  const name = input.name.trim().toLowerCase()
-  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(name)) {
-    return fail(
-      new StalwartError("Enter a valid domain name.", "validation"),
-      src
-    )
-  }
+  const parsed = validateInput(createDomainSchema, input, src)
+  if (!parsed.ok) return parsed.result
+  const name = parsed.data.name
 
   try {
     if (src === "mock") {
@@ -487,7 +493,7 @@ export async function createDomainAction(input: {
       const domain: StalwartDomain = {
         id: `dom-${crypto.randomUUID().slice(0, 8)}`,
         name,
-        description: input.description?.trim() || name,
+        description: parsed.data.description?.trim() || name,
         isEnabled: true,
         catchAllAddress: null,
         catchAllMode: "bounce",
@@ -502,7 +508,10 @@ export async function createDomainAction(input: {
       })
       return ok(domain, src)
     }
-    const domain = await createDomain(input)
+    const domain = await createDomain({
+      name,
+      description: parsed.data.description,
+    })
     await audit("domain.create", {
       target: domain.name,
       detail: "Created domain",
@@ -528,6 +537,9 @@ export async function updateDomainAction(
   if (denied) return denied
 
   const src = source()
+  const parsed = validateInput(updateDomainSchema, { id, ...patch }, src)
+  if (!parsed.ok) return parsed.result
+
   try {
     const mode = patch.catchAllMode
     let catchAllAddress = patch.catchAllAddress
@@ -608,6 +620,10 @@ export async function updateDomainAction(
           : d
       )
       store.setDomains(next)
+      await audit("domain.update", {
+        target: existing.name,
+        detail: "Updated domain settings",
+      })
       return ok(undefined, src)
     }
 
@@ -662,7 +678,12 @@ export async function updateDomainAction(
       livePatch.allowRelaying = patch.allowRelaying
     }
 
+    const domain = await getDomain(id).catch(() => null)
     await updateDomain(id, livePatch)
+    await audit("domain.update", {
+      target: domain?.name ?? id,
+      detail: "Updated domain settings",
+    })
     return ok(undefined, src)
   } catch (err) {
     return fail(err, src)
@@ -678,6 +699,9 @@ export async function destroyDomainAction(
   if (denied) return denied
 
   const src = source()
+  const parsed = validateInput(destroyDomainSchema, { id, typedName, force }, src)
+  if (!parsed.ok) return parsed.result
+
   try {
     if (src === "mock") {
       const store = getMockStore()
@@ -685,7 +709,7 @@ export async function destroyDomainAction(
       if (!domain) {
         return fail(new StalwartError("Domain not found.", "not_found"), src)
       }
-      if (typedName.trim().toLowerCase() !== domain.name.toLowerCase()) {
+      if (parsed.data.typedName.toLowerCase() !== domain.name.toLowerCase()) {
         return fail(
           new StalwartError("Typed name does not match the domain.", "validation"),
           src
@@ -716,7 +740,7 @@ export async function destroyDomainAction(
     if (!domain) {
       return fail(new StalwartError("Domain not found.", "not_found"), src)
     }
-    if (typedName.trim().toLowerCase() !== domain.name.toLowerCase()) {
+    if (parsed.data.typedName.toLowerCase() !== domain.name.toLowerCase()) {
       return fail(
         new StalwartError("Typed name does not match the domain.", "validation"),
         src
@@ -865,24 +889,14 @@ export async function createMailboxAction(input: {
   if (denied) return denied
 
   const src = source()
-  const local = input.local.trim().toLowerCase()
-  if (!/^[a-z0-9._+-]+$/i.test(local) || local.includes("@")) {
-    return fail(
-      new StalwartError("Local-part must not contain @.", "validation"),
-      src
-    )
-  }
-  if (!input.password || input.password.length < 6) {
-    return fail(
-      new StalwartError("Password must be at least 6 characters.", "validation"),
-      src
-    )
-  }
+  const parsed = validateInput(createMailboxSchema, input, src)
+  if (!parsed.ok) return parsed.result
+  const local = parsed.data.local
 
   try {
     if (src === "mock") {
       const store = getMockStore()
-      const domain = store.domains.find((d) => d.id === input.domainId)
+      const domain = store.domains.find((d) => d.id === parsed.data.domainId)
       if (!domain) {
         return fail(new StalwartError("Domain not found.", "not_found"), src)
       }
@@ -896,14 +910,14 @@ export async function createMailboxAction(input: {
       const account: StalwartAccount = {
         id: `acc-${crypto.randomUUID().slice(0, 8)}`,
         name: local,
-        description: input.description?.trim() || email,
+        description: parsed.data.description?.trim() || email,
         domainId: domain.id,
         email,
         domainName: domain.name,
         isEnabled: true,
         quotas:
-          input.diskQuotaBytes != null
-            ? { diskQuota: input.diskQuotaBytes }
+          parsed.data.diskQuotaBytes != null
+            ? { diskQuota: parsed.data.diskQuotaBytes }
             : {},
         aliases: {},
         appPasswords: [],
@@ -917,7 +931,7 @@ export async function createMailboxAction(input: {
       return ok(account, src)
     }
 
-    const domain = await getDomain(input.domainId)
+    const domain = await getDomain(parsed.data.domainId)
     if (!domain) {
       return fail(new StalwartError("Domain not found.", "not_found"), src)
     }
@@ -926,11 +940,11 @@ export async function createMailboxAction(input: {
       local,
       email,
       domainId: domain.id,
-      password: input.password,
-      description: input.description?.trim() || email,
+      password: parsed.data.password,
+      description: parsed.data.description?.trim() || email,
       quotas:
-        input.diskQuotaBytes != null
-          ? { diskQuota: input.diskQuotaBytes }
+        parsed.data.diskQuotaBytes != null
+          ? { diskQuota: parsed.data.diskQuotaBytes }
           : {},
     })
     await audit("mailbox.create", {
@@ -955,6 +969,9 @@ export async function updateMailboxAction(
   if (denied) return denied
 
   const src = source()
+  const parsed = validateInput(updateMailboxSchema, { id, ...patch }, src)
+  if (!parsed.ok) return parsed.result
+
   try {
     const quotas =
       patch.diskQuotaBytes === undefined
@@ -975,15 +992,20 @@ export async function updateMailboxAction(
             patch.isEnabled === undefined ? a.isEnabled : patch.isEnabled,
         }
       })
-      if (!next.some((a) => a.id === id)) {
+      const account = next.find((a) => a.id === id)
+      if (!account) {
         return fail(new StalwartError("Mailbox not found.", "not_found"), src)
       }
       store.setAccounts(next)
       if (patch.isEnabled === false) {
-        const account = next.find((a) => a.id === id)
         await audit("mailbox.suspend", {
-          target: account?.email,
+          target: account.email,
           detail: "Suspended mailbox",
+        })
+      } else {
+        await audit("mailbox.update", {
+          target: account.email,
+          detail: "Updated mailbox",
         })
       }
       return ok(undefined, src)
@@ -994,11 +1016,16 @@ export async function updateMailboxAction(
       ...(quotas != null ? { quotas } : {}),
       ...(patch.isEnabled !== undefined ? { isEnabled: patch.isEnabled } : {}),
     })
+    const account = await getAccount(id).catch(() => null)
     if (patch.isEnabled === false) {
-      const account = await getAccount(id).catch(() => null)
       await audit("mailbox.suspend", {
         target: account?.email,
         detail: "Suspended mailbox",
+      })
+    } else {
+      await audit("mailbox.update", {
+        target: account?.email ?? id,
+        detail: "Updated mailbox",
       })
     }
     return ok(undefined, src)
@@ -1018,13 +1045,13 @@ export async function createAppPasswordAction(
   if (denied) return denied
 
   const src = source()
-  const label = description.trim()
-  if (!label) {
-    return fail(
-      new StalwartError("Describe the client (e.g. Thunderbird).", "validation"),
-      src
-    )
-  }
+  const parsed = validateInput(
+    createAppPasswordSchema,
+    { accountId, description },
+    src
+  )
+  if (!parsed.ok) return parsed.result
+  const label = parsed.data.description
 
   try {
     if (src === "mock") {
@@ -1086,6 +1113,13 @@ export async function revokeAppPasswordAction(
   if (denied) return denied
 
   const src = source()
+  const parsed = validateInput(
+    revokeAppPasswordSchema,
+    { accountId, appPasswordId },
+    src
+  )
+  if (!parsed.ok) return parsed.result
+
   try {
     if (src === "mock") {
       const store = getMockStore()
@@ -1132,12 +1166,9 @@ export async function resetMailboxPasswordAction(
   if (denied) return denied
 
   const src = source()
-  if (!password || password.length < 6) {
-    return fail(
-      new StalwartError("Password must be at least 6 characters.", "validation"),
-      src
-    )
-  }
+  const parsed = validateInput(resetMailboxPasswordSchema, { id, password }, src)
+  if (!parsed.ok) return parsed.result
+
   try {
     if (src === "mock") {
       const store = getMockStore()
@@ -1155,7 +1186,7 @@ export async function resetMailboxPasswordAction(
     if (!account) {
       return fail(new StalwartError("Mailbox not found.", "not_found"), src)
     }
-    await updateAccountPassword(id, password)
+    await updateAccountPassword(id, parsed.data.password)
     await audit("mailbox.password_reset", {
       target: account.email,
       detail: "Password reset",
@@ -1168,12 +1199,20 @@ export async function resetMailboxPasswordAction(
 
 export async function destroyMailboxAction(
   id: string,
-  typedEmail: string
+  typedEmail: string,
+  opts?: { adminConfirm?: string }
 ): Promise<ActionResult<void>> {
   const denied = await denyUnlessAuthed<void>()
   if (denied) return denied
 
   const src = source()
+  const parsed = validateInput(
+    destroyMailboxSchema,
+    { id, typedEmail, adminConfirm: opts?.adminConfirm },
+    src
+  )
+  if (!parsed.ok) return parsed.result
+
   try {
     if (src === "mock") {
       const store = getMockStore()
@@ -1181,17 +1220,24 @@ export async function destroyMailboxAction(
       if (!account) {
         return fail(new StalwartError("Mailbox not found.", "not_found"), src)
       }
-      if (typedEmail.trim().toLowerCase() !== account.email.toLowerCase()) {
+      if (parsed.data.typedEmail.toLowerCase() !== account.email.toLowerCase()) {
         return fail(
           new StalwartError("Typed address does not match.", "validation"),
           src
         )
       }
       if (account.isAdmin) {
-        return fail(
-          new StalwartError("Admin mailboxes require Phase 4 dual-confirm.", "validation"),
-          src
-        )
+        if (
+          (parsed.data.adminConfirm ?? "").toUpperCase() !== ADMIN_DESTROY_CONFIRM
+        ) {
+          return fail(
+            new StalwartError(
+              `Admin mailbox requires dual-confirm: type ${ADMIN_DESTROY_CONFIRM}.`,
+              "validation"
+            ),
+            src
+          )
+        }
       }
       const domain = store.domains.find((d) => d.id === account.domainId)
       if (
@@ -1209,7 +1255,9 @@ export async function destroyMailboxAction(
       store.setAccounts(store.accounts.filter((a) => a.id !== id))
       await audit("mailbox.destroy", {
         target: account.email,
-        detail: "Destroyed mailbox",
+        detail: account.isAdmin
+          ? "Destroyed admin mailbox (dual-confirm)"
+          : "Destroyed mailbox",
       })
       return ok(undefined, src)
     }
@@ -1218,17 +1266,24 @@ export async function destroyMailboxAction(
     if (!account) {
       return fail(new StalwartError("Mailbox not found.", "not_found"), src)
     }
-    if (typedEmail.trim().toLowerCase() !== account.email.toLowerCase()) {
+    if (parsed.data.typedEmail.toLowerCase() !== account.email.toLowerCase()) {
       return fail(
         new StalwartError("Typed address does not match.", "validation"),
         src
       )
     }
     if (account.isAdmin) {
-      return fail(
-        new StalwartError("Admin mailboxes require Phase 4 dual-confirm.", "validation"),
-        src
-      )
+      if (
+        (parsed.data.adminConfirm ?? "").toUpperCase() !== ADMIN_DESTROY_CONFIRM
+      ) {
+        return fail(
+          new StalwartError(
+            `Admin mailbox requires dual-confirm: type ${ADMIN_DESTROY_CONFIRM}.`,
+            "validation"
+          ),
+          src
+        )
+      }
     }
     if (account.domainId) {
       const domain = await getDomain(account.domainId)
@@ -1248,7 +1303,9 @@ export async function destroyMailboxAction(
     await destroyAccount(id)
     await audit("mailbox.destroy", {
       target: account.email,
-      detail: "Destroyed mailbox",
+      detail: account.isAdmin
+        ? "Destroyed admin mailbox (dual-confirm)"
+        : "Destroyed mailbox",
     })
     return ok(undefined, src)
   } catch (err) {
@@ -1263,9 +1320,12 @@ export async function bulkDestroyMailboxesAction(
   if (denied) return denied
 
   const src = source()
+  const parsed = validateInput(mailboxIdsSchema, ids, src)
+  if (!parsed.ok) return parsed.result
+
   const failed: string[] = []
   let destroyed = 0
-  for (const id of ids) {
+  for (const id of parsed.data) {
     const detail =
       src === "mock"
         ? getMockStore().accounts.find((a) => a.id === id)
@@ -1275,6 +1335,7 @@ export async function bulkDestroyMailboxesAction(
       continue
     }
     // Already authenticated above; destroyMailboxAction re-checks session.
+    // Admin mailboxes are skipped unless dual-confirm (not available in bulk).
     const result = await destroyMailboxAction(id, detail.email)
     if (result.ok) destroyed++
     else failed.push(detail.email)
@@ -1290,10 +1351,13 @@ export async function bulkResetPasswordsAction(
   if (denied) return denied
 
   const src = source()
+  const parsed = validateInput(bulkResetPasswordsSchema, { ids, password }, src)
+  if (!parsed.ok) return parsed.result
+
   const failed: string[] = []
   let reset = 0
-  for (const id of ids) {
-    const result = await resetMailboxPasswordAction(id, password)
+  for (const id of parsed.data.ids) {
+    const result = await resetMailboxPasswordAction(id, parsed.data.password)
     if (result.ok) reset++
     else failed.push(id)
   }
@@ -1308,10 +1372,15 @@ export async function bulkSuspendMailboxesAction(
   if (denied) return denied
 
   const src = source()
+  const parsed = validateInput(bulkSuspendSchema, { ids, suspend }, src)
+  if (!parsed.ok) return parsed.result
+
   const failed: string[] = []
   let updated = 0
-  for (const id of ids) {
-    const result = await updateMailboxAction(id, { isEnabled: !suspend })
+  for (const id of parsed.data.ids) {
+    const result = await updateMailboxAction(id, {
+      isEnabled: !parsed.data.suspend,
+    })
     if (result.ok) updated++
     else failed.push(id)
   }
@@ -1326,8 +1395,11 @@ export async function prepareBulkMailboxJobAction(input: {
   if (denied) return denied
 
   const src = source()
+  const parsed = validateInput(prepareBulkMailboxSchema, input, src)
+  if (!parsed.ok) return parsed.result
+
   try {
-    const { valid, failed } = parseMailboxCsvText(input.csvText)
+    const { valid, failed } = parseMailboxCsvText(parsed.data.csvText)
     const { domains, accounts } =
       src === "live" ? await loadLiveDirectory() : loadMockDirectory()
     const domainByName = new Map(domains.map((d) => [d.name.toLowerCase(), d]))
@@ -1395,7 +1467,7 @@ export async function prepareBulkMailboxJobAction(input: {
 
     const job = createMailboxJob({
       rows,
-      overwritePasswords: !!input.overwritePasswords,
+      overwritePasswords: !!parsed.data.overwritePasswords,
     })
     return ok({ job: toReport(job) }, src)
   } catch (err) {
@@ -1410,8 +1482,11 @@ export async function prepareBulkForwardingJobAction(input: {
   if (denied) return denied
 
   const src = source()
+  const parsed = validateInput(prepareBulkForwardingSchema, input, src)
+  if (!parsed.ok) return parsed.result
+
   try {
-    const { valid, failed } = parseForwardingCsvText(input.csvText)
+    const { valid, failed } = parseForwardingCsvText(parsed.data.csvText)
     const { domains, accounts } =
       src === "live" ? await loadLiveDirectory() : loadMockDirectory()
     const domainByName = new Map(domains.map((d) => [d.name.toLowerCase(), d]))
@@ -1511,7 +1586,10 @@ export async function getBulkJobAction(
   if (denied) return denied
 
   const src = source()
-  const job = getJob(jobId)
+  const parsed = validateInput(bulkJobIdSchema, { jobId }, src)
+  if (!parsed.ok) return parsed.result
+
+  const job = getJob(parsed.data.jobId)
   if (!job) {
     return fail(
       new StalwartError("Bulk job not found or expired.", "not_found"),
@@ -1528,13 +1606,20 @@ export async function abortBulkJobAction(
   if (denied) return denied
 
   const src = source()
-  const job = abortJob(jobId)
+  const parsed = validateInput(bulkJobIdSchema, { jobId }, src)
+  if (!parsed.ok) return parsed.result
+
+  const job = abortJob(parsed.data.jobId)
   if (!job) {
     return fail(
       new StalwartError("Bulk job not found or expired.", "not_found"),
       src
     )
   }
+  await audit("bulk.abort", {
+    target: job.id,
+    detail: `Aborted bulk ${job.kind}`,
+  })
   return ok({ job: toReport(job) }, src)
 }
 
@@ -1545,7 +1630,10 @@ export async function pauseBulkJobAction(
   if (denied) return denied
 
   const src = source()
-  const job = pauseJob(jobId)
+  const parsed = validateInput(bulkJobIdSchema, { jobId }, src)
+  if (!parsed.ok) return parsed.result
+
+  const job = pauseJob(parsed.data.jobId)
   if (!job) {
     return fail(
       new StalwartError("Bulk job not found or expired.", "not_found"),
@@ -1562,7 +1650,10 @@ export async function resumeBulkJobAction(
   if (denied) return denied
 
   const src = source()
-  const job = resumeJob(jobId)
+  const parsed = validateInput(bulkJobIdSchema, { jobId }, src)
+  if (!parsed.ok) return parsed.result
+
+  const job = resumeJob(parsed.data.jobId)
   if (!job) {
     return fail(
       new StalwartError("Bulk job not found or expired.", "not_found"),
@@ -1583,8 +1674,11 @@ export async function commitBulkJobChunkAction(input: {
   if (denied) return denied
 
   const src = source()
+  const parsed = validateInput(commitBulkChunkSchema, input, src)
+  if (!parsed.ok) return parsed.result
+
   try {
-    const job = getJob(input.jobId)
+    const job = getJob(parsed.data.jobId)
     if (!job) {
       return fail(
         new StalwartError("Bulk job not found or expired.", "not_found"),
@@ -1592,7 +1686,7 @@ export async function commitBulkJobChunkAction(input: {
       )
     }
     if (job.status === "aborted") {
-      return ok({ job: toReport(job), chunkIndex: input.chunkIndex }, src)
+      return ok({ job: toReport(job), chunkIndex: parsed.data.chunkIndex }, src)
     }
     if (job.status === "paused") {
       return fail(
@@ -1602,12 +1696,12 @@ export async function commitBulkJobChunkAction(input: {
     }
 
     // Idempotent: ignore replay of completed chunks.
-    if (job.completedChunks.has(input.chunkIndex)) {
-      return ok({ job: toReport(job), chunkIndex: input.chunkIndex }, src)
+    if (job.completedChunks.has(parsed.data.chunkIndex)) {
+      return ok({ job: toReport(job), chunkIndex: parsed.data.chunkIndex }, src)
     }
 
     job.status = "running"
-    const start = input.chunkIndex * job.chunkSize
+    const start = parsed.data.chunkIndex * job.chunkSize
     const end = start + job.chunkSize
 
     if (job.kind === "mailboxes" && job.mailboxRows) {
@@ -1619,7 +1713,7 @@ export async function commitBulkJobChunkAction(input: {
       await commitForwardChunk(job.forwardRows, start, end)
     }
 
-    job.completedChunks.add(input.chunkIndex)
+    job.completedChunks.add(parsed.data.chunkIndex)
     const report = toReport(job)
     if (report.status === "completed") {
       await audit("bulk.complete", {
@@ -1634,7 +1728,7 @@ export async function commitBulkJobChunkAction(input: {
         },
       })
     }
-    return ok({ job: report, chunkIndex: input.chunkIndex }, src)
+    return ok({ job: report, chunkIndex: parsed.data.chunkIndex }, src)
   } catch (err) {
     return fail(err, src)
   }
@@ -1889,10 +1983,16 @@ export async function upsertForwardingRuleAction(input: {
   if (denied) return denied
 
   const src = source()
+  const validated = validateInput(upsertForwardingSchema, input, src)
+  if (!validated.ok) return validated.result
+
   try {
-    const targets = input.targets.map((t) => t.trim().toLowerCase()).filter(Boolean)
-    const enabled = input.enabled !== false
-    const keepLocalCopy = input.keepLocalCopy === true
+    const targets = validated.data.targets
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean)
+    const enabled = validated.data.enabled !== false
+    const keepLocalCopy = validated.data.keepLocalCopy === true
+    input = { ...validated.data, targets }
 
     if (src === "mock") {
       const store = getMockStore()
@@ -1955,6 +2055,10 @@ export async function upsertForwardingRuleAction(input: {
         store.setForwards(
           store.forwards.map((f) => (f.id === input.id ? updated : f))
         )
+        await audit("forwarding.upsert", {
+          target: updated.source,
+          detail: "Updated forwarding rule",
+        })
         return ok(updated, src)
       }
 
@@ -1972,6 +2076,10 @@ export async function upsertForwardingRuleAction(input: {
         updatedAt: now,
       }
       store.setForwards([...store.forwards, created])
+      await audit("forwarding.upsert", {
+        target: created.source,
+        detail: "Created forwarding rule",
+      })
       return ok(created, src)
     }
 
@@ -2017,6 +2125,10 @@ export async function upsertForwardingRuleAction(input: {
         backend: "catchall",
         updatedAt: now,
       }
+      await audit("forwarding.upsert", {
+        target: rule.source,
+        detail: "Set domain catch-all forward",
+      })
       return ok(rule, src)
     }
 
@@ -2119,6 +2231,10 @@ export async function upsertForwardingRuleAction(input: {
         backend: "alias",
         updatedAt: now,
       }
+      await audit("forwarding.upsert", {
+        target: rule.source,
+        detail: `Alias → ${targetAccount.email}`,
+      })
       return ok(rule, src)
     }
 
@@ -2141,6 +2257,9 @@ export async function destroyForwardingRuleAction(
   if (denied) return denied
 
   const src = source()
+  const parsed = validateInput(destroyForwardingSchema, { id }, src)
+  if (!parsed.ok) return parsed.result
+
   try {
     if (src === "mock") {
       const store = getMockStore()
@@ -2151,12 +2270,20 @@ export async function destroyForwardingRuleAction(
         )
       }
       store.setForwards(store.forwards.filter((f) => f.id !== id))
+      await audit("forwarding.destroy", {
+        target: id,
+        detail: "Destroyed forwarding rule",
+      })
       return ok(undefined, src)
     }
 
     if (id.startsWith("catchall-")) {
       const domainId = id.slice("catchall-".length)
       await updateDomain(domainId, { catchAllAddress: null })
+      await audit("forwarding.destroy", {
+        target: id,
+        detail: "Cleared catch-all forward",
+      })
       return ok(undefined, src)
     }
 
@@ -2183,6 +2310,10 @@ export async function destroyForwardingRuleAction(
         (a) => a.key !== aliasKey && a.name !== aliasKey
       )
       await updateAccountAliases(accountId, serializeEmailAliases(next))
+      await audit("forwarding.destroy", {
+        target: account.email,
+        detail: `Removed alias ${aliasKey}`,
+      })
       return ok(undefined, src)
     }
 
@@ -2209,6 +2340,13 @@ export async function updateMailExchangerAction(
   if (denied) return denied
 
   const src = source()
+  const validated = validateInput(
+    updateMailExchangerSchema,
+    { domainId, mode },
+    src
+  )
+  if (!validated.ok) return validated.result
+
   try {
     const allowRelaying = mailExchangerToAllowRelaying(mode)
     const note =
@@ -2230,10 +2368,20 @@ export async function updateMailExchangerAction(
             : d
         )
       )
+      const domain = store.domains.find((d) => d.id === domainId)
+      await audit("mx.update", {
+        target: domain?.name ?? domainId,
+        detail: `MX posture → ${mode}`,
+      })
       return ok({ mode, note }, src)
     }
 
     await updateDomain(domainId, { allowRelaying })
+    const domain = await getDomain(domainId).catch(() => null)
+    await audit("mx.update", {
+      target: domain?.name ?? domainId,
+      detail: `MX posture → ${mode}`,
+    })
     return ok({ mode: deriveMailExchanger({ allowRelaying, mailExchanger: mode }), note }, src)
   } catch (err) {
     return fail(err, src)
@@ -2254,6 +2402,13 @@ export async function updateMailboxAliasesAction(
   if (denied) return denied
 
   const src = source()
+  const validated = validateInput(
+    updateAliasesSchema,
+    { accountId, aliases },
+    src
+  )
+  if (!validated.ok) return validated.result
+
   try {
     const domains =
       src === "mock" ? getMockStore().domains : await queryDomains()
@@ -2266,18 +2421,9 @@ export async function updateMailboxAliasesAction(
     )
 
     const normalized: EmailAliasEntry[] = []
-    for (let i = 0; i < aliases.length; i++) {
-      const raw = aliases[i]
-      const name = raw.name.trim().toLowerCase()
-      if (!name || name.includes("@") || !/^[a-z0-9._+-]+$/i.test(name)) {
-        return fail(
-          new StalwartError(
-            `Invalid alias local-part: ${raw.name || "(empty)"}`,
-            "validation"
-          ),
-          src
-        )
-      }
+    for (let i = 0; i < validated.data.aliases.length; i++) {
+      const raw = validated.data.aliases[i]
+      const name = raw.name
       const domain = domainsById.get(raw.domainId)
       if (!domain) {
         return fail(
@@ -2336,6 +2482,10 @@ export async function updateMailboxAliasesAction(
           a.id === accountId ? { ...a, aliases: stored } : a
         )
       )
+      await audit("mailbox.aliases_update", {
+        target: account.email,
+        detail: `Updated ${normalized.length} alias(es)`,
+      })
       return ok(normalized, src)
     }
 
@@ -2351,6 +2501,10 @@ export async function updateMailboxAliasesAction(
         previous.map((a) => a.key)
       )
     )
+    await audit("mailbox.aliases_update", {
+      target: account.email,
+      detail: `Updated ${normalized.length} alias(es)`,
+    })
     return ok(normalized, src)
   } catch (err) {
     return fail(err, src)
@@ -2370,25 +2524,38 @@ export async function updateCatchAllAction(
   }>()
   if (denied) return denied
 
+  const src = source()
+  const validated = validateInput(
+    updateCatchAllSchema,
+    { domainId, mode: input.mode, address: input.address },
+    src
+  )
+  if (!validated.ok) return validated.result
+
   const result = await updateDomainAction(domainId, {
-    catchAllMode: input.mode,
+    catchAllMode: validated.data.mode,
     catchAllAddress:
-      input.mode === "address" ? (input.address ?? null) : null,
+      validated.data.mode === "address" ? (validated.data.address ?? null) : null,
   })
   if (!result.ok) return result
 
+  await audit("catchall.update", {
+    target: domainId,
+    detail: `Catch-all → ${validated.data.mode}`,
+  })
+
   const note =
-    input.mode === "blackhole" && source() === "live"
+    validated.data.mode === "blackhole" && source() === "live"
       ? "Stalwart has no discard-at-SMTP flag — blackhole clears catch-all (same as bounce). Use a discard mailbox or Sieve for true drop."
-      : input.mode === "bounce"
+      : validated.data.mode === "bounce"
         ? "Unknown recipients are rejected at SMTP."
-        : input.mode === "blackhole"
+        : validated.data.mode === "blackhole"
           ? "Unknown recipients are discarded (mock)."
           : undefined
 
   return ok(
     {
-      mode: input.mode,
+      mode: validated.data.mode,
       note,
     },
     result.source
@@ -2468,28 +2635,28 @@ export async function upsertAutoresponderAction(input: {
   if (denied) return denied
 
   const src = source()
-  const subject = input.subject.trim()
-  const body = input.body.trim()
-  if (!subject || !body) {
-    return fail(
-      new StalwartError("Subject and body are required.", "validation"),
-      src
-    )
-  }
+  const validated = validateInput(upsertAutoresponderSchema, input, src)
+  if (!validated.ok) return validated.result
 
-  const daysBetween = Math.max(0, Math.min(365, input.daysBetween ?? 7))
+  const subject = validated.data.subject
+  const body = validated.data.body
+  const daysBetween = validated.data.daysBetween ?? 7
 
   try {
     if (src === "mock") {
       const store = getMockStore()
-      const account = store.accounts.find((a) => a.id === input.accountId)
+      const account = store.accounts.find(
+        (a) => a.id === validated.data.accountId
+      )
       if (!account || !account.domainId) {
         return fail(new StalwartError("Mailbox not found.", "not_found"), src)
       }
 
       const now = new Date().toISOString()
-      if (input.id) {
-        const existing = store.autoresponders.find((a) => a.id === input.id)
+      if (validated.data.id) {
+        const existing = store.autoresponders.find(
+          (a) => a.id === validated.data.id
+        )
         if (!existing) {
           return fail(
             new StalwartError("Autoresponder not found.", "not_found"),
@@ -2501,17 +2668,23 @@ export async function upsertAutoresponderAction(input: {
           accountId: account.id,
           email: account.email,
           domainId: account.domainId,
-          enabled: input.enabled !== false,
+          enabled: validated.data.enabled !== false,
           subject,
           body,
-          startAt: input.startAt || null,
-          endAt: input.endAt || null,
+          startAt: validated.data.startAt || null,
+          endAt: validated.data.endAt || null,
           daysBetween,
           updatedAt: now,
         }
         store.setAutoresponders(
-          store.autoresponders.map((a) => (a.id === input.id ? updated : a))
+          store.autoresponders.map((a) =>
+            a.id === validated.data.id ? updated : a
+          )
         )
+        await audit("autoresponder.upsert", {
+          target: account.email,
+          detail: "Updated autoresponder",
+        })
         return ok(updated, src)
       }
 
@@ -2524,16 +2697,20 @@ export async function upsertAutoresponderAction(input: {
         accountId: account.id,
         email: account.email,
         domainId: account.domainId,
-        enabled: input.enabled !== false,
+        enabled: validated.data.enabled !== false,
         subject,
         body,
-        startAt: input.startAt || null,
-        endAt: input.endAt || null,
+        startAt: validated.data.startAt || null,
+        endAt: validated.data.endAt || null,
         daysBetween,
         backend: "mock",
         updatedAt: now,
       }
       store.setAutoresponders([...without, created])
+      await audit("autoresponder.upsert", {
+        target: account.email,
+        detail: "Created autoresponder",
+      })
       return ok(created, src)
     }
 
@@ -2559,6 +2736,9 @@ export async function destroyAutoresponderAction(
   if (denied) return denied
 
   const src = source()
+  const validated = validateInput(destroyByIdSchema, { id }, src)
+  if (!validated.ok) return validated.result
+
   try {
     if (src === "mock") {
       const store = getMockStore()
@@ -2569,6 +2749,10 @@ export async function destroyAutoresponderAction(
         )
       }
       store.setAutoresponders(store.autoresponders.filter((a) => a.id !== id))
+      await audit("autoresponder.destroy", {
+        target: id,
+        detail: "Destroyed autoresponder",
+      })
       return ok({ id }, src)
     }
     return fail(
@@ -2581,29 +2765,6 @@ export async function destroyAutoresponderAction(
   } catch (err) {
     return fail(err, src)
   }
-}
-
-function validateFilterParts(
-  condition: FilterCondition,
-  action: FilterAction
-): string | null {
-  if (!condition.value.trim()) return "Condition value is required."
-  if (condition.field === "header" && !condition.headerName?.trim()) {
-    return "Header name is required for header conditions."
-  }
-  if (action.type === "fileinto" && !action.folder?.trim()) {
-    return "Folder is required for fileinto."
-  }
-  if (action.type === "redirect" && !action.redirectTo?.trim()) {
-    return "Redirect address is required."
-  }
-  if (
-    action.type === "redirect" &&
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(action.redirectTo!.trim())
-  ) {
-    return "Redirect address must be a valid email."
-  }
-  return null
 }
 
 export async function upsertFilterRuleAction(input: {
@@ -2620,25 +2781,20 @@ export async function upsertFilterRuleAction(input: {
   if (denied) return denied
 
   const src = source()
-  const name = input.name.trim()
-  if (!name) {
-    return fail(new StalwartError("Rule name is required.", "validation"), src)
-  }
+  const validated = validateInput(upsertFilterRuleSchema, input, src)
+  if (!validated.ok) return validated.result
 
+  const name = validated.data.name
   const condition: FilterCondition = {
-    field: input.condition.field,
-    op: input.condition.op,
-    value: input.condition.value.trim(),
-    headerName: input.condition.headerName?.trim() || undefined,
+    field: validated.data.condition.field,
+    op: validated.data.condition.op,
+    value: validated.data.condition.value,
+    headerName: validated.data.condition.headerName || undefined,
   }
   const action: FilterAction = {
-    type: input.action.type,
-    folder: input.action.folder?.trim() || undefined,
-    redirectTo: input.action.redirectTo?.trim().toLowerCase() || undefined,
-  }
-  const invalid = validateFilterParts(condition, action)
-  if (invalid) {
-    return fail(new StalwartError(invalid, "validation"), src)
+    type: validated.data.action.type,
+    folder: validated.data.action.folder || undefined,
+    redirectTo: validated.data.action.redirectTo?.toLowerCase() || undefined,
   }
 
   try {
@@ -2647,8 +2803,10 @@ export async function upsertFilterRuleAction(input: {
       let accountId: string | null = null
       let email: string | null = null
 
-      if (input.scope === "user") {
-        const account = store.accounts.find((a) => a.id === input.accountId)
+      if (validated.data.scope === "user") {
+        const account = store.accounts.find(
+          (a) => a.id === validated.data.accountId
+        )
         if (!account) {
           return fail(
             new StalwartError("Mailbox required for user filters.", "validation"),
@@ -2660,10 +2818,12 @@ export async function upsertFilterRuleAction(input: {
       }
 
       const now = new Date().toISOString()
-      const priority = input.priority ?? 50
+      const priority = validated.data.priority ?? 50
 
-      if (input.id) {
-        const existing = store.filterRules.find((r) => r.id === input.id)
+      if (validated.data.id) {
+        const existing = store.filterRules.find(
+          (r) => r.id === validated.data.id
+        )
         if (!existing) {
           return fail(
             new StalwartError("Filter rule not found.", "not_found"),
@@ -2672,29 +2832,35 @@ export async function upsertFilterRuleAction(input: {
         }
         const updated: FilterRule = {
           ...existing,
-          scope: input.scope,
+          scope: validated.data.scope,
           accountId,
           email,
           name,
-          enabled: input.enabled !== false,
+          enabled: validated.data.enabled !== false,
           condition,
           action,
           priority,
           updatedAt: now,
         }
         store.setFilterRules(
-          store.filterRules.map((r) => (r.id === input.id ? updated : r))
+          store.filterRules.map((r) =>
+            r.id === validated.data.id ? updated : r
+          )
         )
+        await audit("filter.upsert", {
+          target: email ?? "global",
+          detail: `Updated filter “${name}”`,
+        })
         return ok(updated, src)
       }
 
       const created: FilterRule = {
         id: `flt-${crypto.randomUUID().slice(0, 8)}`,
-        scope: input.scope,
+        scope: validated.data.scope,
         accountId,
         email,
         name,
-        enabled: input.enabled !== false,
+        enabled: validated.data.enabled !== false,
         condition,
         action,
         priority,
@@ -2702,6 +2868,10 @@ export async function upsertFilterRuleAction(input: {
         updatedAt: now,
       }
       store.setFilterRules([...store.filterRules, created])
+      await audit("filter.upsert", {
+        target: email ?? "global",
+        detail: `Created filter “${name}”`,
+      })
       return ok(created, src)
     }
 
@@ -2727,6 +2897,9 @@ export async function destroyFilterRuleAction(
   if (denied) return denied
 
   const src = source()
+  const validated = validateInput(destroyByIdSchema, { id }, src)
+  if (!validated.ok) return validated.result
+
   try {
     if (src === "mock") {
       const store = getMockStore()
@@ -2737,6 +2910,10 @@ export async function destroyFilterRuleAction(
         )
       }
       store.setFilterRules(store.filterRules.filter((r) => r.id !== id))
+      await audit("filter.destroy", {
+        target: id,
+        detail: "Destroyed filter rule",
+      })
       return ok({ id }, src)
     }
     return fail(
@@ -2761,29 +2938,10 @@ export async function updateSpamSettingsAction(input: {
   if (denied) return denied
 
   const src = source()
-  const rejectThreshold = Number(input.rejectThreshold)
-  const markAsSpamThreshold = Number(input.markAsSpamThreshold)
+  const validated = validateInput(updateSpamSettingsSchema, input, src)
+  if (!validated.ok) return validated.result
 
-  if (
-    !Number.isFinite(rejectThreshold) ||
-    !Number.isFinite(markAsSpamThreshold) ||
-    rejectThreshold < 0 ||
-    markAsSpamThreshold < 0
-  ) {
-    return fail(
-      new StalwartError("Thresholds must be non-negative numbers.", "validation"),
-      src
-    )
-  }
-  if (markAsSpamThreshold > rejectThreshold) {
-    return fail(
-      new StalwartError(
-        "Mark-as-spam threshold must be ≤ reject threshold.",
-        "validation"
-      ),
-      src
-    )
-  }
+  const { rejectThreshold, markAsSpamThreshold } = validated.data
 
   try {
     if (src === "mock") {
@@ -2791,13 +2949,16 @@ export async function updateSpamSettingsAction(input: {
       const next: SpamSettings = {
         rejectThreshold,
         markAsSpamThreshold,
-        denylist: normalizeAddressList(input.denylist),
-        allowlist: normalizeAddressList(input.allowlist),
+        denylist: normalizeAddressList(validated.data.denylist),
+        allowlist: normalizeAddressList(validated.data.allowlist),
         backend: "mock",
         note: "Mock spam posture — not pushed to a real MTA.",
         updatedAt: new Date().toISOString(),
       }
       store.setSpamSettings(next)
+      await audit("spam.update", {
+        detail: `reject≥${rejectThreshold}, mark≥${markAsSpamThreshold}`,
+      })
       return ok(next, src)
     }
 

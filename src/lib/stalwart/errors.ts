@@ -42,7 +42,15 @@ export function formatSetFailure(
   id: string
 ): string {
   const err = map?.[id]
-  if (!err) return "Stalwart rejected the change."
+  if (!err) {
+    // Some Stalwart responses key by create-id rather than account id.
+    const first = map ? Object.values(map)[0] : undefined
+    if (first) {
+      const parts = [first.type, first.description].filter(Boolean)
+      if (parts.length) return parts.join(": ")
+    }
+    return "Stalwart rejected the change."
+  }
   const parts = [err.type, err.description].filter(Boolean)
   return parts.join(": ") || "Stalwart rejected the change."
 }

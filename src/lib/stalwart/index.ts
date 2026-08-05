@@ -2,7 +2,8 @@ import "server-only"
 
 export { jmapCall, responseById } from "./client"
 export * from "./types"
-export { StalwartError } from "./errors"
+export { StalwartError, formatSetFailure, mapHttpError } from "./errors"
+export { parseActionError, describeJmapDetails } from "./parse-error"
 export {
   queryDomains,
   getDomain,

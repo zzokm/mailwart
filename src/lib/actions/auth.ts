@@ -20,10 +20,12 @@ import {
   isAuthenticated,
   sessionActor,
 } from "@/lib/auth/session"
+import { loginSchema } from "@/lib/validations/auth"
+import { zodIssuesMessage } from "@/lib/validations/common"
 
 export type LoginActionResult =
   | { ok: true }
-  | { ok: false; error: string }
+  | { ok: false; error: string; code?: "validation" | "auth" | "rate_limit" | "config" }
 
 export async function loginAction(input: {
   username: string
@@ -37,25 +39,30 @@ export async function loginAction(input: {
     return {
       ok: false,
       error: `Too many login attempts. Try again in ${rate.retryAfterSec}s.`,
+      code: "rate_limit",
     }
   }
 
   const configError = getAuthConfigError()
   if (configError) {
-    return { ok: false, error: configError }
+    return { ok: false, error: configError, code: "config" }
   }
 
-  const username = input.username.trim()
-  const password = input.password
-
-  if (!username || !password) {
+  const parsed = loginSchema.safeParse(input)
+  if (!parsed.success) {
     recordFailedLogin(ip)
-    return { ok: false, error: "Username and password are required." }
+    return {
+      ok: false,
+      error: zodIssuesMessage(parsed.error),
+      code: "validation",
+    }
   }
+
+  const { username, password } = parsed.data
 
   if (!verifyAppAdminCredentials(username, password)) {
     recordFailedLogin(ip)
-    return { ok: false, error: "Invalid username or password." }
+    return { ok: false, error: "Invalid username or password.", code: "auth" }
   }
 
   clearLoginFailures(ip)

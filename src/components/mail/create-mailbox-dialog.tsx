@@ -5,6 +5,7 @@ import { useState, useTransition } from "react"
 import { toast } from "sonner"
 
 import { createMailboxAction } from "@/lib/actions/mail"
+import { toastActionResult } from "@/lib/action-toast"
 import { PasswordField } from "@/components/mail/password-field"
 import { Button } from "@/components/ui/button"
 import {
@@ -71,10 +72,10 @@ export function CreateMailboxDialog({
         diskQuotaBytes,
       })
       if (!result.ok) {
-        toast.error(result.error)
+        toastActionResult(result, { success: "" })
         return
       }
-      toast.success(`Created ${result.data.email}.`)
+      toastActionResult(result, { success: `Created ${result.data.email}.` })
       onOpenChange(false)
       setLocal("")
       setDescription("")

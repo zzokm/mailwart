@@ -25,6 +25,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { generatePassword } from "@/lib/format"
+import { toastActionResult } from "@/lib/action-toast"
+import { ADMIN_DESTROY_CONFIRM } from "@/lib/validations/mailbox"
 import type {
   AppPassword,
   ForwardingRule,
@@ -309,14 +311,17 @@ export function MailboxDetailClient({
         <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 sm:p-5">
           <h2 className="text-sm font-medium text-destructive">Danger</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Typed full-email confirm. Blocked if this mailbox is the domain
-            catch-all target.
+            Typed full-email confirm
+            {account.isAdmin
+              ? ` plus “${ADMIN_DESTROY_CONFIRM}” for admin mailboxes`
+              : ""}
+            . Blocked if this mailbox is the domain catch-all target.
           </p>
           <Button
             type="button"
             variant="destructive"
             className="mt-3"
-            disabled={pending || account.isAdmin}
+            disabled={pending}
             onClick={() => setDestroyOpen(true)}
           >
             Delete mailbox
@@ -328,18 +333,34 @@ export function MailboxDetailClient({
         open={destroyOpen}
         onOpenChange={setDestroyOpen}
         title={`Delete ${account.email}?`}
-        description="Type the full email address to confirm destroy."
+        description={
+          account.isAdmin
+            ? "Admin mailbox: type the full email, then DESTROY ADMIN."
+            : "Type the full email address to confirm destroy."
+        }
         confirmValue={account.email}
         confirmLabel="Type full email"
+        secondConfirmValue={account.isAdmin ? ADMIN_DESTROY_CONFIRM : undefined}
+        secondConfirmLabel={
+          account.isAdmin ? `Type ${ADMIN_DESTROY_CONFIRM}` : undefined
+        }
         pending={pending}
         onConfirm={() => {
           startTransition(async () => {
-            const result = await destroyMailboxAction(account.id, account.email)
-            if (!result.ok) {
-              toast.error(result.error)
+            const result = await destroyMailboxAction(
+              account.id,
+              account.email,
+              account.isAdmin
+                ? { adminConfirm: ADMIN_DESTROY_CONFIRM }
+                : undefined
+            )
+            if (
+              !toastActionResult(result, {
+                success: `Deleted ${account.email}.`,
+              })
+            ) {
               return
             }
-            toast.success(`Deleted ${account.email}.`)
             router.push("/dashboard/mailboxes")
             router.refresh()
           })

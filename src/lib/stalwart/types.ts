@@ -298,7 +298,21 @@ export type BulkImportResultRow = BulkImportRow & {
 
 export type ActionResult<T = void> =
   | { ok: true; data: T; source: DataSource }
-  | { ok: false; error: string; source: DataSource }
+  | {
+      ok: false
+      error: string
+      source: DataSource
+      /** Machine-readable class when known (Stalwart / Zod / auth). */
+      code?:
+        | "config"
+        | "auth"
+        | "timeout"
+        | "transport"
+        | "jmap"
+        | "not_found"
+        | "validation"
+        | "unknown"
+    }
 
 /** SMTP / Trace delivery row for Logs UI. */
 export type DeliveryStatus =

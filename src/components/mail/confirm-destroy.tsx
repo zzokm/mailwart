@@ -21,6 +21,8 @@ export function ConfirmDestroy({
   description,
   confirmValue,
   confirmLabel = "Type to confirm",
+  secondConfirmValue,
+  secondConfirmLabel,
   pending,
   onConfirm,
 }: {
@@ -30,17 +32,27 @@ export function ConfirmDestroy({
   description: string
   confirmValue: string
   confirmLabel?: string
+  /** Optional dual-confirm phrase (e.g. admin mailbox destroy). */
+  secondConfirmValue?: string
+  secondConfirmLabel?: string
   pending?: boolean
   onConfirm: () => void | Promise<void>
 }) {
   const [typed, setTyped] = useState("")
+  const [typedSecond, setTypedSecond] = useState("")
   const matches = typed.trim().toLowerCase() === confirmValue.toLowerCase()
+  const secondMatches =
+    !secondConfirmValue ||
+    typedSecond.trim().toUpperCase() === secondConfirmValue.toUpperCase()
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) setTyped("")
+        if (!next) {
+          setTyped("")
+          setTypedSecond("")
+        }
         onOpenChange(next)
       }}
     >
@@ -49,17 +61,35 @@ export function ConfirmDestroy({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-2">
-          <Label htmlFor="confirm-destroy">{confirmLabel}</Label>
-          <Input
-            id="confirm-destroy"
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            placeholder={confirmValue}
-            className="font-mono text-[13px]"
-            disabled={pending}
-            autoComplete="off"
-          />
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="confirm-destroy">{confirmLabel}</Label>
+            <Input
+              id="confirm-destroy"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={confirmValue}
+              className="font-mono text-[13px]"
+              disabled={pending}
+              autoComplete="off"
+            />
+          </div>
+          {secondConfirmValue ? (
+            <div className="grid gap-2">
+              <Label htmlFor="confirm-destroy-2">
+                {secondConfirmLabel ?? "Type secondary confirm"}
+              </Label>
+              <Input
+                id="confirm-destroy-2"
+                value={typedSecond}
+                onChange={(e) => setTypedSecond(e.target.value)}
+                placeholder={secondConfirmValue}
+                className="font-mono text-[13px]"
+                disabled={pending}
+                autoComplete="off"
+              />
+            </div>
+          ) : null}
         </div>
         <DialogFooter>
           <Button
@@ -73,10 +103,11 @@ export function ConfirmDestroy({
           <Button
             type="button"
             variant="destructive"
-            disabled={!matches || pending}
+            disabled={!matches || !secondMatches || pending}
             onClick={async () => {
               await onConfirm()
               setTyped("")
+              setTypedSecond("")
             }}
           >
             Destroy
