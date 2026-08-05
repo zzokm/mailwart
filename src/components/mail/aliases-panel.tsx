@@ -3,9 +3,8 @@
 import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition } from "react"
 import { Plus, Trash2 } from "lucide-react"
-import { toast } from "sonner"
-
 import { updateMailboxAliasesAction } from "@/lib/actions/mail"
+import { toastActionResult } from "@/lib/action-toast"
 import { parseEmailAliases } from "@/lib/stalwart/routing-utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -89,15 +88,17 @@ export function AliasesPanel({
           description: d.description,
         }))
       )
-      if (!result.ok) {
-        toast.error(result.error)
+      if (
+        !toastActionResult(result, {
+          success: result.ok
+            ? result.data.length === 0
+              ? "Aliases cleared."
+              : `Saved ${result.data.length} alias${result.data.length === 1 ? "" : "es"}.`
+            : "",
+        })
+      ) {
         return
       }
-      toast.success(
-        result.data.length === 0
-          ? "Aliases cleared."
-          : `Saved ${result.data.length} alias${result.data.length === 1 ? "" : "es"}.`
-      )
       router.refresh()
     })
   }

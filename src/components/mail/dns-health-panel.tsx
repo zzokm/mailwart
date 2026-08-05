@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
 import { RefreshCw } from "lucide-react"
 import { toast } from "sonner"
-
 import { refreshDomainDnsAction } from "@/lib/actions/mail"
+import { toastActionResult } from "@/lib/action-toast"
 import { CopyButton } from "@/components/mail/copy-button"
 import {
   DnsHealthBadge,
@@ -30,12 +30,15 @@ export function DnsHealthPanel({
     startTransition(async () => {
       const id = toast.loading("Re-checking DNS…")
       const result = await refreshDomainDnsAction(domainName)
-      if (!result.ok) {
-        toast.error(result.error, { id })
+      if (
+        !toastActionResult(result, {
+          success: "DNS checklist updated.",
+          id,
+        })
+      ) {
         return
       }
       setDns(result.data)
-      toast.success("DNS checklist updated.", { id })
       router.refresh()
     })
   }

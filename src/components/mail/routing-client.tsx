@@ -4,7 +4,6 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition } from "react"
 import { ExternalLink, Plus, Trash2 } from "lucide-react"
-import { toast } from "sonner"
 
 import {
   destroyForwardingRuleAction,
@@ -12,6 +11,7 @@ import {
   updateMailExchangerAction,
   upsertForwardingRuleAction,
 } from "@/lib/actions/mail"
+import { toastActionResult } from "@/lib/action-toast"
 import { parseEmailAliases } from "@/lib/stalwart/routing-utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -288,14 +288,17 @@ function CatchAllInline({
           mode: nextMode,
           address: nextMode === "address" ? nextAddress || null : null,
         })
-        if (!result.ok) {
-          toast.error(result.error)
+        if (
+          !toastActionResult(result, {
+            success: `Catch-all updated for ${domain.name}.`,
+            note: result.ok ? result.data.note : undefined,
+            noteOnly: Boolean(result.ok && result.data.note),
+          })
+        ) {
           setLocalMode(mode)
           setAddress(domain.catchAllAddress ?? "")
           return
         }
-        if (result.data.note) toast.message(result.data.note)
-        else toast.success(`Catch-all updated for ${domain.name}.`)
         onDone()
       })()
     })
@@ -377,12 +380,16 @@ function MxInline({
         startTransition(() => {
           void (async () => {
             const result = await updateMailExchangerAction(domain.id, next)
-            if (!result.ok) {
-              toast.error(result.error)
+            if (
+              !toastActionResult(result, {
+                success: result.ok
+                  ? (result.data.note ?? `MX posture → ${next}`)
+                  : "",
+              })
+            ) {
               setMode(current)
               return
             }
-            toast.success(result.data.note ?? `MX posture → ${next}`)
             onDone()
           })()
         })
@@ -402,7 +409,6 @@ function MxInline({
 
 function ForwardsSection({
   domains,
-  accounts,
   forwards,
   source,
   adminUiUrl,
@@ -438,11 +444,15 @@ function ForwardsSection({
           keepLocalCopy: keepLocal,
           enabled: true,
         })
-        if (!result.ok) {
-          toast.error(result.error)
+        if (
+          !toastActionResult(result, {
+            success: result.ok
+              ? `Forward saved (${result.data.backend}).`
+              : "",
+          })
+        ) {
           return
         }
-        toast.success(`Forward saved (${result.data.backend}).`)
         setSourceAddr("")
         setTargets("")
         onDone()
@@ -619,11 +629,13 @@ function ForwardsSection({
                             const result = await destroyForwardingRuleAction(
                               f.id
                             )
-                            if (!result.ok) {
-                              toast.error(result.error)
+                            if (
+                              !toastActionResult(result, {
+                                success: "Forward removed.",
+                              })
+                            ) {
                               return
                             }
-                            toast.success("Forward removed.")
                             onDone()
                           })()
                         })

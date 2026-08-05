@@ -3,14 +3,13 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
-import { toast } from "sonner"
-
 import {
   destroyDomainAction,
   updateCatchAllAction,
   updateDomainAction,
   updateMailExchangerAction,
 } from "@/lib/actions/mail"
+import { toastActionResult } from "@/lib/action-toast"
 import { ConfirmDestroy } from "@/components/mail/confirm-destroy"
 import { DnsHealthPanel } from "@/components/mail/dns-health-panel"
 import { DnsRecordGenerator } from "@/components/mail/dns-record-generator"
@@ -66,8 +65,7 @@ export function DomainDetailClient({
         description: description.trim() || domain.name,
         isEnabled: enabled,
       })
-      if (!descResult.ok) {
-        toast.error(descResult.error)
+      if (!toastActionResult(descResult, { success: "" })) {
         return
       }
 
@@ -75,19 +73,20 @@ export function DomainDetailClient({
         mode: catchMode,
         address: catchMode === "address" ? catchAll || null : null,
       })
-      if (!catchResult.ok) {
-        toast.error(catchResult.error)
+      if (!toastActionResult(catchResult, { success: "" })) {
         return
       }
 
       const mxResult = await updateMailExchangerAction(domain.id, mxMode)
-      if (!mxResult.ok) {
-        toast.error(mxResult.error)
+      if (
+        !toastActionResult(mxResult, {
+          success: `Updated ${domain.name}.`,
+          note: catchResult.ok ? catchResult.data.note : undefined,
+        })
+      ) {
         return
       }
 
-      toast.success(`Updated ${domain.name}.`)
-      if (catchResult.data.note) toast.message(catchResult.data.note)
       router.refresh()
     })
   }
@@ -99,14 +98,16 @@ export function DomainDetailClient({
       const result = await updateDomainAction(domain.id, {
         isEnabled: next,
       })
-      if (!result.ok) {
+      if (
+        !toastActionResult(result, {
+          success: next
+            ? `Enabled ${domain.name}.`
+            : `Suspended ${domain.name}.`,
+        })
+      ) {
         setEnabled(!next)
-        toast.error(result.error)
         return
       }
-      toast.success(
-        next ? `Enabled ${domain.name}.` : `Suspended ${domain.name}.`
-      )
       router.refresh()
     })
   }
@@ -291,13 +292,13 @@ export function DomainDetailClient({
                 !forceDestroy
               ) {
                 setForceDestroy(true)
-                toast.error(result.error)
-                return
               }
-              toast.error(result.error)
+              toastActionResult(result, { success: "" })
               return
             }
-            toast.success(`Destroyed ${domain.name}.`)
+            toastActionResult(result, {
+              success: `Destroyed ${domain.name}.`,
+            })
             router.push("/dashboard/domains")
             router.refresh()
           })

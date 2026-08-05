@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition } from "react"
-import { toast } from "sonner"
 import { Ban, Plus, Search, Trash2, KeyRound } from "lucide-react"
 
 import {
@@ -11,6 +10,7 @@ import {
   bulkResetPasswordsAction,
   bulkSuspendMailboxesAction,
 } from "@/lib/actions/mail"
+import { toastActionResult } from "@/lib/action-toast"
 import { CreateMailboxDialog } from "@/components/mail/create-mailbox-dialog"
 import { ConfirmDestroy } from "@/components/mail/confirm-destroy"
 import { EmptyState } from "@/components/mail/empty-state"
@@ -159,13 +159,15 @@ export function MailboxTable({
                   [...selected],
                   true
                 )
-                if (!result.ok) {
-                  toast.error(result.error)
+                if (
+                  !toastActionResult(result, {
+                    success: result.ok
+                      ? `Suspended ${result.data.updated}. Failed: ${result.data.failed.length}.`
+                      : "",
+                  })
+                ) {
                   return
                 }
-                toast.success(
-                  `Suspended ${result.data.updated}. Failed: ${result.data.failed.length}.`
-                )
                 setSelected(new Set())
                 router.refresh()
               })
@@ -320,13 +322,15 @@ export function MailboxTable({
         onConfirm={() => {
           startTransition(async () => {
             const result = await bulkDestroyMailboxesAction([...selected])
-            if (!result.ok) {
-              toast.error(result.error)
+            if (
+              !toastActionResult(result, {
+                success: result.ok
+                  ? `Destroyed ${result.data.destroyed}. Failed: ${result.data.failed.length}.`
+                  : "",
+              })
+            ) {
               return
             }
-            toast.success(
-              `Destroyed ${result.data.destroyed}. Failed: ${result.data.failed.length}.`
-            )
             setSelected(new Set())
             setBulkDeleteOpen(false)
             router.refresh()
@@ -364,13 +368,15 @@ export function MailboxTable({
                     [...selected],
                     bulkPassword
                   )
-                  if (!result.ok) {
-                    toast.error(result.error)
+                  if (
+                    !toastActionResult(result, {
+                      success: result.ok
+                        ? `Reset ${result.data.reset}. Failed: ${result.data.failed.length}.`
+                        : "",
+                    })
+                  ) {
                     return
                   }
-                  toast.success(
-                    `Reset ${result.data.reset}. Failed: ${result.data.failed.length}.`
-                  )
                   setBulkResetOpen(false)
                   router.refresh()
                 })

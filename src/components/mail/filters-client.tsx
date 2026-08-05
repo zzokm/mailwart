@@ -4,7 +4,6 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition } from "react"
 import { ExternalLink, Plus, Trash2 } from "lucide-react"
-import { toast } from "sonner"
 
 import {
   destroyAutoresponderAction,
@@ -13,6 +12,7 @@ import {
   upsertAutoresponderAction,
   upsertFilterRuleAction,
 } from "@/lib/actions/mail"
+import { toastActionResult } from "@/lib/action-toast"
 import {
   buildFilterSieve,
   buildVacationSieve,
@@ -257,11 +257,13 @@ function AutorespondersSection({
                             const result = await destroyAutoresponderAction(
                               ar.id
                             )
-                            if (!result.ok) {
-                              toast.error(result.error)
+                            if (
+                              !toastActionResult(result, {
+                                success: "Autoresponder removed.",
+                              })
+                            ) {
                               return
                             }
-                            toast.success("Autoresponder removed.")
                             router.refresh()
                           })
                         }}
@@ -388,11 +390,15 @@ function AutorespondersSection({
                   : null,
                 daysBetween: Number(daysBetween) || 0,
               })
-              if (!result.ok) {
-                toast.error(result.error)
+              if (
+                !toastActionResult(result, {
+                  success: result.ok
+                    ? `Autoresponder saved for ${result.data.email}.`
+                    : "",
+                })
+              ) {
                 return
               }
-              toast.success(`Autoresponder saved for ${result.data.email}.`)
               router.refresh()
             })
           }}
@@ -506,11 +512,13 @@ function FiltersSection({
                       onClick={() => {
                         startTransition(async () => {
                           const result = await destroyFilterRuleAction(rule.id)
-                          if (!result.ok) {
-                            toast.error(result.error)
+                          if (
+                            !toastActionResult(result, {
+                              success: "Filter removed.",
+                            })
+                          ) {
                             return
                           }
-                          toast.success("Filter removed.")
                           router.refresh()
                         })
                       }}
@@ -757,11 +765,15 @@ function FiltersSection({
                     actionType === "redirect" ? redirectTo : undefined,
                 },
               })
-              if (!result.ok) {
-                toast.error(result.error)
+              if (
+                !toastActionResult(result, {
+                  success: result.ok
+                    ? `Filter “${result.data.name}” saved.`
+                    : "",
+                })
+              ) {
                 return
               }
-              toast.success(`Filter “${result.data.name}” saved.`)
               setName("")
               setValue("")
               router.refresh()
@@ -875,11 +887,13 @@ function SpamSection({
                   denylist: parseAddressListText(denylist),
                   allowlist: parseAddressListText(allowlist),
                 })
-                if (!result.ok) {
-                  toast.error(result.error)
+                if (
+                  !toastActionResult(result, {
+                    success: "Spam settings saved.",
+                  })
+                ) {
                   return
                 }
-                toast.success("Spam settings saved.")
                 router.refresh()
               })
             }}

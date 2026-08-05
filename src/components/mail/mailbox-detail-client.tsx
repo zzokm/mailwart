@@ -79,12 +79,14 @@ export function MailboxDetailClient({
       })
       if (!result.ok) {
         setEnabled(!next)
-        toast.error(result.error)
+        toastActionResult(result, { success: "" })
         return
       }
-      toast.success(
-        next ? `Enabled ${account.email}.` : `Suspended ${account.email}.`
-      )
+      toastActionResult(result, {
+        success: next
+          ? `Enabled ${account.email}.`
+          : `Suspended ${account.email}.`,
+      })
       router.refresh()
     })
   }
@@ -197,11 +199,13 @@ export function MailboxDetailClient({
                   description: description.trim() || account.email,
                   diskQuotaBytes,
                 })
-                if (!result.ok) {
-                  toast.error(result.error)
+                if (
+                  !toastActionResult(result, {
+                    success: `Updated ${account.email}.`,
+                  })
+                ) {
                   return
                 }
-                toast.success(`Updated ${account.email}.`)
                 router.refresh()
               })
             }}
@@ -245,11 +249,15 @@ export function MailboxDetailClient({
                   account.id,
                   password
                 )
-                if (!result.ok) {
-                  toast.error(result.error)
+                if (
+                  !toastActionResult(result, {
+                    success: result.ok
+                      ? `Password reset for ${result.data.email}.`
+                      : "",
+                  })
+                ) {
                   return
                 }
-                toast.success(`Password reset for ${result.data.email}.`)
               })
             }}
           >
@@ -418,11 +426,13 @@ function MailboxForwardForm({ account }: { account: StalwartAccount }) {
               keepLocalCopy: keepCopy,
               enabled: true,
             })
-            if (!result.ok) {
-              toast.error(result.error)
+            if (
+              !toastActionResult(result, {
+                success: `Forward created for ${account.email}.`,
+              })
+            ) {
               return
             }
-            toast.success(`Forward created for ${account.email}.`)
             setTargets("")
             router.refresh()
           })

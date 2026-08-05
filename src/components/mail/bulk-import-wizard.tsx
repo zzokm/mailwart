@@ -2,8 +2,8 @@
 
 import { useCallback, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { toast } from "sonner"
 import { Download, Pause, Play, Square, Upload } from "lucide-react"
+import { toast } from "sonner"
 
 import {
   abortBulkJobAction,
@@ -13,6 +13,7 @@ import {
   prepareBulkMailboxJobAction,
   resumeBulkJobAction,
 } from "@/lib/actions/mail"
+import { toastActionResult } from "@/lib/action-toast"
 import {
   FORWARDING_TEMPLATE_CSV,
   FORWARDING_TEMPLATE_FILENAME,
@@ -93,16 +94,17 @@ export function BulkImportWizard() {
             })
           : await prepareBulkForwardingJobAction({ csvText })
 
-      if (!result.ok) {
-        toast.error(result.error)
+      if (
+        !toastActionResult(result, {
+          success: result.ok
+            ? `Validated ${result.data.job.totalRows} rows (${result.data.job.failed} failed validation, ${result.data.job.totalRows - result.data.job.failed} ready).`
+            : "",
+        })
+      ) {
         return
       }
       setJob(result.data.job)
       setStep("preview")
-      const pendingRows = result.data.job.totalRows - result.data.job.failed
-      toast.success(
-        `Validated ${result.data.job.totalRows} rows (${result.data.job.failed} failed validation, ${pendingRows} ready).`
-      )
     })
   }
 
@@ -126,8 +128,7 @@ export function BulkImportWizard() {
         jobId,
         chunkIndex: i,
       })
-      if (!result.ok) {
-        toast.error(result.error)
+      if (!toastActionResult(result, { success: "" })) {
         setStep("preview")
         return
       }
@@ -360,7 +361,7 @@ export function BulkImportWizard() {
                   startTransition(async () => {
                     const r = await pauseBulkJobAction(job.id)
                     if (r.ok) setJob(r.data.job)
-                    else toast.error(r.error)
+                    else toastActionResult(r, { success: "" })
                   })
                 }}
               >
@@ -376,7 +377,7 @@ export function BulkImportWizard() {
                   startTransition(async () => {
                     const r = await resumeBulkJobAction(job.id)
                     if (r.ok) setJob(r.data.job)
-                    else toast.error(r.error)
+                    else toastActionResult(r, { success: "" })
                   })
                 }}
               >
@@ -395,7 +396,7 @@ export function BulkImportWizard() {
                     if (r.ok) {
                       setJob(r.data.job)
                       toast.error("Abort requested.")
-                    } else toast.error(r.error)
+                    } else toastActionResult(r, { success: "" })
                   })
                 }}
               >

@@ -3,12 +3,11 @@
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
 import { ExternalLink, KeyRound, Plus, Trash2 } from "lucide-react"
-import { toast } from "sonner"
-
 import {
   createAppPasswordAction,
   revokeAppPasswordAction,
 } from "@/lib/actions/mail"
+import { toastActionResult } from "@/lib/action-toast"
 import { CopyButton } from "@/components/mail/copy-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -101,11 +100,13 @@ export function AppPasswordPanel({
                       accountId,
                       p.id
                     )
-                    if (!result.ok) {
-                      toast.error(result.error)
+                    if (
+                      !toastActionResult(result, {
+                        success: `Revoked “${p.description}”.`,
+                      })
+                    ) {
                       return
                     }
-                    toast.success(`Revoked “${p.description}”.`)
                     router.refresh()
                   })
                 }}
@@ -154,12 +155,14 @@ export function AppPasswordPanel({
                   label
                 )
                 if (!result.ok) {
-                  toast.error(result.error)
+                  toastActionResult(result, { success: "" })
                   return
                 }
                 setRevealedSecret(result.data.secret)
                 setLabel("")
-                toast.success(`Created app password “${result.data.password.description}”.`)
+                toastActionResult(result, {
+                  success: `Created app password “${result.data.password.description}”.`,
+                })
                 router.refresh()
               })
             }}

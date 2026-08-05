@@ -1,12 +1,11 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { toast } from "sonner"
-
 import {
   generateDkimAction,
   generateDmarcAction,
 } from "@/lib/actions/mail"
+import { toastActionResult } from "@/lib/action-toast"
 import { CopyButton } from "@/components/mail/copy-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -94,12 +93,15 @@ export function DnsRecordGenerator({ domainName }: { domainName: string }) {
         domain: domainName,
         selector,
       })
-      if (!result.ok) {
-        toast.error(result.error)
+      if (
+        !toastActionResult(result, {
+          success:
+            "DKIM keypair generated. Copy the TXT record; keep the private key offline.",
+        })
+      ) {
         return
       }
       setDkim(result.data)
-      toast.success("DKIM keypair generated. Copy the TXT record; keep the private key offline.")
     })
   }
 
@@ -110,13 +112,15 @@ export function DnsRecordGenerator({ domainName }: { domainName: string }) {
         policy,
         rua: rua.trim() || undefined,
       })
-      if (!result.ok) {
-        toast.error(result.error)
+      if (
+        !toastActionResult(result, {
+          success: "DMARC (and suggested SPF) strings ready to paste.",
+        })
+      ) {
         return
       }
       setDmarc(result.data.dmarc)
       setSpf(result.data.spf)
-      toast.success("DMARC (and suggested SPF) strings ready to paste.")
     })
   }
 
