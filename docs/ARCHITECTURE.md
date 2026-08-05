@@ -245,6 +245,9 @@ Existing flow — do not regress:
 2. `GET/POST /api/webmail/sso` mints HMAC token (`WEBMAIL_SSO_SECRET`).
 3. Browser opens Roundcube with token; `em_sso` verifies and authenticates as `target%impersonator` using server-only impersonator credentials.
 4. Roundcube session is independent of mailwart session.
+5. A valid token always starts a fresh Roundcube session: `em_sso` kills any existing one and forces `task=login`/`action=login`. Roundcube otherwise keeps the old session and renders the login template for `_task=login`, so repeat hand-offs and mailbox switches would land on the login page.
+
+The plugin and `integration.inc.php` ship **inside** the Roundcube image (`roundcube/Dockerfile`), not as bind mounts: Dokploy replaces the cloned source directory on every deploy, which leaves a running container bound to a deleted inode and silently unloads the plugin.
 
 ### 8.1 Token claims & abuse controls
 

@@ -12,9 +12,25 @@ class em_sso extends rcube_plugin
 
     public function startup($args)
     {
-        if (empty($_SESSION['user_id']) && $this->token_claims()) {
-            $args['action'] = 'login';
+        if (!isset($_GET['_em_sso'])) {
+            return $args;
         }
+
+        if (!$this->token_claims()) {
+            rcube::write_log('em_sso', 'rejected SSO token (bad signature, malformed, or expired)');
+            return $args;
+        }
+
+        // Roundcube only runs the login flow for task=login + action=login, and it keeps
+        // an existing session otherwise, which makes a repeat hand-off render the login
+        // template instead of signing in. Drop the previous session so every hand-off
+        // authenticates as the mailbox named in the token.
+        if (!empty($_SESSION['user_id'])) {
+            rcmail::get_instance()->kill_session();
+        }
+
+        $args['task'] = 'login';
+        $args['action'] = 'login';
 
         return $args;
     }

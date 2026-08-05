@@ -51,7 +51,10 @@ services:
       - stalwart-net
 
   roundcube:
-    image: roundcube/roundcubemail:1.6.11-apache
+    build:
+      context: ./roundcube
+      dockerfile: Dockerfile
+    image: email-manager-roundcube:latest
     restart: unless-stopped
     environment:
       ROUNDCUBEMAIL_DEFAULT_HOST: ssl://stalwart-mail
@@ -71,8 +74,6 @@ services:
       WEBMAIL_IMPERSONATOR_PASSWORD: ${WEBMAIL_IMPERSONATOR_PASSWORD:-${STALWART_ADMIN_PASSWORD}}
     volumes:
       - roundcube_db:/var/roundcube/db
-      - ./roundcube/config:/var/roundcube/config:ro
-      - ./roundcube/plugins/em_sso:/var/www/html/plugins/em_sso:ro
     labels:
       - traefik.enable=true
       - traefik.docker.network=dokploy-network
