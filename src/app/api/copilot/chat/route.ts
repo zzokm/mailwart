@@ -8,6 +8,10 @@ import { z } from "zod"
 
 import { AuthError, requireSession } from "@/lib/auth/session"
 import { streamCopilotChat } from "@/lib/copilot/chat"
+import {
+  getCopilotRateLimitStatus,
+  recordCopilotChatCall,
+} from "@/lib/copilot/rate-limit"
 import { CopilotNotConfiguredError } from "@/lib/copilot/runtime"
 
 export const runtime = "nodejs"
@@ -15,18 +19,34 @@ export const dynamic = "force-dynamic"
 
 const bodySchema = z.object({
   messages: z.array(z.unknown()).min(1),
-  /** Phase 5: only true after operator Approve for a destructive turn. */
-  executeDestructive: z.boolean().optional(),
 })
 
 export async function POST(request: Request) {
+  let session
   try {
-    await requireSession()
+    session = await requireSession()
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
     throw err
+  }
+
+  const sessionKey =
+    (typeof session.username === "string" && session.username.trim()) ||
+    "admin"
+
+  const rate = getCopilotRateLimitStatus(sessionKey)
+  if (rate.limited) {
+    return NextResponse.json(
+      {
+        error: `Slow down — Copilot rate limit reached. Try again in ~${rate.retryAfterSec}s.`,
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rate.retryAfterSec) },
+      }
+    )
   }
 
   let json: unknown
@@ -45,10 +65,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    recordCopilotChatCall(sessionKey)
+
     const result = await streamCopilotChat({
       messages: parsed.data.messages as UIMessage[],
-      // C3: never auto-run destructive; Phase 5 flips this after Approve.
-      executeDestructive: false,
       abortSignal: request.signal,
     })
 

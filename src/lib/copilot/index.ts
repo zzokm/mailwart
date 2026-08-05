@@ -29,12 +29,27 @@ export {
 } from "./model"
 
 export {
+  COPILOT_APPROVAL_TTL_MS,
+  consumeApproval,
+  getCopilotApprovalSecret,
+  rememberApprovalIssue,
+} from "./approvals"
+
+export {
+  COPILOT_MAX_OUTPUT_TOKENS,
   COPILOT_MAX_TOOL_STEPS,
   COPILOT_SYSTEM_PROMPT,
   getCopilotToolCatalog,
   streamCopilotChat,
   type CopilotStreamChatInput,
 } from "./chat"
+
+export {
+  COPILOT_RATE_MAX_CALLS,
+  COPILOT_RATE_WINDOW_MS,
+  getCopilotRateLimitStatus,
+  recordCopilotChatCall,
+} from "./rate-limit"
 
 export {
   buildAiTools,

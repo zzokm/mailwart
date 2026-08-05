@@ -1,6 +1,6 @@
 import type { z } from "zod"
 
-/** Phase 5 approval gating — destructive never auto-runs without operator OK. */
+/** Risk tags — destructive never auto-runs without operator Approve (§16.7). */
 export type CopilotToolRisk = "read" | "write" | "destructive"
 
 export type CopilotToolCategory =
@@ -25,11 +25,11 @@ export type CopilotToolDef<TSchema extends z.ZodTypeAny = z.ZodTypeAny> = {
    * Return value is sanitized before it reaches the model stream.
    */
   execute: (input: z.infer<TSchema>) => Promise<unknown>
-  /** Optional left-panel route after a successful mutation (Phase 4). */
+  /** Optional left-panel route after a successful mutation. */
   navigate?: (result: unknown) => string | null
 }
 
-/** Result when a destructive tool is blocked pending Phase 5 approval. */
+/** @deprecated Stub shape from C3; approval now uses AI SDK toolApproval UI. */
 export type AwaitingApprovalResult = {
   status: "awaiting_approval"
   risk: "destructive"
@@ -40,9 +40,6 @@ export type AwaitingApprovalResult = {
 }
 
 export type BuildAiToolsOptions = {
-  /**
-   * When false (default), destructive tools return awaiting_approval
-   * and do not invoke Server Actions. Phase 5 sets true after operator Approve.
-   */
-  executeDestructive?: boolean
+  /** Reserved for tests; production gates via toolApproval + ledger. */
+  unused?: never
 }

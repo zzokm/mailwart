@@ -8,6 +8,7 @@ import {
   type UIMessage,
 } from "ai"
 
+import { getCopilotApprovalSecret } from "./approvals"
 import { requireCopilotLanguageModel } from "./model"
 import {
   buildCopilotAiTools,
@@ -16,25 +17,27 @@ import {
 import { listCopilotTools } from "./tools/registry"
 import type { BuildAiToolsOptions } from "./tools/types"
 
-/** Soft cap — Architecture §16.6 (harder limits in Phase 5). */
+/** Hard cap on tool rounds per user turn — Architecture §16.6. */
 export const COPILOT_MAX_TOOL_STEPS = 8
+
+/** Soft output token cap per model step — Architecture §16.6. */
+export const COPILOT_MAX_OUTPUT_TOKENS = 4096
 
 export const COPILOT_SYSTEM_PROMPT = `You are mailwart Copilot, an operator assistant for a Stalwart mail control plane.
 
 Rules:
 - Use only the provided tools. Never invent API endpoints or claim side effects without a tool result.
 - Prefer read tools first to gather ids/names before write tools.
-- Destructive tools (destroy, password reset, bulk commit/destroy/reset/suspend) require operator approval and will not execute until approved. Tell the operator clearly when a result is awaiting_approval.
+- Destructive tools (destroy, password reset, bulk commit/destroy/reset/suspend) pause for operator Approve/Reject in the panel. Never claim they completed until a successful tool result arrives after approval.
 - Never ask the operator to paste secrets into chat for display; when creating mailboxes or resetting passwords, use the tool and confirm success without echoing the password.
 - App password secrets and DKIM private keys are never returned to you — direct the operator to the Domains/Mailbox UI to copy them once.
 - When a request is ambiguous or you would otherwise guess an id, domain, or destructive target, call ask_operator with a short question and concrete choices, then stop your turn and wait. Never call ask_operator twice in one turn.
+- If the same tool and arguments fail twice, stop and ask the operator — do not retry a third time.
 - For navigation, call navigate_to with an allowlisted /dashboard/* path.
 - Be concise and operational. Cite entity emails/domains from tool results.`
 
 export type CopilotStreamChatInput = {
   messages: UIMessage[] | ModelMessage[]
-  /** Phase 5: set true only after operator Approve for a destructive turn. */
-  executeDestructive?: boolean
   abortSignal?: AbortSignal
 }
 
@@ -58,9 +61,7 @@ function isUiMessages(
  */
 export async function streamCopilotChat(input: CopilotStreamChatInput) {
   const { model } = await requireCopilotLanguageModel()
-  const toolOpts: BuildAiToolsOptions = {
-    executeDestructive: input.executeDestructive === true,
-  }
+  const toolOpts: BuildAiToolsOptions = {}
   const tools = buildCopilotAiTools(toolOpts)
 
   const modelMessages = isUiMessages(input.messages)
@@ -72,8 +73,10 @@ export async function streamCopilotChat(input: CopilotStreamChatInput) {
     system: COPILOT_SYSTEM_PROMPT,
     messages: modelMessages,
     tools,
+    maxOutputTokens: COPILOT_MAX_OUTPUT_TOKENS,
     stopWhen: stepCountIs(COPILOT_MAX_TOOL_STEPS),
     toolApproval: buildDestructiveToolApproval(),
+    experimental_toolApprovalSecret: getCopilotApprovalSecret(),
     abortSignal: input.abortSignal,
   })
 }

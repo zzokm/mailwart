@@ -115,34 +115,12 @@ export function CopilotToolStep({
       tone = "attention"
       icon = <ShieldAlert />
       body = (
-        <div className="mt-1.5 rounded-lg border border-warn/30 bg-warn/5 p-2.5">
-          <p className="text-[11.5px] font-medium text-foreground">
-            Destructive action — needs your approval
-          </p>
-          <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-            Approval enforcement lands in Phase 5. Approving now records the
-            decision without running the action.
-          </p>
-          <JsonDisclosure label="Arguments" value={part.input} />
-          <div className="mt-2 flex gap-1.5">
-            <Button
-              type="button"
-              size="xs"
-              variant="outline"
-              onClick={() => onApproval(part.approval.id, true)}
-            >
-              Approve
-            </Button>
-            <Button
-              type="button"
-              size="xs"
-              variant="destructive"
-              onClick={() => onApproval(part.approval.id, false)}
-            >
-              Reject
-            </Button>
-          </div>
-        </div>
+        <ApprovalCard
+          toolName={label}
+          input={part.input}
+          approvalId={part.approval.id}
+          onApproval={onApproval}
+        />
       )
       break
     }
@@ -246,6 +224,88 @@ export function CopilotToolStep({
       </div>
       {body}
     </li>
+  )
+}
+
+function describeApprovalTarget(input: unknown): string | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null
+  const record = input as Record<string, unknown>
+  for (const key of [
+    "email",
+    "name",
+    "domainName",
+    "domain",
+    "id",
+    "jobId",
+    "mailboxId",
+  ]) {
+    const value = record[key]
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  return null
+}
+
+function ApprovalCard({
+  toolName,
+  input,
+  approvalId,
+  onApproval,
+}: {
+  toolName: string
+  input: unknown
+  approvalId: string
+  onApproval: (approvalId: string, approved: boolean) => void
+}) {
+  const [decided, setDecided] = React.useState<boolean | null>(null)
+  const target = describeApprovalTarget(input)
+
+  const decide = (approved: boolean) => {
+    if (decided !== null) return
+    setDecided(approved)
+    onApproval(approvalId, approved)
+  }
+
+  return (
+    <div className="mt-1.5 rounded-lg border border-warn/30 bg-warn/5 p-2.5">
+      <p className="text-[11.5px] font-medium text-foreground">
+        Destructive — irreversible without restore
+      </p>
+      <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+        Approve runs <span className="font-medium text-foreground">{toolName}</span>
+        {target ? (
+          <>
+            {" "}
+            on <span className="font-mono text-foreground">{target}</span>
+          </>
+        ) : null}
+        . Reject cancels with no side effects. Approvals expire in ~5 minutes.
+      </p>
+      <JsonDisclosure label="Arguments" value={input} />
+      {decided === null ? (
+        <div className="mt-2 flex gap-1.5">
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            onClick={() => decide(true)}
+          >
+            Approve
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            variant="destructive"
+            onClick={() => decide(false)}
+          >
+            Reject
+          </Button>
+        </div>
+      ) : (
+        <Detail>
+          {decided ? "Approved — running…" : "Rejected — no side effects."}
+        </Detail>
+      )}
+    </div>
   )
 }
 

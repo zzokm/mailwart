@@ -3,18 +3,20 @@ import "server-only"
 import { tool, type ToolSet } from "ai"
 
 import {
+  consumeApproval,
+  rememberApprovalIssue,
+} from "@/lib/copilot/approvals"
+
+import {
   COPILOT_TOOL_BY_NAME,
   COPILOT_TOOL_DEFS,
   getCopilotToolDef,
 } from "./registry"
 import { sanitizeToolPayload, sanitizeToolResult } from "./sanitize"
-import type {
-  AwaitingApprovalResult,
-  BuildAiToolsOptions,
-} from "./types"
+import type { BuildAiToolsOptions } from "./types"
 
-const APPROVAL_MESSAGE =
-  "Destructive action requires operator approval (Phase 5). Not executed."
+const REPEAT_FAIL_MESSAGE =
+  "Same tool and arguments failed twice. Confirm the target with the operator before retrying."
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -24,42 +26,56 @@ function actionSucceeded(result: unknown): boolean {
   return isPlainObject(result) && result.ok === true
 }
 
-function awaitingApproval(
-  name: string,
-  input: unknown
-): AwaitingApprovalResult {
-  return {
-    status: "awaiting_approval",
-    risk: "destructive",
-    tool: name,
-    message: APPROVAL_MESSAGE,
-    args: sanitizeToolPayload(input),
+function failureKey(name: string, input: unknown): string {
+  try {
+    return `${name}:${JSON.stringify(sanitizeToolPayload(input))}`
+  } catch {
+    return `${name}:unserializable`
   }
 }
 
 /**
  * Build Vercel AI SDK tools from the allowlisted registry.
- * Destructive tools return awaiting_approval unless executeDestructive is true.
+ * Destructive tools pause via streamText `toolApproval` until the operator
+ * Approves; execute then runs the Server Action (single-use, TTL-gated).
  */
 export function buildCopilotAiTools(
-  options: BuildAiToolsOptions = {}
+  _options: BuildAiToolsOptions = {}
 ): ToolSet {
-  const executeDestructive = options.executeDestructive === true
   const tools: ToolSet = {}
+  /** Same tool+args failure count within one stream (Architecture §16.6). */
+  const failCounts = new Map<string, number>()
 
   for (const def of COPILOT_TOOL_DEFS) {
-    const needsApproval = def.risk === "destructive"
+    const isDestructive = def.risk === "destructive"
     tools[def.name] = tool({
       description: `[${def.risk}] ${def.description}`,
       inputSchema: def.inputSchema,
-      needsApproval,
-      execute: async (input) => {
-        if (needsApproval && !executeDestructive) {
-          return awaitingApproval(def.name, input)
+      execute: async (input, { toolCallId }) => {
+        if (isDestructive) {
+          const gate = consumeApproval(toolCallId)
+          if (!gate.ok) {
+            return {
+              ok: false,
+              status: "rejected_by_operator",
+              error: gate.error,
+            }
+          }
+        }
+
+        const key = failureKey(def.name, input)
+        if ((failCounts.get(key) ?? 0) >= 2) {
+          return { ok: false, error: REPEAT_FAIL_MESSAGE }
         }
 
         const raw = await def.execute(input)
         const sanitized = sanitizeToolResult(raw)
+
+        if (!actionSucceeded(raw)) {
+          failCounts.set(key, (failCounts.get(key) ?? 0) + 1)
+        } else {
+          failCounts.delete(key)
+        }
 
         if (def.navigate && actionSucceeded(raw)) {
           const href = def.navigate(raw)
@@ -83,11 +99,13 @@ export function buildCopilotAiTools(
 export const buildAiTools = buildCopilotAiTools
 
 /**
- * Phase 5 hook: after operator Approve, run a destructive tool with side effects.
+ * After operator Approve, run a destructive tool with side effects
+ * (manual / non-stream path). Prefer the stream approval loop in production.
  */
 export async function executeApprovedCopilotTool(
   name: string,
-  input: unknown
+  input: unknown,
+  toolCallId?: string
 ): Promise<unknown> {
   const def = getCopilotToolDef(name) ?? COPILOT_TOOL_BY_NAME[name]
   if (!def) {
@@ -97,6 +115,12 @@ export async function executeApprovedCopilotTool(
     return {
       ok: false,
       error: "executeApprovedCopilotTool is only for destructive tools.",
+    }
+  }
+  if (toolCallId) {
+    const gate = consumeApproval(toolCallId)
+    if (!gate.ok) {
+      return { ok: false, status: "rejected_by_operator", error: gate.error }
     }
   }
   const parsed = def.inputSchema.safeParse(input)
@@ -110,15 +134,19 @@ export async function executeApprovedCopilotTool(
   return sanitizeToolResult(raw)
 }
 
-/** streamText toolApproval map — destructive → user-approval. */
-export function buildDestructiveToolApproval(): Record<
-  string,
-  "user-approval" | "not-applicable"
-> {
-  const map: Record<string, "user-approval" | "not-applicable"> = {}
-  for (const def of COPILOT_TOOL_DEFS) {
-    map[def.name] =
-      def.risk === "destructive" ? "user-approval" : "not-applicable"
+/**
+ * streamText toolApproval — destructive → user-approval, and records
+ * first-issue time for the single-use TTL ledger.
+ */
+export function buildDestructiveToolApproval(): (
+  args: { toolCall: { toolCallId: string; toolName: string } }
+) => "user-approval" | "not-applicable" {
+  return ({ toolCall }) => {
+    const def =
+      getCopilotToolDef(toolCall.toolName) ??
+      COPILOT_TOOL_BY_NAME[toolCall.toolName]
+    if (def?.risk !== "destructive") return "not-applicable"
+    rememberApprovalIssue(toolCall.toolCallId)
+    return "user-approval"
   }
-  return map
 }

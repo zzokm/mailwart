@@ -158,9 +158,11 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     (text: string) => {
       const trimmed = text.trim()
       if (!trimmed) return
+      // §16.6 — one active run; abort prior stream before a new operator turn.
+      void stop()
       void sendMessage({ text: trimmed })
     },
-    [sendMessage]
+    [sendMessage, stop]
   )
 
   const reset = React.useCallback(() => {
