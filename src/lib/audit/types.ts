@@ -26,6 +26,7 @@ export type AuditAction =
   | "webmail.sso"
   | "app_password.create"
   | "app_password.revoke"
+  | "copilot.settings_update"
 
 export type AuditEvent = {
   id: string

@@ -485,14 +485,14 @@ Initial tool families (Phase 3): health/overview, list/get domains & mailboxes, 
 
 ### 16.5 Multi-provider config (Phase 2 detail)
 
-Operators choose a provider in Settings; keys live in **server env** and/or encrypted server-side settings — never `NEXT_PUBLIC_*`.
+Operators choose a provider in Settings; keys live in **server env** and/or server-side settings JSON — never `NEXT_PUBLIC_*`.
 
 | Concern | Approach |
 |---------|----------|
-| Providers | OpenAI-compatible, Anthropic, and/or Azure/OpenAI-style base URL (exact list Phase 2) |
-| Keys | Dokploy env (`COPILOT_API_KEY`, `COPILOT_BASE_URL`, `COPILOT_MODEL`, …) and/or settings form that writes server-only store |
-| UI | Settings shows “configured / missing” and last-4 mask only |
-| Runtime | Node-only route or Server Action streams completions; browser talks only to mailwart |
+| Providers | `openai`, `anthropic`, `google`, `cerebras`, `groq`, `mistral`, `deepseek`, `moonshot`, `ollama`, `openrouter` |
+| Keys | Env-first: `COPILOT_{PROVIDER}_API_KEY`, optional `COPILOT_API_KEY` / `COPILOT_BASE_URL` / `COPILOT_MODEL` / `COPILOT_PROVIDER`; Settings may store fallback keys + preference in `data/copilot-settings.json` (or `COPILOT_SETTINGS_PATH`) |
+| UI | Settings shows configured/missing, key last-4 mask only, dynamic model dropdown via provider list APIs |
+| Runtime | `getCopilotLanguageModelConfig()` returns `{ providerId, model, sdkKind, apiKey?, baseURL }` for Vercel AI SDK `streamText` in Phase 3–4 |
 
 ### 16.6 Infinite loop / burnout prevention
 
@@ -526,10 +526,10 @@ Tools with `risk: "destructive"` (destroy domain/mailbox, bulk destroy/reset/sus
 
 | Phase | Scope | This run |
 |-------|--------|----------|
-| **C1** | Architecture docs + 3 review passes + sliding panel shell (placeholder chat) | **Yes** |
-| **C2** | Multi-provider keys in settings/env | No |
+| **C1** | Architecture docs + 3 review passes + sliding panel shell (placeholder chat) | Done |
+| **C2** | Multi-provider keys in settings/env + dynamic models + runtime config | **Yes** |
 | **C3** | Tool registry wired to Server Actions | No |
 | **C4** | Rich chat UI (messages, tool stream cards) | No |
 | **C5** | Approval guards, rate limits, loop caps implemented | Docs only in C1 |
 
-**C1 success:** Docs updated; review log has Copilot passes; panel shrinks workspace on desktop / sheet on mobile; `npm run build` green; existing routes intact; **no git push**.
+**C2 success:** Provider catalog + env-first resolve; Settings UI with last-4 mask and model fetch; `getCopilotLanguageModelConfig()` ready for AI SDK; `.env.example` placeholders; `npm run build` green; **no git push**.
