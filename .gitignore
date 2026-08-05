@@ -61,6 +61,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# local audit JSONL (Architecture §9.2)
+/data/
+
 # IDE / OS
 .idea/
 .vscode/

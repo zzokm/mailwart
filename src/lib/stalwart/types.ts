@@ -299,3 +299,22 @@ export type BulkImportResultRow = BulkImportRow & {
 export type ActionResult<T = void> =
   | { ok: true; data: T; source: DataSource }
   | { ok: false; error: string; source: DataSource }
+
+/** SMTP / Trace delivery row for Logs UI. */
+export type DeliveryStatus =
+  | "delivered"
+  | "bounce"
+  | "deferred"
+  | "rejected"
+  | "queued"
+
+export type DeliveryEvent = {
+  id: string
+  timestamp: string
+  sender: string
+  recipient: string
+  status: DeliveryStatus
+  sizeBytes?: number | null
+  detail?: string
+  queueId?: string
+}

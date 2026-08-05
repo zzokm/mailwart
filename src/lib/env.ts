@@ -19,6 +19,8 @@ const envSchema = z.object({
   DNS_DKIM_SELECTORS: z.string().optional(),
   /** Expected SPF include/ip/a mechanism substring (optional). */
   DNS_EXPECTED_SPF: z.string().min(1).optional(),
+  /** Append-only audit JSONL path (Architecture §9.2). Relative to cwd or absolute. */
+  AUDIT_LOG_PATH: z.string().min(1).optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -37,6 +39,7 @@ function readRawEnv(): Record<string, string | undefined> {
     DNS_EXPECTED_MX: process.env.DNS_EXPECTED_MX,
     DNS_DKIM_SELECTORS: process.env.DNS_DKIM_SELECTORS,
     DNS_EXPECTED_SPF: process.env.DNS_EXPECTED_SPF,
+    AUDIT_LOG_PATH: process.env.AUDIT_LOG_PATH,
   };
 }
 

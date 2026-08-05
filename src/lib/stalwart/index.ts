@@ -40,6 +40,12 @@ export {
   getMockStore,
 } from "./mock"
 export {
+  queryDeliveryTracesLive,
+  deliveryUnavailableNote,
+  MOCK_DELIVERY_EVENTS,
+  type DeliveryFetchResult,
+} from "./delivery"
+export {
   parseEmailAliases,
   serializeEmailAliases,
   deriveCatchAllMode,

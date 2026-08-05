@@ -9,6 +9,7 @@ import {
   Inbox,
   LayoutDashboard,
   Route,
+  ScrollText,
   Settings,
   Globe,
 } from "lucide-react"
@@ -50,6 +51,7 @@ const NAV: Array<{
   { href: "/dashboard/routing", label: "Routing", icon: Route },
   { href: "/dashboard/filters", label: "Filters", icon: Filter },
   { href: "/dashboard/import", label: "Bulk CSV", icon: Import },
+  { href: "/dashboard/logs", label: "Logs", icon: ScrollText },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ]
 

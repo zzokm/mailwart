@@ -1,6 +1,16 @@
 "use server"
 
-import { AuthError, requireSession } from "@/lib/auth/session"
+import {
+  recordAudit,
+  readAuditEvents,
+  type AuditAction,
+  type AuditEvent,
+} from "@/lib/audit"
+import {
+  AuthError,
+  requireSession,
+  sessionActor,
+} from "@/lib/auth/session"
 import {
   getStalwartAdminUiUrl,
   getStalwartConfig,
@@ -35,6 +45,7 @@ import {
   createAccount,
   createAppPasswordLive,
   createDomain,
+  deliveryUnavailableNote,
   deriveMailExchanger,
   destroyAccount,
   destroyAppPasswordLive,
@@ -46,6 +57,7 @@ import {
   isExternalEmail,
   loadLiveSpamSettings,
   mailExchangerToAllowRelaying,
+  MOCK_DELIVERY_EVENTS,
   mockHealth,
   normalizeAddressList,
   parseEmailAddress,
@@ -53,6 +65,7 @@ import {
   probeSieveJmapSupport,
   queryAccounts,
   queryAppPasswordsLive,
+  queryDeliveryTracesLive,
   queryDomains,
   serializeEmailAliases,
   StalwartError,
@@ -66,6 +79,7 @@ import {
   type Autoresponder,
   type CatchAllMode,
   type DataSource,
+  type DeliveryEvent,
   type DkimGeneratedRecord,
   type DmarcGeneratedRecord,
   type DnsHealthSummary,
@@ -115,6 +129,14 @@ async function denyUnlessAuthed<T>(): Promise<ActionResult<T> | null> {
     }
     throw err
   }
+}
+
+async function audit(
+  action: AuditAction,
+  opts: { target?: string; detail?: string; meta?: AuditEvent["meta"] } = {}
+): Promise<void> {
+  const actor = await sessionActor()
+  await recordAudit({ actor, action, ...opts })
 }
 
 async function loadLiveDirectory(): Promise<{
@@ -474,9 +496,17 @@ export async function createDomainAction(input: {
         domainAliases: [],
       }
       store.setDomains([...store.domains, domain])
+      await audit("domain.create", {
+        target: domain.name,
+        detail: "Created domain",
+      })
       return ok(domain, src)
     }
     const domain = await createDomain(input)
+    await audit("domain.create", {
+      target: domain.name,
+      detail: "Created domain",
+    })
     return ok(domain, src)
   } catch (err) {
     return fail(err, src)
@@ -675,6 +705,10 @@ export async function destroyDomainAction(
       if (force) {
         store.setAccounts(store.accounts.filter((a) => a.domainId !== id))
       }
+      await audit("domain.destroy", {
+        target: domain.name,
+        detail: force ? "Force-destroyed domain" : "Destroyed domain",
+      })
       return ok(undefined, src)
     }
 
@@ -701,6 +735,10 @@ export async function destroyDomainAction(
       )
     }
     await destroyDomain(id)
+    await audit("domain.destroy", {
+      target: domain.name,
+      detail: force ? "Force-destroyed domain" : "Destroyed domain",
+    })
     return ok(undefined, src)
   } catch (err) {
     return fail(err, src)
@@ -872,6 +910,10 @@ export async function createMailboxAction(input: {
         twoFactor: { state: "disabled" },
       }
       store.setAccounts([...store.accounts, account])
+      await audit("mailbox.create", {
+        target: email,
+        detail: "Created mailbox",
+      })
       return ok(account, src)
     }
 
@@ -890,6 +932,10 @@ export async function createMailboxAction(input: {
         input.diskQuotaBytes != null
           ? { diskQuota: input.diskQuotaBytes }
           : {},
+    })
+    await audit("mailbox.create", {
+      target: email,
+      detail: "Created mailbox",
     })
     return ok(account, src)
   } catch (err) {
@@ -933,6 +979,13 @@ export async function updateMailboxAction(
         return fail(new StalwartError("Mailbox not found.", "not_found"), src)
       }
       store.setAccounts(next)
+      if (patch.isEnabled === false) {
+        const account = next.find((a) => a.id === id)
+        await audit("mailbox.suspend", {
+          target: account?.email,
+          detail: "Suspended mailbox",
+        })
+      }
       return ok(undefined, src)
     }
 
@@ -941,6 +994,13 @@ export async function updateMailboxAction(
       ...(quotas != null ? { quotas } : {}),
       ...(patch.isEnabled !== undefined ? { isEnabled: patch.isEnabled } : {}),
     })
+    if (patch.isEnabled === false) {
+      const account = await getAccount(id).catch(() => null)
+      await audit("mailbox.suspend", {
+        target: account?.email,
+        detail: "Suspended mailbox",
+      })
+    }
     return ok(undefined, src)
   } catch (err) {
     return fail(err, src)
@@ -987,6 +1047,10 @@ export async function createAppPasswordAction(
             : a
         )
       )
+      await audit("app_password.create", {
+        target: account.email,
+        detail: `Created app password “${label}”`,
+      })
       return ok({ password, secret }, src)
     }
 
@@ -1003,6 +1067,11 @@ export async function createAppPasswordAction(
         src
       )
     }
+    const liveAccount = await getAccount(accountId).catch(() => null)
+    await audit("app_password.create", {
+      target: liveAccount?.email ?? accountId,
+      detail: `Created app password “${label}”`,
+    })
     return ok({ password: created.password, secret: created.secret }, src)
   } catch (err) {
     return fail(err, src)
@@ -1036,10 +1105,19 @@ export async function revokeAppPasswordAction(
             : a
         )
       )
+      await audit("app_password.revoke", {
+        target: account.email,
+        detail: "Revoked app password",
+      })
       return ok(undefined, src)
     }
 
+    const liveAccount = await getAccount(accountId).catch(() => null)
     await destroyAppPasswordLive(appPasswordId)
+    await audit("app_password.revoke", {
+      target: liveAccount?.email ?? accountId,
+      detail: "Revoked app password",
+    })
     return ok(undefined, src)
   } catch (err) {
     return fail(err, src)
@@ -1067,6 +1145,10 @@ export async function resetMailboxPasswordAction(
       if (!account) {
         return fail(new StalwartError("Mailbox not found.", "not_found"), src)
       }
+      await audit("mailbox.password_reset", {
+        target: account.email,
+        detail: "Password reset",
+      })
       return ok({ email: account.email }, src)
     }
     const account = await getAccount(id)
@@ -1074,6 +1156,10 @@ export async function resetMailboxPasswordAction(
       return fail(new StalwartError("Mailbox not found.", "not_found"), src)
     }
     await updateAccountPassword(id, password)
+    await audit("mailbox.password_reset", {
+      target: account.email,
+      detail: "Password reset",
+    })
     return ok({ email: account.email }, src)
   } catch (err) {
     return fail(err, src)
@@ -1121,6 +1207,10 @@ export async function destroyMailboxAction(
         )
       }
       store.setAccounts(store.accounts.filter((a) => a.id !== id))
+      await audit("mailbox.destroy", {
+        target: account.email,
+        detail: "Destroyed mailbox",
+      })
       return ok(undefined, src)
     }
 
@@ -1156,6 +1246,10 @@ export async function destroyMailboxAction(
       }
     }
     await destroyAccount(id)
+    await audit("mailbox.destroy", {
+      target: account.email,
+      detail: "Destroyed mailbox",
+    })
     return ok(undefined, src)
   } catch (err) {
     return fail(err, src)
@@ -1526,7 +1620,21 @@ export async function commitBulkJobChunkAction(input: {
     }
 
     job.completedChunks.add(input.chunkIndex)
-    return ok({ job: toReport(job), chunkIndex: input.chunkIndex }, src)
+    const report = toReport(job)
+    if (report.status === "completed") {
+      await audit("bulk.complete", {
+        target: job.id,
+        detail: `Bulk ${job.kind}: ${report.created} created, ${report.skipped} skipped, ${report.failed} failed${report.updated ? `, ${report.updated} updated` : ""}`,
+        meta: {
+          kind: job.kind,
+          created: report.created,
+          skipped: report.skipped,
+          failed: report.failed,
+          updated: report.updated,
+        },
+      })
+    }
+    return ok({ job: report, chunkIndex: input.chunkIndex }, src)
   } catch (err) {
     return fail(err, src)
   }
@@ -2698,6 +2806,113 @@ export async function updateSpamSettingsAction(input: {
         "Live spam thresholds and lists are not writable via this JMAP surface. Configure them in Stalwart Admin.",
         "jmap"
       ),
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+// ─── Logs / delivery / audit (Phase 3.7) ─────────────────────────────────────
+
+export async function getDeliveryLogsAction(): Promise<
+  ActionResult<{
+    events: DeliveryEvent[]
+    note?: string
+    usedFallback: boolean
+    adminUiUrl: string
+  }>
+> {
+  const denied = await denyUnlessAuthed<{
+    events: DeliveryEvent[]
+    note?: string
+    usedFallback: boolean
+    adminUiUrl: string
+  }>()
+  if (denied) return denied
+
+  const src = source()
+  const adminUiUrl = getStalwartAdminUiUrl()
+
+  if (src === "mock") {
+    return ok(
+      {
+        events: MOCK_DELIVERY_EVENTS,
+        note: "Sample SMTP transaction rows — connect Stalwart for live Trace history.",
+        usedFallback: true,
+        adminUiUrl,
+      },
+      src
+    )
+  }
+
+  try {
+    const { events, note } = await queryDeliveryTracesLive(250)
+    if (events.length === 0) {
+      return ok(
+        {
+          events: MOCK_DELIVERY_EVENTS,
+          note: note ?? deliveryUnavailableNote(adminUiUrl),
+          usedFallback: true,
+          adminUiUrl,
+        },
+        src
+      )
+    }
+    return ok(
+      {
+        events,
+        note,
+        usedFallback: false,
+        adminUiUrl,
+      },
+      src
+    )
+  } catch (err) {
+    const message =
+      err instanceof StalwartError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : "Trace query failed."
+    return ok(
+      {
+        events: MOCK_DELIVERY_EVENTS,
+        note: `${deliveryUnavailableNote(adminUiUrl)} (${message})`,
+        usedFallback: true,
+        adminUiUrl,
+      },
+      src
+    )
+  }
+}
+
+export async function getAuditLogsAction(): Promise<
+  ActionResult<{
+    events: AuditEvent[]
+    fromSample: boolean
+    pathHint: string
+  }>
+> {
+  const denied = await denyUnlessAuthed<{
+    events: AuditEvent[]
+    fromSample: boolean
+    pathHint: string
+  }>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    const { events, fromSample, path } = await readAuditEvents({
+      limit: 500,
+      allowSampleFallback: src === "mock",
+    })
+    return ok(
+      {
+        events,
+        fromSample,
+        pathHint: path,
+      },
       src
     )
   } catch (err) {

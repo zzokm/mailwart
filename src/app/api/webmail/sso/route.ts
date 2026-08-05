@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
-import { requireSession } from "@/lib/auth/session"
+import { recordAudit } from "@/lib/audit"
+import { requireSession, sessionActor } from "@/lib/auth/session"
 import { getRoundcubeUrl } from "@/lib/env"
 import { createWebmailSsoToken } from "@/lib/webmail-sso"
 
@@ -21,6 +22,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const actor = await sessionActor()
+    await recordAudit({
+      actor,
+      action: "webmail.sso",
+      target: email,
+      detail: "Opened Roundcube via SSO",
+    })
+
     const webmail = new URL(getRoundcubeUrl())
     webmail.searchParams.set("_task", "login")
     webmail.searchParams.set("_em_sso", createWebmailSsoToken(email))

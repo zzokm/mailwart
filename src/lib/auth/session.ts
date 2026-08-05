@@ -37,11 +37,23 @@ export class AuthError extends Error {
   }
 }
 
-export async function createAdminSession(): Promise<void> {
+export async function createAdminSession(username?: string): Promise<void> {
   const session = await getSession()
   session.role = "admin"
+  if (username?.trim()) session.username = username.trim()
   session.exp = Date.now() + SESSION_TTL_SECONDS * 1000
   await session.save()
+}
+
+/** Operator label for audit rows; falls back when session predates username field. */
+export async function sessionActor(): Promise<string> {
+  try {
+    const session = await getSession()
+    if (session.username?.trim()) return session.username.trim()
+  } catch {
+    /* ignore */
+  }
+  return process.env.APP_ADMIN_USER?.trim() || "admin"
 }
 
 export async function destroySession(): Promise<void> {

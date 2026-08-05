@@ -26,9 +26,12 @@ services:
       APP_ADMIN_USER: ${APP_ADMIN_USER:-admin}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET}
+      AUDIT_LOG_PATH: ${AUDIT_LOG_PATH:-/data/audit.jsonl}
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: 0.0.0.0
+    volumes:
+      - mailwart_audit:/data
     networks:
       - default
       - dokploy-network
@@ -82,3 +85,4 @@ networks:
 
 volumes:
   roundcube_db:
+  mailwart_audit:

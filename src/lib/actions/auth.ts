@@ -3,6 +3,7 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 
+import { recordAudit } from "@/lib/audit"
 import {
   getAuthConfigError,
   verifyAppAdminCredentials,
@@ -17,6 +18,7 @@ import {
   createAdminSession,
   destroySession,
   isAuthenticated,
+  sessionActor,
 } from "@/lib/auth/session"
 
 export type LoginActionResult =
@@ -57,11 +59,22 @@ export async function loginAction(input: {
   }
 
   clearLoginFailures(ip)
-  await createAdminSession()
+  await createAdminSession(username)
+  await recordAudit({
+    actor: username,
+    action: "login",
+    detail: "Dashboard session started",
+  })
   return { ok: true }
 }
 
 export async function logoutAction(): Promise<void> {
+  const actor = await sessionActor()
+  await recordAudit({
+    actor,
+    action: "logout",
+    detail: "Dashboard session ended",
+  })
   await destroySession()
   redirect("/login")
 }
