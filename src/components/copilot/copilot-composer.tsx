@@ -29,7 +29,7 @@ export function CopilotComposer() {
   }
 
   return (
-    <div className="shrink-0 border-t border-border/70 bg-background p-2.5">
+    <div className="shrink-0 border-t border-border/70 bg-background p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -43,14 +43,18 @@ export function CopilotComposer() {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing
+            ) {
               event.preventDefault()
               submit()
             }
           }}
           placeholder="Ask about domains, mailboxes, routing…"
           aria-label="Message mailwart Copilot"
-          className="block max-h-32 w-full resize-none bg-transparent px-3 pt-2.5 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground/70"
+          className="block max-h-32 w-full resize-none bg-transparent px-3 pt-2.5 text-base leading-relaxed outline-none placeholder:text-muted-foreground/70 sm:text-[13px]"
         />
         <div className="flex items-center justify-between gap-2 px-2 pb-2">
           <span className="pl-1 text-[10.5px] text-muted-foreground/80">

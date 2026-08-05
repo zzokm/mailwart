@@ -561,7 +561,7 @@ export const COPILOT_TOOL_DEFS: CopilotToolDef[] = [
     category: "navigation",
     risk: "read",
     description:
-      "Request left-panel navigation to an allowlisted /dashboard/* path (Phase 4 applies navIntent).",
+      "Offer an operator-clicked navigation action for an allowlisted /dashboard/* path. Never changes routes automatically.",
     inputSchema: navigateToSchema,
     execute: async (input) => resolveNavigateTo(input),
     navigate: (result) => {

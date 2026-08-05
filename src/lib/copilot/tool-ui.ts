@@ -4,6 +4,7 @@
  */
 
 import { isAllowedDashboardHref } from "./tools/navigate"
+import { getCopilotToolUiMetadata } from "./tool-metadata"
 
 export type CopilotNavIntent = { href: string; reason?: string }
 
@@ -18,16 +19,10 @@ export type CopilotAskPrompt = {
 export type CopilotApprovalStub = { tool: string; message: string }
 
 export type ToolSummary = { tone: "ok" | "error"; text: string }
-
-const ACRONYMS: Record<string, string> = {
-  dkim: "DKIM",
-  dmarc: "DMARC",
-  dns: "DNS",
-  spf: "SPF",
-  mx: "MX",
-  csv: "CSV",
-  id: "ID",
-}
+export type CopilotSuggestedAction =
+  | { type: "navigate"; label: string; href: string }
+  | { type: "webmail"; label: string; href: string }
+  | { type: "prompt"; label: string; prompt: string }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -39,15 +34,7 @@ function str(value: unknown): string | undefined {
 
 /** `refresh_domain_dns` → `Refresh domain DNS` */
 export function humanizeToolName(name: string): string {
-  return name
-    .split("_")
-    .map((word, index) => {
-      const acronym = ACRONYMS[word]
-      if (acronym) return acronym
-      if (index === 0) return word.charAt(0).toUpperCase() + word.slice(1)
-      return word
-    })
-    .join(" ")
+  return getCopilotToolUiMetadata(name).label
 }
 
 /** Nav hrefs arrive either as `navigate` on any result or as a `navigate_to` result. */
@@ -62,6 +49,39 @@ export function readNavIntent(output: unknown): CopilotNavIntent | null {
 
   if (!href || !isAllowedDashboardHref(href)) return null
   return { href, reason: str(output.reason) }
+}
+
+const WEBMAIL_HREF = /^\/api\/webmail\/sso\?email=[^&\s]+$/
+
+export function readSuggestedActions(
+  output: unknown
+): CopilotSuggestedAction[] {
+  if (!isRecord(output) || !Array.isArray(output.actions)) return []
+  return output.actions.slice(0, 5).flatMap((raw) => {
+    if (!isRecord(raw)) return []
+    const type = str(raw.type)
+    const label = str(raw.label)?.slice(0, 80)
+    if (!label) return []
+    if (type === "navigate") {
+      const href = str(raw.href)
+      return href && isAllowedDashboardHref(href)
+        ? [{ type, label, href } as CopilotSuggestedAction]
+        : []
+    }
+    if (type === "webmail") {
+      const href = str(raw.href)
+      return href && WEBMAIL_HREF.test(href)
+        ? [{ type, label, href } as CopilotSuggestedAction]
+        : []
+    }
+    if (type === "prompt") {
+      const prompt = str(raw.prompt)?.slice(0, 200)
+      return prompt
+        ? [{ type, label, prompt } as CopilotSuggestedAction]
+        : []
+    }
+    return []
+  })
 }
 
 export function readAskPrompt(value: unknown): CopilotAskPrompt | null {

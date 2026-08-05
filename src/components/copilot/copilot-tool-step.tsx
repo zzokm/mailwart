@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import {
   getToolName,
   type DynamicToolUIPart,
@@ -23,8 +24,11 @@ import {
   readApprovalStub,
   readAskPrompt,
   readNavIntent,
+  readSuggestedActions,
   summarizeToolOutput,
+  type CopilotSuggestedAction,
 } from "@/lib/copilot/tool-ui"
+import { getCopilotToolUiMetadata } from "@/lib/copilot/tool-metadata"
 import { cn } from "@/lib/utils"
 
 export type CopilotToolPart = ToolUIPart | DynamicToolUIPart
@@ -94,6 +98,7 @@ export function CopilotToolStep({
   onApproval: (approvalId: string, approved: boolean) => void
 }) {
   const name = getToolName(part)
+  const metadata = getCopilotToolUiMetadata(name)
   const label = humanizeToolName(name)
 
   let tone: StepTone = "running"
@@ -102,12 +107,12 @@ export function CopilotToolStep({
 
   switch (part.state) {
     case "input-streaming": {
-      body = <Detail>Preparing request…</Detail>
+      body = <Detail>{metadata.preparing}</Detail>
       break
     }
 
     case "input-available": {
-      body = <Detail>Running…</Detail>
+      body = <Detail>{metadata.running}</Detail>
       break
     }
 
@@ -149,6 +154,7 @@ export function CopilotToolStep({
       body = (
         <Detail>
           <span className="text-destructive">{part.errorText}</span>
+          <span> Check the request details and try again.</span>
         </Detail>
       )
       break
@@ -188,6 +194,10 @@ export function CopilotToolStep({
 
       const summary = summarizeToolOutput(part.output)
       const nav = readNavIntent(part.output)
+      const actions = readSuggestedActions(part.output)
+      if (nav && !actions.some((action) => action.type === "navigate")) {
+        actions.push({ type: "navigate", label: "Open page", href: nav.href })
+      }
       tone = summary.tone === "error" ? "error" : "ok"
       icon = summary.tone === "error" ? <X /> : <Check />
       body = (
@@ -196,13 +206,13 @@ export function CopilotToolStep({
             <span
               className={cn(summary.tone === "error" && "text-destructive")}
             >
-              {summary.text}
+              {summary.tone === "error"
+                ? `${summary.text}. Check the request details and try again.`
+                : `${metadata.completed} ${summary.text}`}
             </span>
           </Detail>
-          {nav ? (
-            <p className="mt-1 truncate font-mono text-[10.5px] text-brand">
-              opened {nav.href}
-            </p>
+          {actions.length > 0 ? (
+            <SuggestedActions actions={actions} onPrompt={onAnswer} />
           ) : null}
           <JsonDisclosure label="Result" value={part.output} />
         </>
@@ -224,6 +234,48 @@ export function CopilotToolStep({
       </div>
       {body}
     </li>
+  )
+}
+
+function SuggestedActions({
+  actions,
+  onPrompt,
+}: {
+  actions: CopilotSuggestedAction[]
+  onPrompt: (value: string) => void
+}) {
+  const router = useRouter()
+  const [visible, setVisible] = React.useState(true)
+  if (!visible) return null
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Suggested actions">
+      {actions.map((action) => (
+        <Button
+          key={`${action.type}-${action.label}`}
+          type="button"
+          size="xs"
+          variant="outline"
+          onClick={() => {
+            if (action.type === "navigate") router.push(action.href)
+            if (action.type === "webmail") {
+              window.open(action.href, "_blank", "noopener,noreferrer")
+            }
+            if (action.type === "prompt") onPrompt(action.prompt)
+          }}
+        >
+          {action.label}
+        </Button>
+      ))}
+      <Button
+        type="button"
+        size="xs"
+        variant="ghost"
+        onClick={() => setVisible(false)}
+      >
+        Stay here
+      </Button>
+    </div>
   )
 }
 

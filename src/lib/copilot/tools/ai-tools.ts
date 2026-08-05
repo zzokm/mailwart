@@ -26,6 +26,53 @@ function actionSucceeded(result: unknown): boolean {
   return isPlainObject(result) && result.ok === true
 }
 
+function stringAt(value: unknown, path: string[]): string | null {
+  let current = value
+  for (const key of path) {
+    if (!isPlainObject(current)) return null
+    current = current[key]
+  }
+  return typeof current === "string" && current.trim()
+    ? current.trim()
+    : null
+}
+
+function suggestedActions(
+  name: string,
+  result: unknown,
+  href: string | null
+): Array<Record<string, string>> {
+  const actions: Array<Record<string, string>> = []
+  if (href) {
+    const label = href.includes("/mailboxes/")
+      ? "Open mailbox"
+      : href.includes("/domains/")
+        ? "View domain"
+        : "Open page"
+    actions.push({ type: "navigate", label, href })
+  }
+
+  if (name === "create_mailbox") {
+    actions.push({
+      type: "prompt",
+      label: "Create another mailbox",
+      prompt: "Create another mailbox",
+    })
+  }
+
+  const email =
+    stringAt(result, ["data", "email"]) ??
+    stringAt(result, ["data", "account", "email"])
+  if ((name === "create_mailbox" || name === "get_mailbox") && email) {
+    actions.push({
+      type: "webmail",
+      label: "Open webmail",
+      href: `/api/webmail/sso?email=${encodeURIComponent(email)}`,
+    })
+  }
+  return actions
+}
+
 function failureKey(name: string, input: unknown): string {
   try {
     return `${name}:${JSON.stringify(sanitizeToolPayload(input))}`
@@ -42,6 +89,7 @@ function failureKey(name: string, input: unknown): string {
 export function buildCopilotAiTools(
   _options: BuildAiToolsOptions = {}
 ): ToolSet {
+  void _options
   const tools: ToolSet = {}
   /** Same tool+args failure count within one stream (Architecture §16.6). */
   const failCounts = new Map<string, number>()
@@ -77,13 +125,14 @@ export function buildCopilotAiTools(
           failCounts.delete(key)
         }
 
-        if (def.navigate && actionSucceeded(raw)) {
-          const href = def.navigate(raw)
-          if (href) {
+        if (actionSucceeded(raw)) {
+          const href = def.navigate?.(raw) ?? null
+          const actions = suggestedActions(def.name, raw, href)
+          if (actions.length > 0) {
             if (isPlainObject(sanitized)) {
-              return { ...sanitized, navigate: href }
+              return { ...sanitized, actions }
             }
-            return { result: sanitized, navigate: href }
+            return { result: sanitized, actions }
           }
         }
 

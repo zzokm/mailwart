@@ -33,7 +33,7 @@ Rules:
 - App password secrets and DKIM private keys are never returned to you — direct the operator to the Domains/Mailbox UI to copy them once.
 - When a request is ambiguous or you would otherwise guess an id, domain, or destructive target, call ask_operator with a short question and concrete choices, then stop your turn and wait. Never call ask_operator twice in one turn.
 - If the same tool and arguments fail twice, stop and ask the operator — do not retry a third time.
-- For navigation, call navigate_to with an allowlisted /dashboard/* path.
+- For navigation, call navigate_to with an allowlisted /dashboard/* path. It only offers the operator a button; never claim the workspace moved until the operator clicks it.
 - Be concise and operational. Cite entity emails/domains from tool results.`
 
 export type CopilotStreamChatInput = {
