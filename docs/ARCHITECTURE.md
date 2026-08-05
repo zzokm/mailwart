@@ -481,7 +481,7 @@ toolName → {
 - Read tools may auto-run; write tools may auto-run with toast; **destructive** tools always pause for approval (§16.7).
 - Tool results returned to the model are sanitized (no env secrets, no full password payloads beyond “password was set”).
 
-**Implemented registry** (`src/lib/copilot/tools/`): categories `overview`, `domains`, `mailboxes`, `routing`, `filters`, `bulk`, `logs`, `navigation`. Tools wrap `mail.ts` Server Actions only. Destructive tools return `awaiting_approval` (and AI SDK `toolApproval: user-approval`) until Phase 5 sets `executeDestructive` after operator Approve via `executeApprovedCopilotTool`.
+**Implemented registry** (`src/lib/copilot/tools/`): categories `overview`, `domains`, `mailboxes`, `routing`, `filters`, `bulk`, `logs`, `navigation`, `assist`. Tools wrap `mail.ts` Server Actions only. Destructive tools use AI SDK `toolApproval: user-approval` + HMAC (`experimental_toolApprovalSecret`); after operator Approve, execute runs the Server Action once (TTL ~5 min, single-use ledger).
 
 | Category | Examples |
 |----------|----------|
@@ -535,14 +535,18 @@ Tools with `risk: "destructive"` (destroy domain/mailbox, bulk destroy/reset/sus
 - Never navigate to external origins or `/api/*` from the model.
 - Deep links prefer existing routes (`/dashboard/mailboxes/[id]`, etc.) so breadcrumbs stay coherent.
 
+**Implemented (C4).** `CopilotProvider` scans streamed tool parts for an href — either `navigate` attached by a registry `navigate` callback or a `navigate_to` result — re-validates it client-side with `isAllowedDashboardHref`, and applies each `toolCallId` at most once. The step card shows the destination inline.
+
 ### 16.9 Copilot phase map
 
 | Phase | Scope | This run |
 |-------|--------|----------|
 | **C1** | Architecture docs + 3 review passes + sliding panel shell (placeholder chat) | Done |
 | **C2** | Multi-provider keys in settings/env + dynamic models + runtime config | Done |
-| **C3** | Tool registry + AI SDK stream endpoint wired to Server Actions | **Yes** |
-| **C4** | Rich chat UI (messages, tool stream cards) | No |
-| **C5** | Approval guards, rate limits, loop caps implemented | Hook placeholder in C3 (`awaiting_approval` / `toolApproval`) |
+| **C3** | Tool registry + AI SDK stream endpoint wired to Server Actions | Done |
+| **C4** | Rich chat UI (messages, tool stream cards) | Done |
+| **C5** | Approval guards, rate limits, loop caps implemented | **Yes** |
 
-**C3 success:** `ai` + `@ai-sdk/{openai,anthropic,google}` installed; tool registry covers UI surface; risks tagged; `POST /api/copilot/chat` streams with tools; secrets sanitized; `npm run build` green; **no git push**.
+**C4 success:** `@ai-sdk/react` `useChat` lives in `CopilotProvider`, so the desktop rail and mobile sheet share one transcript; assistant turns render prose plus a numbered execution timeline of tool steps (live spinner → sanitized result, error, or denial); `ask_operator` renders choice / free-text clarification cards in-stream; nav intents drive `router.push` on the left workspace; approval gates render an Approve/Reject card and `sendAutomaticallyWhen` resumes the run so a decision never hangs the turn.
+
+**C5 success:** Destructive tools pause for Approve/Reject; HMAC-bound approvals; single-use + ~5 min TTL; max tool steps + output tokens + same-tool fail cap + per-session rate limit; `npm run build` green; **no git push until C1–C5 validated**.
