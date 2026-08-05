@@ -435,6 +435,7 @@ Product foundation Phase 1 complete. Copilot is a **parallel expansion** — see
 - Toggle: TopBar button + `Ctrl/Cmd+J` (sidebar keeps `Ctrl/Cmd+B`).
 - Panel open preference: `localStorage` key `mailwart_copilot_open` (desktop only; mobile starts closed).
 - Width: CSS var `--copilot-width: 22rem`. Transition: width/opacity ~200 ms; honor `prefers-reduced-motion`.
+- Implementation: rail lives **inside** `SidebarInset` as a flex sibling of the main column so shadcn inset `peer` styles stay intact.
 
 ```
 ┌─ Sidebar ─┬──────── Workspace (shrinks) ────────┬─ Copilot ─┐
