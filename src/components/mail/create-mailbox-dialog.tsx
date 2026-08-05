@@ -103,6 +103,7 @@ export function CreateMailboxDialog({
             <div className="grid gap-2">
               <Label>Domain</Label>
               <Select
+                items={Object.fromEntries(domains.map((d) => [d.id, d.name]))}
                 value={domainId}
                 onValueChange={(v) => setDomainId(v ?? "")}
                 disabled={pending}

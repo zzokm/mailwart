@@ -56,6 +56,32 @@ import type {
 const textareaClass =
   "flex min-h-[88px] w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
 
+const SCOPE_LABEL: Record<FilterScope, string> = {
+  global: "Global",
+  user: "User mailbox",
+}
+
+const FIELD_LABEL: Record<FilterConditionField, string> = {
+  subject: "Subject",
+  from: "From",
+  to: "To",
+  header: "Header",
+}
+
+const OP_LABEL: Record<FilterConditionOp, string> = {
+  contains: "contains",
+  is: "is",
+  matches: "matches",
+}
+
+const ACTION_LABEL: Record<FilterActionType, string> = {
+  fileinto: "Move to folder",
+  discard: "Discard",
+  redirect: "Redirect",
+  keep: "Keep",
+  stop: "Stop",
+}
+
 export function FiltersClient({
   accounts,
   autoresponders,
@@ -294,6 +320,7 @@ function AutorespondersSection({
           <div className="space-y-2 sm:col-span-2">
             <Label>Mailbox</Label>
             <Select
+              items={Object.fromEntries(accounts.map((a) => [a.id, a.email]))}
               value={accountId}
               onValueChange={(v) => setAccountId(v ?? "")}
               disabled={pending || accounts.length === 0}
@@ -548,6 +575,7 @@ function FiltersSection({
           <div className="space-y-2">
             <Label>Scope</Label>
             <Select
+              items={SCOPE_LABEL}
               value={scope}
               onValueChange={(v) => setScope((v as FilterScope) ?? "user")}
               disabled={pending}
@@ -556,8 +584,11 @@ function FiltersSection({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="global">Global</SelectItem>
-                <SelectItem value="user">User mailbox</SelectItem>
+                {Object.entries(SCOPE_LABEL).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -565,6 +596,7 @@ function FiltersSection({
             <div className="space-y-2">
               <Label>Mailbox</Label>
               <Select
+                items={Object.fromEntries(accounts.map((a) => [a.id, a.email]))}
                 value={accountId}
                 onValueChange={(v) => setAccountId(v ?? "")}
                 disabled={pending || accounts.length === 0}
@@ -606,6 +638,7 @@ function FiltersSection({
           <div className="space-y-2">
             <Label>Field</Label>
             <Select
+              items={FIELD_LABEL}
               value={field}
               onValueChange={(v) =>
                 setField((v as FilterConditionField) ?? "subject")
@@ -616,16 +649,18 @@ function FiltersSection({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="subject">Subject</SelectItem>
-                <SelectItem value="from">From</SelectItem>
-                <SelectItem value="to">To</SelectItem>
-                <SelectItem value="header">Header</SelectItem>
+                {Object.entries(FIELD_LABEL).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
             <Label>Operator</Label>
             <Select
+              items={OP_LABEL}
               value={op}
               onValueChange={(v) =>
                 setOp((v as FilterConditionOp) ?? "contains")
@@ -636,9 +671,11 @@ function FiltersSection({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="contains">contains</SelectItem>
-                <SelectItem value="is">is</SelectItem>
-                <SelectItem value="matches">matches</SelectItem>
+                {Object.entries(OP_LABEL).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -668,6 +705,7 @@ function FiltersSection({
           <div className="space-y-2">
             <Label>Action</Label>
             <Select
+              items={ACTION_LABEL}
               value={actionType}
               onValueChange={(v) =>
                 setActionType((v as FilterActionType) ?? "fileinto")
@@ -678,11 +716,11 @@ function FiltersSection({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="fileinto">Move to folder</SelectItem>
-                <SelectItem value="discard">Discard</SelectItem>
-                <SelectItem value="redirect">Redirect</SelectItem>
-                <SelectItem value="keep">Keep</SelectItem>
-                <SelectItem value="stop">Stop</SelectItem>
+                {Object.entries(ACTION_LABEL).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

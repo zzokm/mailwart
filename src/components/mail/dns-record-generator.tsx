@@ -22,6 +22,12 @@ import type {
   DmarcGeneratedRecord,
 } from "@/lib/stalwart/types"
 
+const DMARC_POLICY_LABEL = {
+  none: "p=none",
+  quarantine: "p=quarantine",
+  reject: "p=reject",
+}
+
 function RecordBlock({
   title,
   name,
@@ -164,6 +170,7 @@ export function DnsRecordGenerator({ domainName }: { domainName: string }) {
           <div className="grid gap-2">
             <Label>DMARC policy</Label>
             <Select
+              items={DMARC_POLICY_LABEL}
               value={policy}
               onValueChange={(v) =>
                 setPolicy((v as "none" | "quarantine" | "reject") ?? "quarantine")
@@ -174,9 +181,11 @@ export function DnsRecordGenerator({ domainName }: { domainName: string }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">p=none</SelectItem>
-                <SelectItem value="quarantine">p=quarantine</SelectItem>
-                <SelectItem value="reject">p=reject</SelectItem>
+                {Object.entries(DMARC_POLICY_LABEL).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

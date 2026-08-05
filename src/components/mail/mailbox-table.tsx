@@ -112,7 +112,14 @@ export function MailboxTable({
               className="pl-8 font-mono text-[13px]"
             />
           </div>
-          <Select value={domainId} onValueChange={(v) => setDomainId(v ?? "all")}>
+          <Select
+            items={{
+              all: "All domains",
+              ...Object.fromEntries(domains.map((d) => [d.id, d.name])),
+            }}
+            value={domainId}
+            onValueChange={(v) => setDomainId(v ?? "all")}
+          >
             <SelectTrigger className="w-full sm:w-48">
               <SelectValue placeholder="All domains" />
             </SelectTrigger>

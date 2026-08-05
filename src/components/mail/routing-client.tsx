@@ -41,6 +41,23 @@ import type {
   StalwartDomain,
 } from "@/lib/stalwart/types"
 
+const CATCH_ALL_MODE_LABEL: Record<CatchAllMode, string> = {
+  address: "address",
+  bounce: "bounce",
+  blackhole: "blackhole",
+}
+
+const MX_MODE_LABEL: Record<MailExchangerMode, string> = {
+  local: "local",
+  backup: "backup",
+  remote: "remote",
+}
+
+const FORWARD_SCOPE_LABEL = {
+  user: "user",
+  domain: "domain (*@)",
+}
+
 function catchAllModeOf(d: StalwartDomain): CatchAllMode {
   if (d.catchAllMode === "blackhole" && !d.catchAllAddress) return "blackhole"
   if (d.catchAllAddress) return "address"
@@ -307,6 +324,7 @@ function CatchAllInline({
   return (
     <div className="flex min-w-[12rem] flex-col gap-1.5">
       <Select
+        items={CATCH_ALL_MODE_LABEL}
         value={localMode}
         disabled={pending}
         onValueChange={(v) => {
@@ -319,13 +337,19 @@ function CatchAllInline({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="address">address</SelectItem>
-          <SelectItem value="bounce">bounce</SelectItem>
-          <SelectItem value="blackhole">blackhole</SelectItem>
+          {Object.entries(CATCH_ALL_MODE_LABEL).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
       {localMode === "address" ? (
         <Select
+          items={{
+            __none__: "Select mailbox…",
+            ...Object.fromEntries(mailboxes.map((m) => [m.email, m.email])),
+          }}
           value={address || "__none__"}
           disabled={pending}
           onValueChange={(v) => {
@@ -372,6 +396,7 @@ function MxInline({
 
   return (
     <Select
+      items={MX_MODE_LABEL}
       value={mode}
       disabled={pending}
       onValueChange={(v) => {
@@ -399,9 +424,11 @@ function MxInline({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="local">local</SelectItem>
-        <SelectItem value="backup">backup</SelectItem>
-        <SelectItem value="remote">remote</SelectItem>
+        {Object.entries(MX_MODE_LABEL).map(([value, label]) => (
+          <SelectItem key={value} value={value}>
+            {label}
+          </SelectItem>
+        ))}
       </SelectContent>
     </Select>
   )
@@ -475,6 +502,7 @@ function ForwardsSection({
         <div className="grid gap-1.5">
           <Label className="text-[11px] text-muted-foreground">Scope</Label>
           <Select
+            items={FORWARD_SCOPE_LABEL}
             value={scope}
             onValueChange={(v) => setScope((v as "user" | "domain") ?? "user")}
             disabled={pending}
@@ -483,14 +511,18 @@ function ForwardsSection({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="user">user</SelectItem>
-              <SelectItem value="domain">domain (*@)</SelectItem>
+              {Object.entries(FORWARD_SCOPE_LABEL).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
         <div className="grid gap-1.5">
           <Label className="text-[11px] text-muted-foreground">Domain</Label>
           <Select
+            items={Object.fromEntries(domains.map((d) => [d.id, d.name]))}
             value={domainId}
             onValueChange={(v) => setDomainId(v ?? "")}
             disabled={pending}

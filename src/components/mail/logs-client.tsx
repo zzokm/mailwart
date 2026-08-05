@@ -39,6 +39,8 @@ const STATUS_LABEL: Record<DeliveryStatus, string> = {
   queued: "Queued",
 }
 
+const STATUS_FILTER_LABEL = { all: "All statuses", ...STATUS_LABEL }
+
 function statusBadgeClass(status: DeliveryStatus): string {
   switch (status) {
     case "delivered":
@@ -153,6 +155,7 @@ export function LogsClient({
             />
           </div>
           <Select
+            items={STATUS_FILTER_LABEL}
             value={statusFilter}
             onValueChange={(v) => setStatusFilter(v ?? "all")}
           >
@@ -160,12 +163,11 @@ export function LogsClient({
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="delivered">Delivered</SelectItem>
-              <SelectItem value="bounce">Bounce</SelectItem>
-              <SelectItem value="deferred">Deferred</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
-              <SelectItem value="queued">Queued</SelectItem>
+              {Object.entries(STATUS_FILTER_LABEL).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

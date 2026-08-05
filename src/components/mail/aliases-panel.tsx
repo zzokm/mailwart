@@ -149,6 +149,9 @@ export function AliasesPanel({
                     Domain
                   </Label>
                   <Select
+                    items={Object.fromEntries(
+                      enabledDomains.map((d) => [d.id, d.name])
+                    )}
                     value={row.domainId}
                     disabled={pending || !editable}
                     onValueChange={(v) => {

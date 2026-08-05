@@ -36,6 +36,12 @@ import type {
 } from "@/lib/stalwart/types"
 import { cn } from "@/lib/utils"
 
+const CATCH_ALL_MODE_LABEL: Record<CatchAllMode, string> = {
+  address: "Deliver to address",
+  bounce: "Bounce (fail)",
+  blackhole: "Blackhole",
+}
+
 export function DomainDetailClient({
   domain,
   mailboxes,
@@ -149,6 +155,7 @@ export function DomainDetailClient({
           <div className="grid gap-2">
             <Label>Catch-all (default address)</Label>
             <Select
+              items={CATCH_ALL_MODE_LABEL}
               value={catchMode}
               onValueChange={(v) =>
                 setCatchMode((v as CatchAllMode) ?? "bounce")
@@ -159,12 +166,18 @@ export function DomainDetailClient({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="address">Deliver to address</SelectItem>
-                <SelectItem value="bounce">Bounce (fail)</SelectItem>
-                <SelectItem value="blackhole">Blackhole</SelectItem>
+                {Object.entries(CATCH_ALL_MODE_LABEL).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select
+              items={{
+                __none__: "Select mailbox",
+                ...Object.fromEntries(mailboxes.map((m) => [m.email, m.email])),
+              }}
               value={catchAll || "__none__"}
               onValueChange={(v) => {
                 setCatchAll(v === "__none__" ? "" : (v ?? ""))
