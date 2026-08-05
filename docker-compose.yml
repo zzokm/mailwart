@@ -1,0 +1,37 @@
+# Dokploy project: Email — service: email-manager
+# Domain: email.yehia.dev → port 3000 (Traefik / Let's Encrypt via Dokploy)
+#
+# Build once on the VPS (or CI), then deploy this compose with the image:
+#   docker build -t email-manager:latest /root/email-manager
+#
+# JMAP: in-cluster URL reaches Stalwart on the shared compose network.
+# Public https://mail.yehia.dev/jmap also works if internal DNS fails.
+
+services:
+  email-manager:
+    image: email-manager:latest
+    container_name: email-manager
+    restart: unless-stopped
+    environment:
+      STALWART_JMAP_URL: ${STALWART_JMAP_URL:-http://stalwart-mail:8080/jmap}
+      STALWART_ADMIN_USER: ${STALWART_ADMIN_USER}
+      STALWART_ADMIN_PASSWORD: ${STALWART_ADMIN_PASSWORD}
+      STALWART_ADMIN_UI_URL: ${STALWART_ADMIN_UI_URL:-https://mail.yehia.dev/admin}
+      ROUNDCUBE_URL: ${ROUNDCUBE_URL:-https://mail.zokm.me}
+      APP_ADMIN_USER: ${APP_ADMIN_USER:-admin}
+      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD}
+      SESSION_SECRET: ${SESSION_SECRET}
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    networks:
+      - default
+      - dokploy-network
+      - stalwart-net
+
+networks:
+  dokploy-network:
+    external: true
+  stalwart-net:
+    name: email-stalwart-y2hydv_default
+    external: true
