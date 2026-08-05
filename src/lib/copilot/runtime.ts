@@ -1,6 +1,10 @@
 import "server-only"
 
-import type { CopilotProviderId, CopilotSdkKind } from "./providers"
+import {
+  COPILOT_PROVIDERS,
+  type CopilotProviderId,
+  type CopilotSdkKind,
+} from "./providers"
 import {
   getActiveProviderId,
   resolveProviderCreds,
@@ -39,23 +43,46 @@ function toLanguageModelConfig(
   }
 }
 
-/** Resolved active provider+model for streamText / generateText. */
-export async function getCopilotLanguageModelConfig(): Promise<CopilotLanguageModelConfig | null> {
-  const providerId = await getActiveProviderId()
-  const creds = await resolveProviderCreds(providerId)
+function configFromCreds(
+  creds: ResolvedProviderCreds
+): CopilotLanguageModelConfig | null {
   if (!creds.configured || !creds.model) return null
   if (!creds.apiKey && creds.sdkKind !== "ollama") return null
   return toLanguageModelConfig(creds)
 }
 
-/** Same as getCopilotLanguageModelConfig but throws when missing. */
-export async function requireCopilotLanguageModelConfig(): Promise<CopilotLanguageModelConfig> {
-  const cfg = await getCopilotLanguageModelConfig()
-  if (!cfg) {
-    throw new CopilotNotConfiguredError(
-      "Configure a Copilot provider and model in Settings or via COPILOT_* env."
+/** Names the active provider and each missing piece so the fix is obvious. */
+function describeMissingConfig(creds: ResolvedProviderCreds): string {
+  const def = COPILOT_PROVIDERS[creds.providerId]
+  const missing: string[] = []
+  if (!creds.apiKey && !def.keyOptional) {
+    missing.push(
+      `an API key (set COPILOT_${def.envKey}_API_KEY, or save one in Settings)`
     )
   }
+  if (!creds.model) {
+    missing.push("a model (set COPILOT_MODEL, or pick one in Settings)")
+  }
+  const detail =
+    missing.length > 0 ? missing.join(" and ") : "a usable configuration"
+  return (
+    `Copilot provider "${def.label}" is active but missing ${detail}. ` +
+    "To use a different provider, set COPILOT_PROVIDER or change it in Settings."
+  )
+}
+
+/** Resolved active provider+model for streamText / generateText. */
+export async function getCopilotLanguageModelConfig(): Promise<CopilotLanguageModelConfig | null> {
+  const providerId = await getActiveProviderId()
+  return configFromCreds(await resolveProviderCreds(providerId))
+}
+
+/** Same as getCopilotLanguageModelConfig but throws when missing. */
+export async function requireCopilotLanguageModelConfig(): Promise<CopilotLanguageModelConfig> {
+  const providerId = await getActiveProviderId()
+  const creds = await resolveProviderCreds(providerId)
+  const cfg = configFromCreds(creds)
+  if (!cfg) throw new CopilotNotConfiguredError(describeMissingConfig(creds))
   return cfg
 }
 
