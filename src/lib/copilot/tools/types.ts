@@ -12,6 +12,7 @@ export type CopilotToolCategory =
   | "bulk"
   | "logs"
   | "navigation"
+  | "assist"
 
 export type CopilotToolDef<TSchema extends z.ZodTypeAny = z.ZodTypeAny> = {
   name: string

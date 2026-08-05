@@ -79,6 +79,7 @@ import {
   upsertForwardingSchema,
 } from "@/lib/validations"
 
+import { askOperatorSchema, resolveAskOperator } from "./ask"
 import { navigateToSchema, resolveNavigateTo } from "./navigate"
 import type { CopilotToolDef } from "./types"
 
@@ -576,6 +577,17 @@ export const COPILOT_TOOL_DEFS: CopilotToolDef[] = [
       }
       return null
     },
+  },
+
+  // assist
+  {
+    name: "ask_operator",
+    category: "assist",
+    risk: "read",
+    description:
+      "Ask the operator one clarifying question, optionally with up to 6 choices. Has no side effects — call it instead of guessing an id, domain, or destructive target, then stop and wait for the reply.",
+    inputSchema: askOperatorSchema,
+    execute: async (input) => resolveAskOperator(input),
   },
 ]
 
