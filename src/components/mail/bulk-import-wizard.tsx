@@ -20,8 +20,8 @@ import type { BulkImportResultRow } from "@/lib/stalwart/types"
 import { cn } from "@/lib/utils"
 
 const SAMPLE = `email,password,description
-ops@yehia.dev,ChangeMe123!,ops mailbox
-notes@zokm.me,ChangeMe123!`
+ops@example.com,ChangeMe123!,ops mailbox
+alerts@example.net,ChangeMe123!`
 
 export function BulkImportWizard() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
@@ -243,7 +243,7 @@ export function BulkImportWizard() {
                       {r.status}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {r.reason ?? "—"}
+                      {r.reason ?? "-"}
                     </TableCell>
                   </TableRow>
                 ))}

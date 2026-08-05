@@ -2,15 +2,16 @@
 
 import { motion, useReducedMotion } from "motion/react"
 
+/** Documentation-range hosts and RFC 2606 domains: nothing here is a real deployment. */
 const ROWS = [
-  { type: "SOA", name: "yehia.dev.", value: "ns1.yehia.dev." },
-  { type: "MX", name: "yehia.dev.", value: "10 mail.yehia.dev." },
-  { type: "A", name: "mail.yehia.dev.", value: "—" },
-  { type: "MBX", name: "hi@yehia.dev", value: "quota 2G · ok" },
-  { type: "MBX", name: "me@yehia.dev", value: "quota 5G · ok" },
-  { type: "MBX", name: "catch@yehia.dev", value: "catch-all · ok" },
-  { type: "MBX", name: "support@zokm.me", value: "quota 2G · ok" },
-  { type: "MBX", name: "coolify@zokm.me", value: "quota 2G · ok" },
+  { type: "MX", name: "example.com.", value: "10 mail.example.com." },
+  { type: "SPF", name: "example.com.", value: "v=spf1 mx ~all" },
+  { type: "DKIM", name: "default._domainkey", value: "published" },
+  { type: "MBX", name: "hello@example.com", value: "quota 2G · ok" },
+  { type: "MBX", name: "billing@example.com", value: "quota 5G · ok" },
+  { type: "MBX", name: "catch@example.com", value: "catch-all · ok" },
+  { type: "MBX", name: "support@example.net", value: "quota 2G · ok" },
+  { type: "MBX", name: "alerts@example.net", value: "quota 1G · ok" },
 ] as const
 
 export function ZoneSheet() {
@@ -18,16 +19,15 @@ export function ZoneSheet() {
 
   return (
     <div
-      className="relative overflow-hidden rounded-xl border border-border/80 bg-[oklch(0.16_0.012_250)] shadow-[0_24px_80px_-32px_oklch(0_0_0/0.85)]"
-      aria-label="Synthetic zone and mailbox sheet"
+      className="relative overflow-hidden rounded-xl border border-border/80 bg-surface shadow-[0_24px_80px_-40px_oklch(0.2_0.03_250/0.35)]"
+      aria-label="Example zone and mailbox sheet"
     >
       <div className="flex items-center justify-between border-b border-border/60 px-4 py-2.5 sm:px-5">
-        <div className="flex items-center gap-2 font-mono text-[11px] tracking-wide text-muted-foreground">
-          <span className="size-1.5 rounded-full bg-[oklch(0.72_0.12_230)]" />
-          zone · email.yehia.dev
-        </div>
+        <span className="font-mono text-[11px] tracking-wide text-muted-foreground">
+          zone sheet
+        </span>
         <span className="font-mono text-[11px] text-muted-foreground/80">
-          synthetic preview
+          sample data
         </span>
       </div>
 
@@ -53,9 +53,7 @@ export function ZoneSheet() {
           >
             <span
               className={
-                row.type === "MBX"
-                  ? "text-[oklch(0.78_0.09_230)]"
-                  : "text-muted-foreground"
+                row.type === "MBX" ? "text-brand" : "text-muted-foreground"
               }
             >
               {row.type}
@@ -66,7 +64,7 @@ export function ZoneSheet() {
         ))}
       </ul>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[oklch(0.16_0.012_250)] to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-surface to-transparent" />
     </div>
   )
 }

@@ -4,11 +4,12 @@ import { redirect } from "next/navigation"
 import { AppShell } from "@/components/layout/app-shell"
 import { getHealth } from "@/lib/actions/mail"
 import { isAuthenticated } from "@/lib/auth/session"
+import { getStalwartAdminUiUrl } from "@/lib/env"
 
 export const metadata: Metadata = {
   title: {
     default: "Dashboard",
-    template: "%s · email.yehia.dev",
+    template: "%s · mailwart",
   },
 }
 
@@ -25,5 +26,9 @@ export default async function DashboardLayout({
 
   const health = await getHealth()
 
-  return <AppShell health={health}>{children}</AppShell>
+  return (
+    <AppShell health={health} adminUiUrl={getStalwartAdminUiUrl()}>
+      {children}
+    </AppShell>
+  )
 }

@@ -231,7 +231,7 @@ export function MailboxTable({
                     </div>
                   </TableCell>
                   <TableCell className="hidden font-mono text-[12px] text-muted-foreground md:table-cell">
-                    {a.domainName ?? "—"}
+                    {a.domainName ?? "-"}
                   </TableCell>
                   <TableCell className="hidden lg:table-cell">
                     <QuotaBar quotas={a.quotas} />

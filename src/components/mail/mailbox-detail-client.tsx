@@ -134,8 +134,8 @@ export function MailboxDetailClient({
           <div>
             <h2 className="text-sm font-medium">Reset password</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Shown once here — copy before leaving. Never displays the stored
-              hash.
+              Shown once here, so copy it before leaving. Never displays the
+              stored hash.
             </p>
           </div>
           <PasswordField

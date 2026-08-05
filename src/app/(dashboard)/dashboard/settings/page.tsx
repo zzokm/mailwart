@@ -50,7 +50,7 @@ export default async function SettingsPage() {
             <div className="flex flex-wrap justify-between gap-2">
               <dt className="text-muted-foreground">Stalwart admin user</dt>
               <dd className="font-mono text-[13px]">
-                {s.stalwartUser ?? "—"}
+                {s.stalwartUser ?? "not configured"}
               </dd>
             </div>
           </dl>
@@ -84,7 +84,7 @@ export default async function SettingsPage() {
           <h2 className="text-sm font-medium">Session</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Signed in with app admin credentials (`APP_ADMIN_*`). Session is an
-            HttpOnly iron-session cookie — Stalwart secrets stay server-side.
+            HttpOnly iron-session cookie, so Stalwart secrets stay server-side.
           </p>
           <form action={logoutAction} className="mt-3">
             <Button type="submit" size="sm" variant="outline">

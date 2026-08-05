@@ -24,9 +24,9 @@ export function HealthPill({ health }: { health: HealthStatus }) {
         className={cn(
           "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[11px] tracking-wide",
           ok
-            ? "border-[oklch(0.55_0.08_160/0.35)] bg-[oklch(0.28_0.04_160/0.25)] text-[oklch(0.82_0.08_160)]"
+            ? "border-success/35 bg-success/10 text-success"
             : health.source === "mock"
-              ? "border-[oklch(0.65_0.1_85/0.35)] bg-[oklch(0.28_0.04_85/0.2)] text-[oklch(0.85_0.08_85)]"
+              ? "border-warn/35 bg-warn/10 text-warn"
               : "border-destructive/40 bg-destructive/10 text-destructive"
         )}
       >
@@ -34,9 +34,9 @@ export function HealthPill({ health }: { health: HealthStatus }) {
           className={cn(
             "size-1.5 rounded-full",
             ok
-              ? "bg-[oklch(0.72_0.12_160)]"
+              ? "bg-success"
               : health.source === "mock"
-                ? "bg-[oklch(0.78_0.12_85)]"
+                ? "bg-warn"
                 : "bg-destructive"
           )}
         />

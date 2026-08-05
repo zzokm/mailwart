@@ -86,14 +86,14 @@ export default async function DomainsPage() {
                         "font-mono text-[10px]",
                         d.isEnabled === false
                           ? "border-destructive/40 text-destructive"
-                          : "border-[oklch(0.55_0.08_160/0.4)] text-[oklch(0.82_0.08_160)]"
+                          : "border-success/40 text-success"
                       )}
                     >
                       {d.isEnabled === false ? "disabled" : "enabled"}
                     </Badge>
                   </TableCell>
                   <TableCell className="hidden font-mono text-[12px] text-muted-foreground md:table-cell">
-                    {d.catchAllAddress ?? "—"}
+                    {d.catchAllAddress ?? "none"}
                   </TableCell>
                   <TableCell className="text-right font-mono text-[12px] text-muted-foreground">
                     {d.mailboxCount}

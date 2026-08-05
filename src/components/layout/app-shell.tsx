@@ -12,6 +12,8 @@ import {
 } from "lucide-react"
 
 import { LogoutButton } from "@/components/auth/logout-button"
+import { BrandGlyph } from "@/components/layout/brand-mark"
+import { ThemeToggle } from "@/components/layout/theme-toggle"
 
 import {
   Sidebar,
@@ -50,9 +52,11 @@ const NAV: Array<{
 export function AppShell({
   children,
   health,
+  adminUiUrl,
 }: {
   children: React.ReactNode
   health: HealthStatus
+  adminUiUrl: string
 }) {
   const pathname = usePathname()
 
@@ -64,12 +68,10 @@ export function AppShell({
             href="/dashboard"
             className="flex items-center gap-2.5 rounded-lg px-1 py-0.5 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
           >
-            <span className="flex size-7 items-center justify-center rounded-md border border-sidebar-border bg-sidebar-accent font-mono text-[10px] text-[oklch(0.78_0.09_230)]">
-              MX
-            </span>
+            <BrandGlyph className="border-sidebar-border bg-sidebar-accent" />
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <div className="truncate font-mono text-xs tracking-tight text-sidebar-foreground">
-                email.yehia.dev
+              <div className="truncate font-brand text-base font-[200] lowercase leading-tight tracking-[-0.015em] text-sidebar-foreground">
+                mailwart
               </div>
               <div className="truncate text-[11px] text-muted-foreground">
                 directory ops
@@ -111,11 +113,7 @@ export function AppShell({
               <SidebarMenuButton
                 tooltip="Stalwart Admin"
                 render={
-                  <a
-                    href="https://mail.yehia.dev/admin"
-                    target="_blank"
-                    rel="noreferrer"
-                  />
+                  <a href={adminUiUrl} target="_blank" rel="noreferrer" />
                 }
               >
                 <ExternalLink />
@@ -134,11 +132,9 @@ export function AppShell({
         <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/70 bg-background/90 px-4 backdrop-blur-sm">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
-          <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-            <span className="truncate font-mono text-[11px] tracking-wide text-muted-foreground">
-              zone · operator console
-            </span>
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
             <HealthPill health={health} />
+            <ThemeToggle />
           </div>
         </header>
         <div className="flex flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">

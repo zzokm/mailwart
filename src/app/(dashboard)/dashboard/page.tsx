@@ -97,7 +97,7 @@ export default async function OverviewPage() {
         </div>
       ) : null}
 
-      <section className="overflow-hidden rounded-xl border border-border/80 bg-[oklch(0.16_0.012_250)]">
+      <section className="overflow-hidden rounded-xl border border-border/80 bg-surface">
         <div className="grid grid-cols-2 divide-x divide-y divide-border/50 lg:grid-cols-4 lg:divide-y-0">
           {metrics.map((m) => {
             const inner = (
@@ -158,9 +158,7 @@ export default async function OverviewPage() {
                   <span
                     className={cn(
                       "font-mono text-[11px]",
-                      d.isEnabled === false
-                        ? "text-destructive"
-                        : "text-[oklch(0.78_0.09_230)]"
+                      d.isEnabled === false ? "text-destructive" : "text-brand"
                     )}
                   >
                     {d.isEnabled === false ? "off" : "on"}

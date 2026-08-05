@@ -5,7 +5,7 @@ export function DataSourceBanner({ source }: { source: DataSource }) {
   return (
     <div
       role="status"
-      className="mb-5 rounded-lg border border-[oklch(0.65_0.1_85/0.35)] bg-[oklch(0.28_0.04_85/0.15)] px-3 py-2 text-sm text-[oklch(0.88_0.06_85)]"
+      className="mb-5 rounded-lg border border-warn/35 bg-warn/10 px-3 py-2 text-sm text-warn"
     >
       Showing sample directory. Set{" "}
       <code className="font-mono text-[12px]">STALWART_JMAP_URL</code>,{" "}

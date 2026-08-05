@@ -9,6 +9,6 @@ export function roundcubeHostLabel(): string {
   try {
     return new URL(getRoundcubeUrl()).host
   } catch {
-    return "email.yehia.dev"
+    return "not configured"
   }
 }

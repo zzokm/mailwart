@@ -1,27 +1,31 @@
 import type { DnsCheckItem } from "./types"
 
 /** Read-only DNS verification checklist — no live DNS lookups in Phase 3. */
-export function buildDnsChecklist(domain: string): DnsCheckItem[] {
+export function buildDnsChecklist(
+  domain: string,
+  mailHost?: string
+): DnsCheckItem[] {
   const d = domain.toLowerCase()
+  const host = mailHost?.toLowerCase() || `mail.${d}`
   return [
     {
       type: "MX",
       label: "Mail exchanger",
-      expected: `10 mail.yehia.dev. → ${d}`,
+      expected: `${d}. MX 10 ${host}.`,
       status: "unknown",
       note: "Confirm MX points at the Stalwart host for this deployment.",
     },
     {
       type: "TXT",
       label: "SPF",
-      expected: `v=spf1 mx a:mail.yehia.dev ~all`,
+      expected: `v=spf1 mx a:${host} ~all`,
       status: "unknown",
       note: "SPF TXT on the apex; adjust includes to match your outbound path.",
     },
     {
       type: "SPF",
       label: "SPF policy",
-      expected: "Pass for mail.yehia.dev / authorized relays",
+      expected: `Pass for ${host} and authorized relays`,
       status: "unknown",
     },
     {

@@ -130,7 +130,7 @@ export function CreateMailboxDialog({
                 disabled={pending}
               />
               {preview ? (
-                <p className="font-mono text-[12px] text-[oklch(0.78_0.09_230)]">
+                <p className="font-mono text-[12px] text-brand">
                   {preview}
                 </p>
               ) : null}

@@ -204,6 +204,17 @@ export async function listDomainsAction(): Promise<
   }
 }
 
+/** Mail host for DNS guidance, taken from deployment config rather than brand copy. */
+function configuredMailHost(): string | undefined {
+  const config = getStalwartConfig()
+  if (!config) return undefined
+  try {
+    return new URL(config.jmapUrl).hostname
+  } catch {
+    return undefined
+  }
+}
+
 export async function getDomainDetailAction(id: string): Promise<
   ActionResult<{
     domain: StalwartDomain
@@ -212,6 +223,7 @@ export async function getDomainDetailAction(id: string): Promise<
   }>
 > {
   const src = source()
+  const mailHost = configuredMailHost()
   try {
     if (src === "mock") {
       const store = getMockStore()
@@ -223,7 +235,7 @@ export async function getDomainDetailAction(id: string): Promise<
         {
           domain,
           mailboxes: store.accounts.filter((a) => a.domainId === id),
-          dns: buildDnsChecklist(domain.name),
+          dns: buildDnsChecklist(domain.name, mailHost),
         },
         src
       )
@@ -238,7 +250,7 @@ export async function getDomainDetailAction(id: string): Promise<
       {
         domain,
         mailboxes: accounts.filter((a) => a.domainId === id),
-        dns: buildDnsChecklist(domain.name),
+        dns: buildDnsChecklist(domain.name, mailHost),
       },
       src
     )

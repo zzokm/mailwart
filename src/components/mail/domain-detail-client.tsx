@@ -130,7 +130,7 @@ export function DomainDetailClient({
             DNS verification checklist
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Read-only guide — live DNS lookups not wired in Phase 3.
+            Read-only guide. Live DNS lookups are not wired yet.
           </p>
         </div>
         <ul className="divide-y divide-border/40">
@@ -139,7 +139,7 @@ export function DomainDetailClient({
               key={item.type}
               className="grid gap-1 px-4 py-3 sm:grid-cols-[4.5rem_1fr]"
             >
-              <span className="font-mono text-[12px] text-[oklch(0.78_0.09_230)]">
+              <span className="font-mono text-[12px] text-brand">
                 {item.type}
               </span>
               <div className="min-w-0">
@@ -149,7 +149,7 @@ export function DomainDetailClient({
                     className={cn(
                       "font-mono text-[10px] uppercase tracking-wide",
                       item.status === "ok"
-                        ? "text-[oklch(0.82_0.08_160)]"
+                        ? "text-success"
                         : "text-muted-foreground"
                     )}
                   >
