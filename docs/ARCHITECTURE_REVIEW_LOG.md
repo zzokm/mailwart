@@ -185,3 +185,18 @@ Copilot architecture is edge-aware and C1-scoped. Ready to implement the sliding
 - No vault/DI framework; no `NEXT_PUBLIC_*` keys; no chat/stream yet (C4); no tool registry (C3).
 
 **No git push.**
+
+---
+
+## Copilot C3 — Tool registry & stream (2026-08-05)
+
+### Delivered
+- Installed `ai` + `@ai-sdk/{openai,anthropic,google}` mapped from Phase 2 `sdkKind`.
+- Allowlisted registry in `src/lib/copilot/tools/` wrapping existing `mail.ts` Server Actions (no second JMAP client).
+- Risk tags `read` | `write` | `destructive`; destructive returns `awaiting_approval` + AI SDK `toolApproval: user-approval` (Phase 5 hook).
+- `sanitizeToolResult` redacts passwords, app secrets, DKIM private keys.
+- Authenticated `POST /api/copilot/chat` → `streamCopilotChat` → `streamText` + tools → UI message stream.
+- Architecture §16.4 / phase map updated for C3 tool names/categories.
+
+### Non-goals held
+- No rich chat UI (C4); no approval cards / rate limits enforced (C5); **no git push**.

@@ -481,7 +481,20 @@ toolName → {
 - Read tools may auto-run; write tools may auto-run with toast; **destructive** tools always pause for approval (§16.7).
 - Tool results returned to the model are sanitized (no env secrets, no full password payloads beyond “password was set”).
 
-Initial tool families (Phase 3): health/overview, list/get domains & mailboxes, create/update (write), destroy/reset/bulk (destructive), DNS refresh (read), routing/filters reads, navigate-only helpers.
+**Implemented registry** (`src/lib/copilot/tools/`): categories `overview`, `domains`, `mailboxes`, `routing`, `filters`, `bulk`, `logs`, `navigation`. Tools wrap `mail.ts` Server Actions only. Destructive tools return `awaiting_approval` (and AI SDK `toolApproval: user-approval`) until Phase 5 sets `executeDestructive` after operator Approve via `executeApprovedCopilotTool`.
+
+| Category | Examples |
+|----------|----------|
+| overview | `get_health`, `get_overview` |
+| domains | `list_domains`, `get_domain`, `refresh_domain_dns`, `generate_dkim`/`dmarc`, `create_domain`, `update_domain`, `suspend_domain`, `destroy_domain` |
+| mailboxes | `list_mailboxes`, `get_mailbox`, `create_mailbox`, `update_mailbox`, `suspend_mailbox`, `set_mailbox_quota`, app password create/revoke, `reset_mailbox_password`, `destroy_mailbox` |
+| routing | `get_routing_overview`, forwarding upsert/destroy, aliases, catch-all, mail exchanger |
+| filters | `get_filters_overview`, autoresponder/rule upsert/destroy, `update_spam_settings` |
+| bulk | prepare mailbox/forwarding jobs, get/abort/pause/resume, `commit_bulk_job_chunk`, bulk destroy/reset/suspend |
+| logs | `get_delivery_logs`, `get_audit_logs` |
+| navigation | `navigate_to` (allowlisted `/dashboard/*`; Phase 4 applies `navIntent`) |
+
+**Stream endpoint:** authenticated `POST /api/copilot/chat` → `streamCopilotChat` → `streamText` + tools → `toUIMessageStreamResponse`. Results pass `sanitizeToolResult` (passwords, app secrets, DKIM private keys redacted).
 
 ### 16.5 Multi-provider config (Phase 2 detail)
 
@@ -527,9 +540,9 @@ Tools with `risk: "destructive"` (destroy domain/mailbox, bulk destroy/reset/sus
 | Phase | Scope | This run |
 |-------|--------|----------|
 | **C1** | Architecture docs + 3 review passes + sliding panel shell (placeholder chat) | Done |
-| **C2** | Multi-provider keys in settings/env + dynamic models + runtime config | **Yes** |
-| **C3** | Tool registry wired to Server Actions | No |
+| **C2** | Multi-provider keys in settings/env + dynamic models + runtime config | Done |
+| **C3** | Tool registry + AI SDK stream endpoint wired to Server Actions | **Yes** |
 | **C4** | Rich chat UI (messages, tool stream cards) | No |
-| **C5** | Approval guards, rate limits, loop caps implemented | Docs only in C1 |
+| **C5** | Approval guards, rate limits, loop caps implemented | Hook placeholder in C3 (`awaiting_approval` / `toolApproval`) |
 
-**C2 success:** Provider catalog + env-first resolve; Settings UI with last-4 mask and model fetch; `getCopilotLanguageModelConfig()` ready for AI SDK; `.env.example` placeholders; `npm run build` green; **no git push**.
+**C3 success:** `ai` + `@ai-sdk/{openai,anthropic,google}` installed; tool registry covers UI surface; risks tagged; `POST /api/copilot/chat` streams with tools; secrets sanitized; `npm run build` green; **no git push**.
