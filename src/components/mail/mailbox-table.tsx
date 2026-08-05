@@ -4,11 +4,12 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition } from "react"
 import { toast } from "sonner"
-import { Plus, Search, Trash2, KeyRound } from "lucide-react"
+import { Ban, Plus, Search, Trash2, KeyRound } from "lucide-react"
 
 import {
   bulkDestroyMailboxesAction,
   bulkResetPasswordsAction,
+  bulkSuspendMailboxesAction,
 } from "@/lib/actions/mail"
 import { CreateMailboxDialog } from "@/components/mail/create-mailbox-dialog"
 import { ConfirmDestroy } from "@/components/mail/confirm-destroy"
@@ -147,6 +148,31 @@ export function MailboxTable({
           >
             <KeyRound data-icon="inline-start" />
             Reset passwords
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => {
+              startTransition(async () => {
+                const result = await bulkSuspendMailboxesAction(
+                  [...selected],
+                  true
+                )
+                if (!result.ok) {
+                  toast.error(result.error)
+                  return
+                }
+                toast.success(
+                  `Suspended ${result.data.updated}. Failed: ${result.data.failed.length}.`
+                )
+                setSelected(new Set())
+                router.refresh()
+              })
+            }}
+          >
+            <Ban data-icon="inline-start" />
+            Suspend
           </Button>
           <Button
             size="sm"

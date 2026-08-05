@@ -7,7 +7,23 @@ import {
   getRoundcubeUrl,
   hasStalwartConfig,
 } from "@/lib/env"
-import { hostFromUrl, parseCsv, quotaSummary } from "@/lib/format"
+import { hostFromUrl, quotaSummary } from "@/lib/format"
+import {
+  abortJob,
+  createForwardingJob,
+  createMailboxJob,
+  getJob,
+  pauseJob,
+  resumeJob,
+  toReport,
+  type BulkForwardJobRow,
+  type BulkJobReport,
+  type BulkMailboxJobRow,
+} from "@/lib/bulk/job-store"
+import {
+  parseForwardingCsvText,
+  parseMailboxCsvText,
+} from "@/lib/bulk/prepare"
 import { buildRoundcubeUrl } from "@/lib/roundcube"
 import {
   generateDkimRecord,
@@ -48,7 +64,6 @@ import {
   type ActionResult,
   type AppPassword,
   type Autoresponder,
-  type BulkImportResultRow,
   type CatchAllMode,
   type DataSource,
   type DkimGeneratedRecord,
@@ -1191,141 +1206,446 @@ export async function bulkResetPasswordsAction(
   return ok({ reset, failed }, src)
 }
 
-export async function importMailboxesAction(input: {
+export async function bulkSuspendMailboxesAction(
+  ids: string[],
+  suspend: boolean
+): Promise<ActionResult<{ updated: number; failed: string[] }>> {
+  const denied = await denyUnlessAuthed<{ updated: number; failed: string[] }>()
+  if (denied) return denied
+
+  const src = source()
+  const failed: string[] = []
+  let updated = 0
+  for (const id of ids) {
+    const result = await updateMailboxAction(id, { isEnabled: !suspend })
+    if (result.ok) updated++
+    else failed.push(id)
+  }
+  return ok({ updated, failed }, src)
+}
+
+export async function prepareBulkMailboxJobAction(input: {
   csvText: string
   overwritePasswords?: boolean
-}): Promise<ActionResult<{ results: BulkImportResultRow[] }>> {
-  const denied = await denyUnlessAuthed<{ results: BulkImportResultRow[] }>()
+}): Promise<ActionResult<{ job: BulkJobReport }>> {
+  const denied = await denyUnlessAuthed<{ job: BulkJobReport }>()
   if (denied) return denied
 
   const src = source()
   try {
-    const rows = parseCsv(input.csvText)
-    if (rows.length === 0) {
-      return fail(
-        new StalwartError("CSV is empty. Expected email,password,description.", "validation"),
-        src
-      )
-    }
-
+    const { valid, failed } = parseMailboxCsvText(input.csvText)
     const { domains, accounts } =
       src === "live" ? await loadLiveDirectory() : loadMockDirectory()
     const domainByName = new Map(domains.map((d) => [d.name.toLowerCase(), d]))
-    const existing = new Set(accounts.map((a) => a.email.toLowerCase()))
+    const accountByEmail = new Map(
+      accounts.map((a) => [a.email.toLowerCase(), a])
+    )
 
-    const toCreate: Array<{
-      local: string
-      email: string
-      domainId: string
-      password: string
-      description?: string
-    }> = []
-    const results: BulkImportResultRow[] = []
+    const rows: BulkMailboxJobRow[] = failed.map((f) => ({
+      email: f.email,
+      password: f.password,
+      description: f.description,
+      quotaBytes: null,
+      local: "",
+      domainId: "",
+      domainName: "",
+      status: "failed" as const,
+      reason: f.reason,
+    }))
 
-    for (const row of rows) {
+    for (const row of valid) {
       const parsed = parseEmailAddress(row.email)
       if (!parsed) {
-        results.push({ ...row, status: "failed", reason: "Invalid email." })
-        continue
-      }
-      if (!row.password || row.password.length < 6) {
-        results.push({
-          ...row,
+        rows.push({
+          email: row.email,
+          password: row.password,
+          description: row.description,
+          quotaBytes: row.quotaBytes,
+          local: "",
+          domainId: "",
+          domainName: "",
           status: "failed",
-          reason: "Password must be at least 6 characters.",
+          reason: "Invalid email.",
         })
         continue
       }
       const domain = domainByName.get(parsed.domain)
       if (!domain) {
-        results.push({
-          ...row,
-          email: `${parsed.local}@${parsed.domain}`,
+        rows.push({
+          email: row.email,
+          password: row.password,
+          description: row.description,
+          quotaBytes: row.quotaBytes,
+          local: parsed.local,
+          domainId: "",
+          domainName: parsed.domain,
           status: "failed",
           reason: `Unknown domain ${parsed.domain}.`,
         })
         continue
       }
       const email = `${parsed.local}@${domain.name}`
-      if (existing.has(email.toLowerCase())) {
-        if (input.overwritePasswords) {
-          const account = accounts.find(
-            (a) => a.email.toLowerCase() === email.toLowerCase()
-          )
-          if (account) {
-            const reset = await resetMailboxPasswordAction(
-              account.id,
-              row.password
-            )
-            results.push({
-              ...row,
-              email,
-              status: reset.ok ? "created" : "failed",
-              reason: reset.ok
-                ? "Password overwritten on existing mailbox."
-                : reset.error,
-            })
-            continue
-          }
-        }
-        results.push({
-          ...row,
-          email,
-          status: "skipped",
-          reason: "Already exists.",
-        })
-        continue
-      }
-      toCreate.push({
-        local: parsed.local,
+      const existing = accountByEmail.get(email.toLowerCase())
+      rows.push({
         email,
-        domainId: domain.id,
         password: row.password,
         description: row.description || email,
+        quotaBytes: row.quotaBytes,
+        local: parsed.local,
+        domainId: domain.id,
+        domainName: domain.name,
+        existingAccountId: existing?.id,
+        status: "pending",
       })
     }
 
-    if (src === "mock") {
-      const store = getMockStore()
-      for (const row of toCreate) {
-        const account: StalwartAccount = {
-          id: `acc-${crypto.randomUUID().slice(0, 8)}`,
-          name: row.local,
-          description: row.description,
-          domainId: row.domainId,
-          email: row.email,
-          domainName: row.email.split("@")[1],
-          quotas: {},
-          aliases: {},
-        }
-        store.setAccounts([...getMockStore().accounts, account])
-        existing.add(row.email.toLowerCase())
-        results.push({
-          email: row.email,
-          password: row.password,
-          description: row.description,
-          status: "created",
-        })
-      }
-      return ok({ results }, src)
-    }
-
-    const created = await bulkCreateAccounts(toCreate)
-    for (const c of created) {
-      const original = toCreate.find((r) => r.email === c.email)
-      results.push({
-        email: c.email,
-        password: original?.password ?? "",
-        description: original?.description,
-        status: c.status === "created" ? "created" : "failed",
-        reason: c.reason,
-      })
-    }
-
-    return ok({ results }, src)
+    const job = createMailboxJob({
+      rows,
+      overwritePasswords: !!input.overwritePasswords,
+    })
+    return ok({ job: toReport(job) }, src)
   } catch (err) {
     return fail(err, src)
   }
+}
+
+export async function prepareBulkForwardingJobAction(input: {
+  csvText: string
+}): Promise<ActionResult<{ job: BulkJobReport }>> {
+  const denied = await denyUnlessAuthed<{ job: BulkJobReport }>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    const { valid, failed } = parseForwardingCsvText(input.csvText)
+    const { domains, accounts } =
+      src === "live" ? await loadLiveDirectory() : loadMockDirectory()
+    const domainByName = new Map(domains.map((d) => [d.name.toLowerCase(), d]))
+    const knownEmails = new Set(accounts.map((a) => a.email.toLowerCase()))
+    const knownDomains = new Set(domains.map((d) => d.name.toLowerCase()))
+
+    const rows: BulkForwardJobRow[] = failed.map((f) => ({
+      source: f.source,
+      targets: [],
+      keepLocalCopy: false,
+      enabled: true,
+      domainId: "",
+      domainName: "",
+      scope: "user" as const,
+      status: "failed" as const,
+      reason: f.reason,
+    }))
+
+    for (const row of valid) {
+      const isCatchAll = row.source.startsWith("*@")
+      const domainPart = isCatchAll
+        ? row.source.slice(2)
+        : parseEmailAddress(row.source)?.domain
+      if (!domainPart) {
+        rows.push({
+          source: row.source,
+          targets: row.targets,
+          keepLocalCopy: row.keepLocalCopy,
+          enabled: row.enabled,
+          domainId: "",
+          domainName: "",
+          scope: "user",
+          status: "failed",
+          reason: "Invalid source address.",
+        })
+        continue
+      }
+      const domain = domainByName.get(domainPart.toLowerCase())
+      if (!domain) {
+        rows.push({
+          source: row.source,
+          targets: row.targets,
+          keepLocalCopy: row.keepLocalCopy,
+          enabled: row.enabled,
+          domainId: "",
+          domainName: domainPart,
+          scope: isCatchAll ? "domain" : "user",
+          status: "failed",
+          reason: `Unknown domain ${domainPart}.`,
+        })
+        continue
+      }
+      const targetCheck = validateForwardTargets(
+        row.targets,
+        knownEmails,
+        knownDomains
+      )
+      if (!targetCheck.ok) {
+        rows.push({
+          source: row.source,
+          targets: row.targets,
+          keepLocalCopy: row.keepLocalCopy,
+          enabled: row.enabled,
+          domainId: domain.id,
+          domainName: domain.name,
+          scope: isCatchAll ? "domain" : "user",
+          status: "failed",
+          reason: targetCheck.error,
+        })
+        continue
+      }
+      rows.push({
+        source: isCatchAll
+          ? `*@${domain.name}`
+          : `${parseEmailAddress(row.source)!.local}@${domain.name}`,
+        targets: row.targets,
+        keepLocalCopy: row.keepLocalCopy,
+        enabled: row.enabled,
+        domainId: domain.id,
+        domainName: domain.name,
+        scope: isCatchAll ? "domain" : "user",
+        status: "pending",
+      })
+    }
+
+    const job = createForwardingJob({ rows })
+    return ok({ job: toReport(job) }, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function getBulkJobAction(
+  jobId: string
+): Promise<ActionResult<{ job: BulkJobReport }>> {
+  const denied = await denyUnlessAuthed<{ job: BulkJobReport }>()
+  if (denied) return denied
+
+  const src = source()
+  const job = getJob(jobId)
+  if (!job) {
+    return fail(
+      new StalwartError("Bulk job not found or expired.", "not_found"),
+      src
+    )
+  }
+  return ok({ job: toReport(job) }, src)
+}
+
+export async function abortBulkJobAction(
+  jobId: string
+): Promise<ActionResult<{ job: BulkJobReport }>> {
+  const denied = await denyUnlessAuthed<{ job: BulkJobReport }>()
+  if (denied) return denied
+
+  const src = source()
+  const job = abortJob(jobId)
+  if (!job) {
+    return fail(
+      new StalwartError("Bulk job not found or expired.", "not_found"),
+      src
+    )
+  }
+  return ok({ job: toReport(job) }, src)
+}
+
+export async function pauseBulkJobAction(
+  jobId: string
+): Promise<ActionResult<{ job: BulkJobReport }>> {
+  const denied = await denyUnlessAuthed<{ job: BulkJobReport }>()
+  if (denied) return denied
+
+  const src = source()
+  const job = pauseJob(jobId)
+  if (!job) {
+    return fail(
+      new StalwartError("Bulk job not found or expired.", "not_found"),
+      src
+    )
+  }
+  return ok({ job: toReport(job) }, src)
+}
+
+export async function resumeBulkJobAction(
+  jobId: string
+): Promise<ActionResult<{ job: BulkJobReport }>> {
+  const denied = await denyUnlessAuthed<{ job: BulkJobReport }>()
+  if (denied) return denied
+
+  const src = source()
+  const job = resumeJob(jobId)
+  if (!job) {
+    return fail(
+      new StalwartError("Bulk job not found or expired.", "not_found"),
+      src
+    )
+  }
+  return ok({ job: toReport(job) }, src)
+}
+
+export async function commitBulkJobChunkAction(input: {
+  jobId: string
+  chunkIndex: number
+}): Promise<ActionResult<{ job: BulkJobReport; chunkIndex: number }>> {
+  const denied = await denyUnlessAuthed<{
+    job: BulkJobReport
+    chunkIndex: number
+  }>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    const job = getJob(input.jobId)
+    if (!job) {
+      return fail(
+        new StalwartError("Bulk job not found or expired.", "not_found"),
+        src
+      )
+    }
+    if (job.status === "aborted") {
+      return ok({ job: toReport(job), chunkIndex: input.chunkIndex }, src)
+    }
+    if (job.status === "paused") {
+      return fail(
+        new StalwartError("Bulk job is paused.", "validation"),
+        src
+      )
+    }
+
+    // Idempotent: ignore replay of completed chunks.
+    if (job.completedChunks.has(input.chunkIndex)) {
+      return ok({ job: toReport(job), chunkIndex: input.chunkIndex }, src)
+    }
+
+    job.status = "running"
+    const start = input.chunkIndex * job.chunkSize
+    const end = start + job.chunkSize
+
+    if (job.kind === "mailboxes" && job.mailboxRows) {
+      await commitMailboxChunk(job.mailboxRows, start, end, {
+        overwritePasswords: job.overwritePasswords,
+        src,
+      })
+    } else if (job.kind === "forwarding" && job.forwardRows) {
+      await commitForwardChunk(job.forwardRows, start, end)
+    }
+
+    job.completedChunks.add(input.chunkIndex)
+    return ok({ job: toReport(job), chunkIndex: input.chunkIndex }, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+async function commitMailboxChunk(
+  rows: BulkMailboxJobRow[],
+  start: number,
+  end: number,
+  opts: { overwritePasswords: boolean; src: DataSource }
+): Promise<void> {
+  const slice = rows.slice(start, end)
+  const toCreate: BulkMailboxJobRow[] = []
+
+  for (const row of slice) {
+    if (row.status !== "pending") continue
+
+    if (row.existingAccountId) {
+      if (opts.overwritePasswords) {
+        const reset = await resetMailboxPasswordAction(
+          row.existingAccountId,
+          row.password
+        )
+        if (reset.ok && row.quotaBytes != null) {
+          await updateMailboxAction(row.existingAccountId, {
+            diskQuotaBytes: row.quotaBytes,
+          })
+        }
+        row.status = reset.ok ? "updated" : "failed"
+        row.reason = reset.ok
+          ? "Password overwritten on existing mailbox."
+          : reset.error
+      } else {
+        row.status = "skipped"
+        row.reason = "Already exists."
+      }
+      continue
+    }
+
+    toCreate.push(row)
+  }
+
+  if (toCreate.length === 0) return
+
+  if (opts.src === "mock") {
+    const store = getMockStore()
+    const next = [...store.accounts]
+    for (const row of toCreate) {
+      const account: StalwartAccount = {
+        id: `acc-${crypto.randomUUID().slice(0, 8)}`,
+        name: row.local,
+        description: row.description,
+        domainId: row.domainId,
+        email: row.email,
+        domainName: row.domainName,
+        quotas:
+          row.quotaBytes != null ? { diskQuota: row.quotaBytes } : {},
+        aliases: {},
+        isEnabled: true,
+      }
+      next.push(account)
+      row.status = "created"
+    }
+    store.setAccounts(next)
+    return
+  }
+
+  const created = await bulkCreateAccounts(
+    toCreate.map((row) => ({
+      local: row.local,
+      email: row.email,
+      domainId: row.domainId,
+      password: row.password,
+      description: row.description,
+      quotas:
+        row.quotaBytes != null ? { diskQuota: row.quotaBytes } : {},
+    })),
+    toCreate.length
+  )
+
+  for (const c of created) {
+    const row = toCreate.find((r) => r.email === c.email)
+    if (!row) continue
+    row.status = c.status === "created" ? "created" : "failed"
+    row.reason = c.reason
+  }
+}
+
+async function commitForwardChunk(
+  rows: BulkForwardJobRow[],
+  start: number,
+  end: number
+): Promise<void> {
+  const slice = rows.slice(start, end)
+  for (const row of slice) {
+    if (row.status !== "pending") continue
+    const result = await upsertForwardingRuleAction({
+      scope: row.scope,
+      domainId: row.domainId,
+      source: row.source,
+      targets: row.targets,
+      keepLocalCopy: row.keepLocalCopy,
+      enabled: row.enabled,
+    })
+    if (result.ok) {
+      row.status = "created"
+    } else {
+      row.status = "failed"
+      row.reason = result.error
+    }
+  }
+}
+
+/** @deprecated Prefer prepareBulkMailboxJobAction + commitBulkJobChunkAction. */
+export async function importMailboxesAction(input: {
+  csvText: string
+  overwritePasswords?: boolean
+}): Promise<ActionResult<{ job: BulkJobReport }>> {
+  return prepareBulkMailboxJobAction(input)
 }
 
 export async function getSettingsAction(): Promise<

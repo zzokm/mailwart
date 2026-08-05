@@ -198,6 +198,7 @@ export async function bulkCreateAccounts(
     domainId: string
     password: string
     description?: string
+    quotas?: Record<string, unknown>
   }>,
   chunkSize = 25
 ): Promise<

@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/layout/page-header"
 import { BulkImportWizard } from "@/components/mail/bulk-import-wizard"
 import { hasStalwartConfig } from "@/lib/env"
 
-export const metadata: Metadata = { title: "Bulk import" }
+export const metadata: Metadata = { title: "Bulk CSV" }
 export const runtime = "nodejs"
 
 export default function ImportPage() {
@@ -15,9 +15,9 @@ export default function ImportPage() {
   return (
     <div>
       <PageHeader
-        title="Bulk import"
-        description="Upload a CSV, validate it, commit in chunks, then read the per-row report."
-        breadcrumbs={[DASHBOARD_CRUMB, { label: "Bulk import" }]}
+        title="Bulk CSV"
+        description="Download templates, upload mailbox or forwarding CSVs, validate, then commit in chunked jobs."
+        breadcrumbs={[DASHBOARD_CRUMB, { label: "Bulk CSV" }]}
       />
       <DataSourceBanner source={source} />
       <BulkImportWizard />

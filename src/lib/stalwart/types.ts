@@ -287,10 +287,12 @@ export type BulkImportRow = {
   email: string
   password: string
   description?: string
+  /** Disk quota in bytes when set from CSV. */
+  quotaBytes?: number | null
 }
 
 export type BulkImportResultRow = BulkImportRow & {
-  status: "created" | "skipped" | "failed"
+  status: "created" | "skipped" | "failed" | "updated"
   reason?: string
 }
 
