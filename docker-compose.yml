@@ -1,5 +1,6 @@
-# Dokploy project: Email — service: email-manager
-# Domain: email.yehia.dev → port 3000 (Traefik / Let's Encrypt via Dokploy)
+# mailwart — Dokploy project: Email — compose service: email-manager
+# Product brand: mailwart. Image/service names stay `email-manager` (historical).
+# Domain: email.yehia.dev → dashboard :3000; Roundcube at /webmail
 #
 # Source: https://github.com/zzokm/yehia-email-manager (GitHub App auto-deploy on push to main)
 # Dokploy clones this repo and runs `docker compose up --build`.
@@ -21,17 +22,29 @@ services:
       STALWART_ADMIN_USER: ${STALWART_ADMIN_USER}
       STALWART_ADMIN_PASSWORD: ${STALWART_ADMIN_PASSWORD}
       STALWART_ADMIN_UI_URL: ${STALWART_ADMIN_UI_URL:-https://mail.yehia.dev/admin}
-      ROUNDCUBE_URL: ${ROUNDCUBE_URL:-https://email.yehia.dev/webmail}
+      ROUNDCUBE_URL: ${ROUNDCUBE_URL:-https://email.yehia.dev/webmail/}
       WEBMAIL_SSO_SECRET: ${WEBMAIL_SSO_SECRET}
       APP_ADMIN_USER: ${APP_ADMIN_USER:-admin}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET}
+      DNS_EXPECTED_MX: ${DNS_EXPECTED_MX:-}
+      DNS_DKIM_SELECTORS: ${DNS_DKIM_SELECTORS:-}
+      DNS_EXPECTED_SPF: ${DNS_EXPECTED_SPF:-}
       AUDIT_LOG_PATH: ${AUDIT_LOG_PATH:-/data/audit.jsonl}
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: 0.0.0.0
     volumes:
       - mailwart_audit:/data
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.email-manager.rule=Host(`email.yehia.dev`)
+      - traefik.http.routers.email-manager.entrypoints=websecure
+      - traefik.http.routers.email-manager.tls.certresolver=letsencrypt
+      - traefik.http.routers.email-manager.priority=1
+      - traefik.http.routers.email-manager.service=email-manager
+      - traefik.http.services.email-manager.loadbalancer.server.port=3000
     networks:
       - default
       - dokploy-network
