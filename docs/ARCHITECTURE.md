@@ -31,6 +31,14 @@ Personal/deployment hostnames (e.g. operator domains, Traefik hosts) belong in *
 
 UI strings, package display name (later), and docs refer to **mailwart**. Docker image/service names may remain `email-manager` until a deliberate rename PR; that rename is optional and not Phase 1.
 
+### 2.1 Tenancy model (simplicity gate)
+
+**v1 = single-tenant deploy, multi-domain.** One mailwart instance ↔ one Stalwart instance ↔ N mail domains.
+
+- Do **not** build org/tenant tables, per-customer routing, or SaaS billing in Phases 2–5.
+- Generalization means: no personal domains in brand/copy; all hosts from env; domain list from JMAP.
+- Future multi-tenant = multiple mailwart deploys (or later env “profiles”) — not an in-app tenant switcher unless a real second operator deployment demands it.
+
 ---
 
 ## 3. High-level system diagram
@@ -268,7 +276,18 @@ Health: best-effort GET of Roundcube URL expecting HTML 200 — never POST mailb
 6. Idempotency: skip existing unless operator chose overwrite-password mode.
 7. **Double-submit guard:** chunk action is idempotent on `(jobId, chunkIndex)`; ignore replay.
 
-**Upgrade path:** if Dokploy runs multiple replicas or jobs must survive restarts, move job store to SQLite/Redis — default stays memory for single-node simplicity (Pass 3).
+**Upgrade path:** if Dokploy runs multiple replicas or jobs must survive restarts, move job store to SQLite/Redis — default stays memory for single-node simplicity.
+
+### 9.2 State persistence defaults (Pass 3)
+
+| State | v1 default | When to upgrade |
+|-------|------------|-----------------|
+| Bulk job report | In-process `Map` + TTL 1h | Multi-replica or restart-safe imports → SQLite on volume |
+| Audit log (Phase 4) | **JSONL append** on named Docker volume | Need query/filter UI beyond grep → SQLite |
+| Theme preference | Cookie / `next-themes` localStorage | — |
+| Session | iron-session cookie | Redis only if multi-instance sticky sessions fail |
+
+Prefer JSONL over SQLite for audit until list/filter queries hurt — fewer moving parts beside Roundcube’s existing SQLite.
 
 ### 9.1 Stalwart pacing / rate limits
 

@@ -1,6 +1,8 @@
-# Email Manager
+# mailwart
 
-Next.js admin dashboard for Stalwart (JMAP). Product host: **https://email.yehia.dev**
+Next.js admin dashboard for Stalwart Mail Server (JMAP). Product name: **mailwart**.
+
+Repo folder / Docker service may still say `email-manager` — that is historical pathing, not the brand.
 
 ## Local
 
@@ -13,10 +15,12 @@ npm run dev
 
 ## Production (Dokploy)
 
-See [docs/mail/email-manager-deploy.md](../docs/mail/email-manager-deploy.md).
-
 - `Dockerfile` — standalone Next.js image
-- `docker-compose.yml` — Email Manager + Roundcube at `/webmail`
+- `docker-compose.yml` — app + Roundcube at `/webmail`
 - `roundcube/plugins/em_sso` — signed-token SSO using Stalwart impersonation
-- Secrets: `scripts/mail-restore/email-manager-admin.txt`
-- Deploy helper: `scripts/mail-restore/deploy-email-manager.py`
+- Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Product: [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md)
+
+## Phase 1
+
+Architecture and docs only. Do not push until the full app mission is complete.

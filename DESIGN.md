@@ -1,50 +1,44 @@
-# Design System — Email Manager
+# Design System — mailwart
 
-> Recorded from the Phase 2 built world (landing + auth). Seed `eed4bab9`, candidate 3: zone-file precision sheet. Degraded roll (no challengers / quality-bar boards).
+> Light Phase 1 update: product renamed to **mailwart**. Full visual world refresh is Phase 2+ (do not treat this file as a finished redesign brief).
 
 ## Mode
 
-- **`/` (landing):** Persuade — operator entry and product thesis
+- **`/` (landing):** Persuade — operator entry
 - **`/login`:** Operate-adjacent — auth chrome
-- **`/dashboard/*`:** Operate — directory ops console (Phase 3)
+- **`/dashboard/*`:** Operate — directory ops console
 
-## World
+## Brand
 
-**Zone-file precision.** The mailbox directory is presented like a DNS zone / named.conf sheet: hairline record rows, mono for addresses and types, cool zone-blue accent on near-black ink. Not a SaaS feature-card grid, not neon cyberpunk. Dashboard inherits the same ink / zone-blue / mono-address language at Operate density.
+- Product name in UI: **mailwart** (lowercase)
+- Wordmark: **Bricolage Grotesque ExtraLight 200**
+- Deployment hostnames are not brand marks
 
-## Palette (dark preferred; `html.dark` forced)
+## World (incumbent — evolve in Phase 2)
 
-| Token | Role |
-|-------|------|
-| Background `oklch(0.135 0.012 250)` | Near-black ink |
-| Foreground `oklch(0.93 0.01 230)` | Soft paper ink |
-| Primary `oklch(0.78 0.08 230)` | Zone-blue action |
-| Muted foreground `oklch(0.68 0.02 230)` | Secondary copy |
-| Border ~12% white-blue | Hairline rules |
-| Destructive | Standard shadcn red for danger |
+**Zone-file precision** remains the working Operate language until Phase 2 redesign: hairline record rows, mono for addresses, cool accent on ink. Avoid purple-gradient SaaS clichés, card farms in the hero, and personal-domain branding in chrome.
+
+## Palette (current code; may shift in Phase 2)
+
+Dark-preferred ops console using existing CSS variables / shadcn tokens. Light theme must be first-class in Phase 2 (`next-themes`).
 
 ## Typography
 
-- **UI / display:** Geist Sans (`--font-sans`)
-- **Data / addresses / brand mark:** Geist Mono
-- Display scale: clamp ~2.25–3.5rem, tracking ≈ −0.035em
-- Mono for zone rows at 12–13px
-
-## Components
-
-shadcn/ui **base-nova** + Tailwind v4 CSS variables. Essentials under `src/components/ui/`. Lucide icons (CLI default). Motion via `motion/react` for hero + row stagger; respects `prefers-reduced-motion`.
+- **Brand wordmark:** Bricolage Grotesque ExtraLight 200
+- **UI:** existing sans stack until Phase 2 typeset pass
+- **Data / addresses:** mono
 
 ## Layout signatures
 
-1. Landing first viewport: brand + headline + one CTA group left; synthetic zone/mailbox sheet right
-2. No eyebrow kickers; no hero metric strip
-3. Secure Admin Login is the primary action (`/login`)
-4. Dashboard: sidebar + zone-sheet tables; overview metric strip as record cells (not SaaS card farm)
+1. Dashboard: sidebar + breadcrumbs + dense tables (Operate)
+2. One primary action per page header
+3. Secure Admin Login as landing primary CTA
+4. No personal domains as product identity in first viewport
 
 ## Motion
 
-One orchestrated entrance (copy + sheet), staggered zone rows. Exponential ease-out. Content visible by default when reduced motion is on.
+Restrained in Operate (`MOTION_INTENSITY: 3`). Respect `prefers-reduced-motion`.
 
-## Brand surface
+## Out of scope (this file / Phase 1)
 
-**email.yehia.dev** — domains yehia.dev, hiy.me, zokm.me, restoqd.com. Outbound: Stalwart Admin, Roundcube.
+Landing redesign, theme toggle implementation, dashboard feature UI — deferred to Phase 2+.

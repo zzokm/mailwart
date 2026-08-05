@@ -4,12 +4,12 @@ const envSchema = z.object({
   STALWART_JMAP_URL: z.string().url().optional(),
   STALWART_ADMIN_USER: z.string().min(1).optional(),
   STALWART_ADMIN_PASSWORD: z.string().min(1).optional(),
-  ROUNDCUBE_URL: z.string().url().default("https://email.yehia.dev/webmail/"),
+  ROUNDCUBE_URL: z.string().url().default("https://mail.example.com/webmail/"),
   WEBMAIL_SSO_SECRET: z.string().min(32).optional(),
   STALWART_ADMIN_UI_URL: z
     .string()
     .url()
-    .default("https://mail.yehia.dev/admin"),
+    .default("https://mail.example.com/admin"),
   APP_ADMIN_USER: z.string().optional(),
   APP_ADMIN_PASSWORD: z.string().optional(),
   SESSION_SECRET: z.string().optional(),

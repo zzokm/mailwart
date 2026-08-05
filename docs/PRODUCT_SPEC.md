@@ -69,9 +69,9 @@ No top-level `/aliases` — aliases live on mailbox detail + routing summary.
 
 - Stalwart JMAP health (ok / latency / fail).
 - Roundcube soft health (advisory).
-- Counts: domains, mailboxes, catch-alls configured.
-- Quota pressure: mailboxes near limit (when quotas present).
-- Phase 5: simple time-window charts (creates, failures, SSO opens) from audit log — not marketing vanity metrics.
+- Counts: domains, mailboxes, catch-alls configured (Phase 2).
+- Quota pressure: mailboxes near limit when quotas present (Phase 2–3).
+- Phase 5 only: simple time-window charts (creates, failures, SSO opens) from audit log — **not** in Phase 2.
 - Outbound links: Stalwart Admin UI URL from env (not hardcoded brand domains).
 
 **Not on Overview:** mail-tester scores, queue depth (unless cheap read-only later).
@@ -98,8 +98,8 @@ No top-level `/aliases` — aliases live on mailbox detail + routing summary.
 - Reset password (show once; never store plaintext client-side beyond that moment).
 - Quota edit / clear to server default.
 - Aliases editor after live shape probe.
-- **App passwords:** list/create/revoke application-specific credentials when Stalwart supports them on the account object (or document deep-link to Admin if not).
-- **2FA / TOTP:** enable/disable/status when Stalwart exposes it; otherwise status + Admin deep-link — do not fake UI.
+- **App passwords:** list/create/revoke when Stalwart account object exposes them after live probe; otherwise honest empty state + Admin deep-link (**probe-or-deep-link** — never invent fields).
+- **2FA / TOTP:** same probe-or-deep-link rule.
 - Open Roundcube via SSO.
 - Delete: typed full email; block if catch-all target.
 
@@ -257,7 +257,8 @@ Managed domains, public hosts, and Admin/Webmail URLs are **environment / Dokplo
 1. Exact live `quotas`, `aliases`, app-password, 2FA field shapes — probe in Phase 2–3.
 2. Dashboard public hostname — deploy-time env.
 3. Whether forwarding is native Stalwart fields vs Sieve-only on this build.
-4. Audit storage: file/SQLite vs Stalwart-only — decide Phase 4 (prefer simplest that survives restart).
+4. Audit storage: **JSONL on volume** default (Architecture §9.2); SQLite only if query UX demands it.
+5. Whether a second mailwart deploy is preferred over in-app multi-tenant for a future second Stalwart — prefer second deploy.
 
 ---
 

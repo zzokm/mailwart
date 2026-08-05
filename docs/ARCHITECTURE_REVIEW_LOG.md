@@ -83,4 +83,4 @@ Operability under partial failure is specified. Multi-tenant generalization and 
 
 ### Pass 3 verdict
 
-Docs are generalized, edge-aware, and Phase-1-scoped. Production SSO/compose preserved. **Ready for Phase 2.** No git push.
+Docs are generalized, edge-aware, and Phase-1-scoped. Persistence defaults chosen (memory jobs, JSONL audit). PRODUCT.md / DESIGN.md / README / `.env.example` lightly rebranded to **mailwart**; `env.ts` example defaults no longer hardcode personal hosts. Production SSO/compose preserved. **Ready for Phase 2.** No git push.

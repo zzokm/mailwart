@@ -8,69 +8,69 @@ web
 
 ## Stack
 
-Next.js 16 App Router + Tailwind CSS v4 + shadcn/ui (Node runtime). Deploy target: Dokploy project **Email** behind Traefik (later phase).
+Next.js 16 App Router + Tailwind CSS v4 + shadcn/ui (Node runtime). Deploy target: Dokploy behind Traefik. Stalwart JMAP + Roundcube SSO.
 
 ## Users
 
-**Primary — Operator:** single technical operator managing Stalwart mailboxes across personal/business domains. Needs fast directory ops (create/reset/inspect/bulk) without Stalwart Admin density or Python one-offs.
+**Primary — Operator:** technical operator managing Stalwart mailboxes across one or more domains on a single deployment. Needs cPanel-grade directory ops without Admin density or Python one-offs.
 
-**Secondary — Future helper:** same tasks with audit clarity; no separate RBAC in v1.
+**Secondary — Helper:** same tasks with audit clarity; no separate RBAC in v1.
 
 **Out of scope:** end-users reading mail (they use Roundcube).
 
 ## Product Purpose
 
-A production admin dashboard for Stalwart domains, accounts (mailboxes), aliases, catch-alls, quotas, and passwords — with integrated Roundcube webmail and mailbox-scoped SSO. Does not replace Stalwart Admin or Roundcube.
+**mailwart** — production email management dashboard for Stalwart: domains, mailboxes, quotas, routing, DNS health, bulk CSV, delivery/audit visibility, with Roundcube webmail via short-lived SSO. Does not replace Stalwart Admin or Roundcube.
 
-Success: create a mailbox in under 30s including password copy; bulk 50 accounts with clear failure report; catch-all editable without Stalwart Admin.
+Success: create a mailbox in under 30s including password copy; bulk 50 accounts with clear failure report; catch-all and DNS health without Stalwart Admin.
 
 ## Positioning
 
-Server truth is Stalwart JMAP (`urn:stalwart:jmap`). UI never invents mailbox state. Full email addresses everywhere. Roundcube SSO uses signed, short-lived tokens and Stalwart impersonation; mailbox passwords never enter the browser. Single-operator deployment against one Stalwart instance — not multi-tenant SaaS.
+Server truth is Stalwart JMAP (`urn:stalwart:jmap`). Full email addresses everywhere. Roundcube SSO uses signed, short-lived tokens and Stalwart impersonation; mailbox passwords never enter the browser. **Single-tenant deploy, multi-domain** — not multi-tenant SaaS in v1.
 
 ## Brand Commitments
 
-- Product host / brand surface: **email.yehia.dev**
-- Domains managed: `yehia.dev`, `hiy.me`, `zokm.me`, `restoqd.com`
-- Stalwart Admin: `https://mail.yehia.dev/admin`
-- Webmail: `https://email.yehia.dev/webmail/`
+- Product name: **mailwart** (all lowercase in UI)
+- Wordmark font: **Bricolage Grotesque ExtraLight 200**
+- Completely generalized — deployment hostnames and managed domains are env/Dokploy config, not brand
 - Voice: active, specific, no apology fluff
 
 ## Constraints
 
-- Stalwart v0.16.16 — management via JMAP at `/jmap` only (no REST `/api`)
-- Stalwart admin credentials server-side only; never in browser Network as Stalwart Basic Auth
+- Stalwart v0.16.x — management via JMAP at `/jmap` (no legacy REST management assumption)
+- Stalwart admin credentials server-side only
 - App login (`APP_ADMIN_*`) distinct from Stalwart admin (`STALWART_ADMIN_*`)
+- Preserve Roundcube `em_sso`, `/api/webmail/sso`, Dockerfile, compose roundcube service
 - No mail-tester / deliverability automation in-app
 - No reading/sending mail in-app
-- Responsive web only (no mobile-native app)
+- Responsive web only
 
 ## Terminology
 
 | Term | Meaning |
 |------|---------|
+| mailwart | This product |
 | Domain | Stalwart `x:Domain` |
 | Mailbox / Account | Stalwart `x:Account` (User) |
 | Catch-all | `Domain.catchAllAddress` |
-| Roundcube | Integrated webmail at email.yehia.dev/webmail |
+| Roundcube | Integrated webmail (path from `ROUNDCUBE_URL`) |
 
 ## Evidence
 
-- `docs/ARCHITECTURE.md`, `docs/PRODUCT_SPEC.md`
-- Live scripts: `scripts/mail-restore/*.py`
-- Stalwart image `stalwartlabs/stalwart:v0.16.16`; Roundcube 1.6.11
+- `docs/ARCHITECTURE.md`, `docs/PRODUCT_SPEC.md`, `docs/ARCHITECTURE_REVIEW_LOG.md`
+- Live integration: `src/lib/stalwart/*`, `roundcube/plugins/em_sso`
 
 ## Open Decisions
 
-- Dashboard hostname at deploy (candidate: mailadmin.yehia.dev vs email.yehia.dev)
-- Exact live `quotas` / `aliases` shapes pending Phase 2+ probe
-- Local Windows JMAP URL: public HTTPS vs SSH tunnel — per developer machine
+- Dashboard public hostname — deploy-time
+- Exact live `quotas` / `aliases` / app-password / 2FA shapes — probe Phase 2–3
+- Local Windows JMAP URL: public HTTPS vs SSH tunnel — per machine
 
-## Binding Visual Constraints (from Phase 2 brief)
+## Binding Visual Constraints
 
-- Public landing at `/`: modern, techy, clean; dark-mode preferred
-- Secure Admin Login entry point required
-- High-quality typography; subtle motion allowed
-- Dashboard Phase 3: Operate console under `/dashboard/*` (overview, domains, mailboxes, import, settings)
+- Brand wordmark **mailwart** with Bricolage Grotesque ExtraLight 200
+- Public landing: Persuade (Phase 2+ polish); dashboard: Operate under `/dashboard/*`
+- Light and dark themes required (Phase 2)
+- Breadcrumbs on dashboard entity routes
 
-> Inferred from `docs/PRODUCT_SPEC.md` + Phase 2 mission brief (subagent; no live interview). Facts marked open remain undecided.
+> Phase 1 architecture pass. UI feature work starts Phase 2.
