@@ -84,4 +84,3 @@ export function getCopilotToolUiMetadata(
     completed: `${completed[verb] ?? `${label} completed`}.`,
   }
 }
-

@@ -327,4 +327,3 @@ export async function deleteCopilotConversation(
 export function getCopilotHistoryPath(): string {
   return historyRoot()
 }
-
