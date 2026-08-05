@@ -12,18 +12,30 @@ export function formatBytes(bytes: number | null | undefined): string {
 
 export function quotaSummary(
   quotas: Record<string, unknown> | undefined | null
-): { label: string; bytes: number | null } {
+): { label: string; bytes: number | null; used: number | null } {
   if (!quotas || Object.keys(quotas).length === 0) {
-    return { label: "Default (server)", bytes: null }
+    return { label: "Default (server)", bytes: null, used: null }
   }
   const disk = quotas.diskQuota ?? quotas.disk ?? quotas.storage
+  const usedRaw = quotas.diskUsed ?? quotas.used ?? quotas.storageUsed
+  const used = typeof usedRaw === "number" ? usedRaw : null
+
   if (typeof disk === "number") {
-    return { label: formatBytes(disk), bytes: disk }
+    return { label: formatBytes(disk), bytes: disk, used }
   }
   if (typeof disk === "string" && disk.trim()) {
-    return { label: disk, bytes: null }
+    return { label: disk, bytes: null, used }
   }
-  return { label: "Custom", bytes: null }
+  return { label: "Custom", bytes: null, used }
+}
+
+/** Progress 0–100 for used/quota; null when either side is unknown. */
+export function storageProgressPercent(
+  used: number | null | undefined,
+  quota: number | null | undefined
+): number | null {
+  if (used == null || quota == null || quota <= 0) return null
+  return Math.min(100, Math.round((used / quota) * 100))
 }
 
 export function generatePassword(length = 16): string {

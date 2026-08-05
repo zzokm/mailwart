@@ -54,7 +54,7 @@ export const MOCK_ACCOUNTS: StalwartAccount[] = [
     domainId: "dom-example-com",
     email: "hello@example.com",
     domainName: "example.com",
-    quotas: { diskQuota: 2_147_483_648 },
+    quotas: { diskQuota: 2_147_483_648, diskUsed: 812_646_400 },
     aliases: {},
   },
   {
@@ -64,7 +64,7 @@ export const MOCK_ACCOUNTS: StalwartAccount[] = [
     domainId: "dom-example-com",
     email: "billing@example.com",
     domainName: "example.com",
-    quotas: { diskQuota: 5_368_709_120 },
+    quotas: { diskQuota: 5_368_709_120, diskUsed: 3_221_225_472 },
     aliases: {},
   },
   {
@@ -94,7 +94,7 @@ export const MOCK_ACCOUNTS: StalwartAccount[] = [
     domainId: "dom-example-net",
     email: "support@example.net",
     domainName: "example.net",
-    quotas: { diskQuota: 2_147_483_648 },
+    quotas: { diskQuota: 2_147_483_648, diskUsed: 1_288_490_188 },
     aliases: {},
   },
   {
@@ -104,7 +104,7 @@ export const MOCK_ACCOUNTS: StalwartAccount[] = [
     domainId: "dom-example-net",
     email: "alerts@example.net",
     domainName: "example.net",
-    quotas: { diskQuota: 1_073_741_824 },
+    quotas: { diskQuota: 1_073_741_824, diskUsed: 94_371_840 },
     aliases: {},
   },
   {
@@ -169,16 +169,32 @@ export function mockDomainList(): DomainListItem[] {
 }
 
 export function mockOverviewStats(): OverviewStats {
-  const quotas = MOCK_ACCOUNTS.map((a) => {
+  let quotaSum = 0
+  let usedSum = 0
+  let hasQuota = false
+  let hasUsed = false
+  let withQuota = 0
+  for (const a of MOCK_ACCOUNTS) {
     const q = a.quotas?.diskQuota
-    return typeof q === "number" ? q : 0
-  })
-  const total = quotas.reduce((s, n) => s + n, 0)
+    const u = a.quotas?.diskUsed
+    if (typeof q === "number") {
+      hasQuota = true
+      withQuota++
+      quotaSum += q
+    }
+    if (typeof u === "number") {
+      hasUsed = true
+      usedSum += u
+    }
+  }
   return {
     domainCount: MOCK_DOMAINS.length,
     mailboxCount: MOCK_ACCOUNTS.length,
-    storageQuotaBytes: total > 0 ? total : null,
-    storageUsedBytes: null,
+    enabledDomainCount: MOCK_DOMAINS.filter((d) => d.isEnabled !== false).length,
+    catchAllCount: MOCK_DOMAINS.filter((d) => !!d.catchAllAddress).length,
+    mailboxesWithQuota: withQuota,
+    storageQuotaBytes: hasQuota ? quotaSum : null,
+    storageUsedBytes: hasUsed ? usedSum : null,
     activeSessions: null,
   }
 }

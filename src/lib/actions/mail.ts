@@ -154,23 +154,36 @@ export async function getOverview(): Promise<
     }))
 
     let storageQuotaBytes: number | null = 0
+    let storageUsedBytes: number | null = 0
     let hasQuota = false
+    let hasUsed = false
+    let mailboxesWithQuota = 0
     for (const a of accounts) {
       const q = quotaSummary(a.quotas)
       if (q.bytes != null) {
         hasQuota = true
+        mailboxesWithQuota++
         storageQuotaBytes! += q.bytes
+      }
+      if (q.used != null) {
+        hasUsed = true
+        storageUsedBytes! += q.used
       }
     }
     if (!hasQuota) storageQuotaBytes = null
+    if (!hasUsed) storageUsedBytes = null
 
     return ok(
       {
         stats: {
           domainCount: domains.length,
           mailboxCount: accounts.length,
+          enabledDomainCount: domains.filter((d) => d.isEnabled !== false)
+            .length,
+          catchAllCount: domains.filter((d) => !!d.catchAllAddress).length,
+          mailboxesWithQuota,
           storageQuotaBytes,
-          storageUsedBytes: null,
+          storageUsedBytes,
           activeSessions: null,
         },
         health,

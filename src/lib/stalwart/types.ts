@@ -56,6 +56,12 @@ export type DomainListItem = StalwartDomain & {
 export type OverviewStats = {
   domainCount: number
   mailboxCount: number
+  /** Domains with isEnabled !== false. */
+  enabledDomainCount: number
+  /** Domains with a catch-all address configured. */
+  catchAllCount: number
+  /** Mailboxes that declare an explicit disk quota. */
+  mailboxesWithQuota: number
   /** Sum of known quota limits when present; null = unknown / default. */
   storageQuotaBytes: number | null
   /** Sum of used storage when present; null = unknown. */

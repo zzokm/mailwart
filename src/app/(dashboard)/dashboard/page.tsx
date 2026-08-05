@@ -25,7 +25,6 @@ export default async function OverviewPage() {
         <PageHeader
           title="Overview"
           description="Stalwart directory health and size."
-          breadcrumbs={[{ label: "Dashboard" }]}
         />
         <ErrorState title="Could not load overview" description={result.error} />
       </div>
@@ -66,7 +65,6 @@ export default async function OverviewPage() {
       <PageHeader
         title="Overview"
         description="Is mail admin reachable, and how big is the directory?"
-        breadcrumbs={[{ label: "Dashboard" }]}
         actions={
           <>
             <Button
