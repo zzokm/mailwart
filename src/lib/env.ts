@@ -2,8 +2,8 @@ import { z } from "zod";
 
 const envSchema = z.object({
   STALWART_JMAP_URL: z.string().url().optional(),
-  STALWART_ADMIN_USER: z.string().min(1).optional(),
-  STALWART_ADMIN_PASSWORD: z.string().min(1).optional(),
+  STALWART_ADMIN_USER: z.string().optional(),
+  STALWART_ADMIN_PASSWORD: z.string().optional(),
   ROUNDCUBE_URL: z.string().url().default("https://mail.example.com/webmail/"),
   WEBMAIL_SSO_SECRET: z.string().min(32).optional(),
   STALWART_ADMIN_UI_URL: z
@@ -14,37 +14,59 @@ const envSchema = z.object({
   APP_ADMIN_PASSWORD: z.string().optional(),
   SESSION_SECRET: z.string().optional(),
   /** Expected MX target hostname (optional rubric). */
-  DNS_EXPECTED_MX: z.string().min(1).optional(),
+  DNS_EXPECTED_MX: z.string().optional(),
   /** CSV of DKIM selectors to probe (e.g. stalwart,default). */
   DNS_DKIM_SELECTORS: z.string().optional(),
   /** Expected SPF include/ip/a mechanism substring (optional). */
-  DNS_EXPECTED_SPF: z.string().min(1).optional(),
+  DNS_EXPECTED_SPF: z.string().optional(),
   /** Append-only audit JSONL path (Architecture §9.2). Relative to cwd or absolute. */
-  AUDIT_LOG_PATH: z.string().min(1).optional(),
+  AUDIT_LOG_PATH: z.string().optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
 
+/**
+ * Compose passes unset optional vars through as `${VAR:-}`, so they arrive as
+ * empty strings rather than absent. Blank means "not configured".
+ */
+function unset(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 function readRawEnv(): Record<string, string | undefined> {
   return {
-    STALWART_JMAP_URL: process.env.STALWART_JMAP_URL,
-    STALWART_ADMIN_USER: process.env.STALWART_ADMIN_USER,
-    STALWART_ADMIN_PASSWORD: process.env.STALWART_ADMIN_PASSWORD,
-    ROUNDCUBE_URL: process.env.ROUNDCUBE_URL,
-    WEBMAIL_SSO_SECRET: process.env.WEBMAIL_SSO_SECRET,
-    STALWART_ADMIN_UI_URL: process.env.STALWART_ADMIN_UI_URL,
-    APP_ADMIN_USER: process.env.APP_ADMIN_USER,
-    APP_ADMIN_PASSWORD: process.env.APP_ADMIN_PASSWORD,
-    SESSION_SECRET: process.env.SESSION_SECRET,
-    DNS_EXPECTED_MX: process.env.DNS_EXPECTED_MX,
-    DNS_DKIM_SELECTORS: process.env.DNS_DKIM_SELECTORS,
-    DNS_EXPECTED_SPF: process.env.DNS_EXPECTED_SPF,
-    AUDIT_LOG_PATH: process.env.AUDIT_LOG_PATH,
+    STALWART_JMAP_URL: unset(process.env.STALWART_JMAP_URL),
+    STALWART_ADMIN_USER: unset(process.env.STALWART_ADMIN_USER),
+    STALWART_ADMIN_PASSWORD: unset(process.env.STALWART_ADMIN_PASSWORD),
+    ROUNDCUBE_URL: unset(process.env.ROUNDCUBE_URL),
+    WEBMAIL_SSO_SECRET: unset(process.env.WEBMAIL_SSO_SECRET),
+    STALWART_ADMIN_UI_URL: unset(process.env.STALWART_ADMIN_UI_URL),
+    APP_ADMIN_USER: unset(process.env.APP_ADMIN_USER),
+    APP_ADMIN_PASSWORD: unset(process.env.APP_ADMIN_PASSWORD),
+    SESSION_SECRET: unset(process.env.SESSION_SECRET),
+    DNS_EXPECTED_MX: unset(process.env.DNS_EXPECTED_MX),
+    DNS_DKIM_SELECTORS: unset(process.env.DNS_DKIM_SELECTORS),
+    DNS_EXPECTED_SPF: unset(process.env.DNS_EXPECTED_SPF),
+    AUDIT_LOG_PATH: unset(process.env.AUDIT_LOG_PATH),
   };
 }
 
+let cachedEnv: AppEnv | undefined;
+
 export function getEnv(): AppEnv {
-  return envSchema.parse(readRawEnv());
+  if (cachedEnv) return cachedEnv;
+
+  const parsed = envSchema.safeParse(readRawEnv());
+  if (!parsed.success) {
+    const details = parsed.error.issues
+      .map((issue) => `  ${issue.path.join(".")}: ${issue.message}`)
+      .join("\n");
+    throw new Error(`Invalid environment configuration:\n${details}`);
+  }
+
+  cachedEnv = parsed.data;
+  return cachedEnv;
 }
 
 export type StalwartConfig = {
