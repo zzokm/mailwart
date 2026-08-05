@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 
+import { DASHBOARD_CRUMB } from "@/components/layout/breadcrumbs"
 import { DataSourceBanner } from "@/components/layout/data-source-banner"
 import { PageHeader } from "@/components/layout/page-header"
 import { BulkImportWizard } from "@/components/mail/bulk-import-wizard"
@@ -15,7 +16,8 @@ export default function ImportPage() {
     <div>
       <PageHeader
         title="Bulk import"
-        description="CSV upload → validate → commit in chunks → per-row report."
+        description="Upload a CSV, validate it, commit in chunks, then read the per-row report."
+        breadcrumbs={[DASHBOARD_CRUMB, { label: "Bulk import" }]}
       />
       <DataSourceBanner source={source} />
       <BulkImportWizard />

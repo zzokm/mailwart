@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { ExternalLink } from "lucide-react"
 
+import { DASHBOARD_CRUMB } from "@/components/layout/breadcrumbs"
 import { DataSourceBanner } from "@/components/layout/data-source-banner"
 import { PageHeader } from "@/components/layout/page-header"
 import { ErrorState } from "@/components/mail/empty-state"
@@ -17,7 +18,10 @@ export default async function SettingsPage() {
   if (!result.ok) {
     return (
       <div>
-        <PageHeader title="Settings" />
+        <PageHeader
+          title="Settings"
+          breadcrumbs={[DASHBOARD_CRUMB, { label: "Settings" }]}
+        />
         <ErrorState title="Could not load settings" description={result.error} />
       </div>
     )
@@ -30,6 +34,7 @@ export default async function SettingsPage() {
       <PageHeader
         title="Settings"
         description="Integrated webmail, Stalwart host, and danger zone."
+        breadcrumbs={[DASHBOARD_CRUMB, { label: "Settings" }]}
       />
       <DataSourceBanner source={result.source} />
 

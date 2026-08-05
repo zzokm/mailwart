@@ -2,12 +2,15 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
+import { DASHBOARD_CRUMB } from "@/components/layout/breadcrumbs"
 import { DataSourceBanner } from "@/components/layout/data-source-banner"
 import { PageHeader } from "@/components/layout/page-header"
 import { DomainDetailClient } from "@/components/mail/domain-detail-client"
 import { ErrorState } from "@/components/mail/empty-state"
 import { Button } from "@/components/ui/button"
 import { getDomainDetailAction } from "@/lib/actions/mail"
+
+const DOMAINS_CRUMB = { label: "Domains", href: "/dashboard/domains" }
 
 export const runtime = "nodejs"
 
@@ -35,7 +38,11 @@ export default async function DomainDetailPage({
     if (result.error.toLowerCase().includes("not found")) notFound()
     return (
       <div>
-        <PageHeader title="Domain" />
+        <PageHeader
+          title="Domain"
+          breadcrumbs={[DASHBOARD_CRUMB, DOMAINS_CRUMB, { label: "Detail" }]}
+          back={{ href: "/dashboard/domains", label: "Domains" }}
+        />
         <ErrorState title="Could not load domain" description={result.error} />
       </div>
     )
@@ -48,14 +55,22 @@ export default async function DomainDetailPage({
       <PageHeader
         title={domain.name}
         description={domain.description || "Domain detail, catch-all, DNS checklist."}
+        breadcrumbs={[
+          DASHBOARD_CRUMB,
+          DOMAINS_CRUMB,
+          { label: domain.name, mono: true },
+        ]}
+        back={{ href: "/dashboard/domains", label: "Domains" }}
         actions={
           <Button
             variant="outline"
             size="sm"
             nativeButton={false}
-            render={<Link href="/dashboard/domains" />}
+            render={
+              <Link href={`/dashboard/mailboxes?domain=${domain.id}`} />
+            }
           >
-            All domains
+            Mailboxes on this domain
           </Button>
         }
       />

@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 
+import { DASHBOARD_CRUMB } from "@/components/layout/breadcrumbs"
 import { DataSourceBanner } from "@/components/layout/data-source-banner"
 import { PageHeader } from "@/components/layout/page-header"
 import { CreateDomainDialog } from "@/components/mail/create-domain-dialog"
@@ -26,7 +27,11 @@ export default async function DomainsPage() {
   if (!result.ok) {
     return (
       <div>
-        <PageHeader title="Domains" description="Stalwart domain directory." />
+        <PageHeader
+          title="Domains"
+          description="Stalwart domain directory."
+          breadcrumbs={[DASHBOARD_CRUMB, { label: "Domains" }]}
+        />
         <ErrorState title="Could not load domains" description={result.error} />
       </div>
     )
@@ -39,6 +44,7 @@ export default async function DomainsPage() {
       <PageHeader
         title="Domains"
         description="Add domains, inspect catch-alls, and verify DNS checklist."
+        breadcrumbs={[DASHBOARD_CRUMB, { label: "Domains" }]}
         actions={<CreateDomainDialog />}
       />
       <DataSourceBanner source={result.source} />
