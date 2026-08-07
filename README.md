@@ -6,10 +6,7 @@
 |---|---|
 | **Production** | **https://email.yehia.dev** |
 | **Webmail (SSO)** | **https://email.yehia.dev/webmail/** |
-| **Gitea** | https://git.yehia.dev/zzokm/mailwart |
-| **GitHub** | https://github.com/zzokm/yehia-email-manager *(repo name kept)* |
-
-> Docker service / folder may still say `email-manager` — that is historical pathing, not the brand.
+| **Source** | https://git.yehia.dev/zzokm/mailwart |
 
 ---
 
@@ -27,7 +24,7 @@ Right-hand panel on every `/dashboard/*` route (desktop shrinks the workspace; m
 
 ### Hosted mail admin
 
-Live at **https://email.yehia.dev** (Dokploy + Traefik + Let's Encrypt). Roundcube at `/webmail` with signed-token SSO via Stalwart impersonation — mailbox passwords never appear in the browser Network tab.
+Live at **https://email.yehia.dev**. Roundcube at `/webmail` with signed-token SSO — mailbox passwords never appear in the browser Network tab.
 
 ---
 
@@ -85,7 +82,7 @@ Live at **https://email.yehia.dev** (Dokploy + Traefik + Let's Encrypt). Roundcu
 
 ### Webmail SSO
 - Per-mailbox Open → signed short-lived token → Roundcube `em_sso` plugin
-- Uses Stalwart impersonation server-side; no password fallback in the browser
+- Server-side SSO into Stalwart; no password fallback in the browser
 
 ### Settings
 - Configured Stalwart / Roundcube hosts (not secrets)
@@ -95,8 +92,7 @@ Live at **https://email.yehia.dev** (Dokploy + Traefik + Let's Encrypt). Roundcu
 
 ### Deployment
 - Next.js standalone Docker image + Roundcube sidecar
-- Compose: `email-manager` + Roundcube at `/webmail`, volume `mailwart_audit`
-- Dokploy auto-deploy from GitHub `zzokm/yehia-email-manager` `main`
+- Docker Compose deploy with Roundcube at `/webmail` and a persistent audit volume
 - Product / architecture: `docs/PRODUCT_SPEC.md`, `docs/ARCHITECTURE.md`
 
 ---
@@ -114,10 +110,10 @@ npm run dev
 
 - Dashboard: https://email.yehia.dev
 - Webmail: https://email.yehia.dev/webmail/
-- Deploy runbook (parent VPS workspace): `docs/mail/email-manager-deploy.md`
+- Self-host via Docker / environment variables (see `.env.example` and `docs/ARCHITECTURE.md`)
 
 ## Security notes
 
 - Server truth is Stalwart; UI never invents mailbox state
 - Copilot API keys are server-only — never `NEXT_PUBLIC_*` or localStorage
-- Do not commit Gitea/MySQL/admin secrets into this repository
+- Do not commit secrets into this repository
