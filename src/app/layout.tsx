@@ -40,9 +40,9 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} h-dvh max-h-dvh overflow-hidden antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-background text-foreground">
+      <body className="flex h-dvh max-h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
         {/*
           THESIS: Zone-file precision — the mailbox directory reads like a named zone sheet, not a SaaS feature grid.
           OWN-WORLD: Cool paper by day, near-black ink by night; zone-blue accent, hairline record rules, mono for addresses only.

@@ -74,7 +74,7 @@ export function AppShell({
 
   return (
     <CopilotProvider>
-      <SidebarProvider>
+      <SidebarProvider className="h-dvh max-h-dvh min-h-0 w-full overflow-hidden">
         <Sidebar collapsible="icon" variant="inset">
           <SidebarHeader className="gap-3 px-3 py-3">
             <Link
@@ -141,7 +141,7 @@ export function AppShell({
           <SidebarRail />
         </Sidebar>
 
-        <SidebarInset className="h-svh min-h-0 min-w-0 overflow-hidden">
+        <SidebarInset className="h-dvh max-h-dvh md:h-[calc(100dvh-1rem)] md:max-h-[calc(100dvh-1rem)] min-h-0 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0">
           <div className="flex h-full min-h-0 min-w-0 flex-1">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <header className="z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/70 bg-background/90 px-4 backdrop-blur-sm">

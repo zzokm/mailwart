@@ -22,7 +22,7 @@ export default async function LoginPage() {
   await redirectIfAuthenticated()
 
   return (
-    <div className="relative flex min-h-full flex-1 flex-col">
+    <div className="relative flex h-full max-h-dvh min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-[60vh] bg-[radial-gradient(ellipse_70%_60%_at_50%_-10%,var(--brand),transparent_62%)] opacity-[0.09] dark:opacity-[0.2]"
