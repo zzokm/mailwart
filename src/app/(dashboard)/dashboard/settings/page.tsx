@@ -12,15 +12,18 @@ import { getCopilotSettingsAction } from "@/lib/actions/copilot"
 import { getSettingsAction } from "@/lib/actions/mail"
 import { getCloudflareStatusAction } from "@/lib/actions/cloudflare"
 import { CloudflareSettingsClient } from "@/components/mail/cloudflare-settings-client"
+import { getLatestDeliverabilityReportAction } from "@/lib/actions/deliverability"
+import { SettingsDeliverabilitySection } from "@/components/mail/settings-deliverability-section"
 
 export const metadata: Metadata = { title: "Settings" }
 export const runtime = "nodejs"
 
 export default async function SettingsPage() {
-  const [result, copilotResult, cfResult] = await Promise.all([
+  const [result, copilotResult, cfResult, deliverabilityResult] = await Promise.all([
     getSettingsAction(),
     getCopilotSettingsAction(),
     getCloudflareStatusAction(),
+    getLatestDeliverabilityReportAction(),
   ])
 
   if (!result.ok) {
@@ -47,6 +50,10 @@ export default async function SettingsPage() {
       <DataSourceBanner source={result.source} />
 
       <div className="grid max-w-2xl gap-4">
+        <SettingsDeliverabilitySection
+          initialReport={deliverabilityResult.ok ? deliverabilityResult.data : null}
+        />
+
         <section className="rounded-xl border border-border/80 p-4 sm:p-5">
           <h2 className="text-sm font-medium">mailwart Copilot</h2>
           <p className="mt-2 text-sm text-muted-foreground">

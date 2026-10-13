@@ -31,6 +31,9 @@ export type AuditAction =
   | "cloudflare.settings_update"
   | "deliverability.test_email"
   | "deliverability.test_email_failed"
+  | "deliverability.test_suite"
+  | "deliverability.test_mailbox_created"
+  | "deliverability.test_mailbox_cleaned"
 
 export type AuditEvent = {
   id: string
