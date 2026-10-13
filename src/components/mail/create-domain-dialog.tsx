@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useEffect, useState, useTransition } from "react"
+import { useState, useTransition } from "react"
 import { Cloud, Globe, Plus } from "lucide-react"
 
 import { createDomainAction } from "@/lib/actions/mail"
@@ -48,8 +48,9 @@ export function CreateDomainDialog() {
 
   const [pending, startTransition] = useTransition()
 
-  useEffect(() => {
-    if (open) {
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen)
+    if (nextOpen) {
       setLoadingCf(true)
       getAvailableCloudflareDomainsAction()
         .then((res) => {
@@ -75,7 +76,7 @@ export function CreateDomainDialog() {
         })
         .finally(() => setLoadingCf(false))
     }
-  }, [open])
+  }
 
   const unaddedZones = zones.filter(
     (z) => !alreadyAdded.includes(z.name.toLowerCase())
@@ -124,7 +125,7 @@ export function CreateDomainDialog() {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger render={<Button size="sm" />}>
         <Plus data-icon="inline-start" />
         Add domain

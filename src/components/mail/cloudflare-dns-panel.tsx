@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useTransition } from "react"
-import { CheckCircle2, Cloud, ExternalLink, RefreshCw, Sparkles } from "lucide-react"
+import { CheckCircle2, Cloud, RefreshCw, Sparkles } from "lucide-react"
 
 import {
   getCloudflareStatusAction,
