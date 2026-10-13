@@ -177,7 +177,7 @@ export function MailboxDetailClient({
               id="mb-quota"
               value={quotaGb}
               onChange={(e) => setQuotaGb(e.target.value)}
-              placeholder="Server default"
+              placeholder="10 (Default GB)"
               disabled={pending}
             />
           </div>

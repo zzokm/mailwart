@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition } from "react"
-import { Ban, Plus, Search, Trash2, KeyRound } from "lucide-react"
+import { Ban, Plus, Search, Trash2, KeyRound, Info, Pencil } from "lucide-react"
 
 import {
   bulkDestroyMailboxesAction,
@@ -16,11 +16,17 @@ import { ConfirmDestroy } from "@/components/mail/confirm-destroy"
 import { EmptyState } from "@/components/mail/empty-state"
 import { QuotaBar } from "@/components/mail/quota-bar"
 import { RoundcubeButton } from "@/components/mail/roundcube-button"
+import { MailboxConfigDialog } from "@/components/mail/mailbox-config-dialog"
 import { PasswordField } from "@/components/mail/password-field"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   Dialog,
   DialogContent,
@@ -66,6 +72,7 @@ export function MailboxTable({
   const [bulkResetOpen, setBulkResetOpen] = useState(false)
   const [bulkPassword, setBulkPassword] = useState(() => generatePassword())
   const [createOpen, setCreateOpen] = useState(false)
+  const [configAccount, setConfigAccount] = useState<StalwartAccount | null>(null)
 
   const filtered = useMemo(() => {
     return accounts.filter((a) => {
@@ -228,9 +235,6 @@ export function MailboxTable({
                 <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
                   Email
                 </TableHead>
-                <TableHead className="hidden font-mono text-[10px] uppercase tracking-[0.14em] md:table-cell">
-                  Domain
-                </TableHead>
                 <TableHead className="hidden font-mono text-[10px] uppercase tracking-[0.14em] sm:table-cell">
                   Status
                 </TableHead>
@@ -273,9 +277,6 @@ export function MailboxTable({
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="hidden font-mono text-[12px] text-muted-foreground md:table-cell">
-                    {a.domainName ?? "-"}
-                  </TableCell>
                   <TableCell className="hidden sm:table-cell">
                     <Badge
                       variant={suspended ? "destructive" : "outline"}
@@ -288,19 +289,58 @@ export function MailboxTable({
                     <QuotaBar quotas={a.quotas} />
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-end gap-1.5">
+                    <div className="flex justify-end items-center gap-1.5">
+                      {/* 1. Open Webmail square button */}
                       <RoundcubeButton
                         href={buildRoundcubeUrl(a.email)}
                         email={a.email}
+                        iconOnly
                       />
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        nativeButton={false}
-                        render={<Link href={`/dashboard/mailboxes/${a.id}`} />}
-                      >
-                        Edit
-                      </Button>
+
+                      {/* 2. 'i' square button (Configuration & Server settings) */}
+                      <Tooltip>
+                        <TooltipTrigger
+                          delay={0}
+                          render={
+                            <Button
+                              variant="outline"
+                              size="icon-sm"
+                              onClick={() => setConfigAccount(a)}
+                              aria-label={`Email configuration for ${a.email}`}
+                            />
+                          }
+                        >
+                          <Info className="size-3.5" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-xs">
+                          Email Configuration & Server Settings
+                        </TooltipContent>
+                      </Tooltip>
+
+                      {/* 3. Edit square button with Pencil icon */}
+                      <Tooltip>
+                        <TooltipTrigger
+                          delay={0}
+                          render={
+                            <Button
+                              variant="outline"
+                              size="icon-sm"
+                              nativeButton={false}
+                              render={
+                                <Link
+                                  href={`/dashboard/mailboxes/${a.id}`}
+                                  aria-label={`Edit ${a.email}`}
+                                />
+                              }
+                            />
+                          }
+                        >
+                          <Pencil className="size-3.5" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-xs">
+                          Edit mailbox
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -394,6 +434,14 @@ export function MailboxTable({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <MailboxConfigDialog
+        account={configAccount}
+        open={!!configAccount}
+        onOpenChange={(open) => {
+          if (!open) setConfigAccount(null)
+        }}
+      />
     </div>
   )
 }

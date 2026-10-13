@@ -10,32 +10,40 @@ export function formatBytes(bytes: number | null | undefined): string {
   return `${value < 10 && i > 0 ? value.toFixed(1) : Math.round(value)} ${units[i]}`
 }
 
+export const DEFAULT_MAILBOX_QUOTA_BYTES = 10 * 1024 * 1024 * 1024 // 10 GB
+
 export function quotaSummary(
   quotas: Record<string, unknown> | undefined | null
-): { label: string; bytes: number | null; used: number | null } {
-  if (!quotas || Object.keys(quotas).length === 0) {
-    return { label: "Default (server)", bytes: null, used: null }
-  }
-  const disk = quotas.diskQuota ?? quotas.disk ?? quotas.storage
-  const usedRaw = quotas.diskUsed ?? quotas.used ?? quotas.storageUsed
-  const used = typeof usedRaw === "number" ? usedRaw : null
+): { label: string; bytes: number; used: number } {
+  const disk =
+    quotas?.diskQuota ??
+    quotas?.disk ??
+    quotas?.storage ??
+    quotas?.maxDiskQuota
+  const usedRaw = quotas?.diskUsed ?? quotas?.used ?? quotas?.storageUsed
+  const used = typeof usedRaw === "number" ? Math.max(0, usedRaw) : 0
 
-  if (typeof disk === "number") {
+  if (typeof disk === "number" && disk > 0) {
     return { label: formatBytes(disk), bytes: disk, used }
   }
-  if (typeof disk === "string" && disk.trim()) {
-    return { label: disk, bytes: null, used }
+  return {
+    label: formatBytes(DEFAULT_MAILBOX_QUOTA_BYTES),
+    bytes: DEFAULT_MAILBOX_QUOTA_BYTES,
+    used,
   }
-  return { label: "Custom", bytes: null, used }
 }
 
-/** Progress 0–100 for used/quota; null when either side is unknown. */
+/** Progress 0–100 for used/quota */
 export function storageProgressPercent(
   used: number | null | undefined,
   quota: number | null | undefined
-): number | null {
-  if (used == null || quota == null || quota <= 0) return null
-  return Math.min(100, Math.round((used / quota) * 100))
+): number {
+  const u = typeof used === "number" ? Math.max(0, used) : 0
+  const q =
+    typeof quota === "number" && quota > 0
+      ? quota
+      : DEFAULT_MAILBOX_QUOTA_BYTES
+  return Math.min(100, Math.round((u / q) * 100))
 }
 
 export function generatePassword(length = 16): string {

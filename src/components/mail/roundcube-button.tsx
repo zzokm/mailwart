@@ -12,9 +12,11 @@ import {
 export function RoundcubeButton({
   href,
   email,
+  iconOnly = false,
 }: {
   href: string
   email?: string
+  iconOnly?: boolean
 }) {
   return (
     <Tooltip>
@@ -23,14 +25,21 @@ export function RoundcubeButton({
         render={
           <Button
             variant="outline"
-            size="sm"
+            size={iconOnly ? "icon-sm" : "sm"}
             nativeButton={false}
-            render={<a href={href} target="_blank" rel="noreferrer" />}
+            render={
+              <a
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open webmail for ${email ?? "mailbox"}`}
+              />
+            }
           />
         }
       >
-        <ExternalLink data-icon="inline-start" />
-        Open webmail
+        <ExternalLink className="size-3.5" data-icon={iconOnly ? undefined : "inline-start"} />
+        {iconOnly ? null : "Open webmail"}
       </TooltipTrigger>
       <TooltipContent className="max-w-xs text-xs">
         Opens {email ?? "this mailbox"} in Roundcube with a short-lived signed
