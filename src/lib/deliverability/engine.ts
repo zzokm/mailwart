@@ -223,7 +223,13 @@ async function checkDnsbl(ip: string): Promise<{
       const query = `${reversed}.${dnsbl}`
       try {
         const addresses = await dns.resolve4(query)
-        if (addresses && addresses.length > 0) {
+        // Filter out Spamhaus public resolver refusal codes (127.255.255.254/255)
+        const actualListings = addresses.filter(
+          (addr) =>
+            addr.startsWith("127.0.0.") ||
+            (addr.startsWith("127.") && !addr.startsWith("127.255.255."))
+        )
+        if (actualListings.length > 0) {
           listedOn.push(dnsbl)
         }
       } catch {
