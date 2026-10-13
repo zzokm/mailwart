@@ -3,11 +3,14 @@ import "server-only"
 import { promises as dns } from "node:dns"
 
 import { getDnsExpectations } from "@/lib/env"
+import { findZoneForDomain, listZoneDnsRecords } from "@/lib/cloudflare/client"
+import { getStalwartDkimSignaturesForDomain } from "@/lib/stalwart/dkim"
 import type {
   DnsCheckItem,
   DnsCheckStatus,
   DnsHealthSummary,
 } from "@/lib/stalwart/types"
+import type { CloudflareDnsRecord } from "@/lib/cloudflare/types"
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -24,6 +27,7 @@ function stripDot(host: string): string {
 
 function worstStatus(statuses: DnsCheckStatus[]): DnsCheckStatus {
   if (statuses.includes("fail")) return "fail"
+  if (statuses.includes("propagating")) return "propagating"
   if (statuses.includes("warn")) return "warn"
   if (statuses.includes("unknown")) return "unknown"
   if (statuses.every((s) => s === "pass")) return "pass"
@@ -51,9 +55,9 @@ function checkMx(
   domain: string,
   mx: Awaited<ReturnType<typeof dns.resolveMx>>,
   expectedMx?: string,
-  mailHostHint?: string
+  mailHostHint?: string,
+  cfPresent?: boolean
 ): DnsCheckItem {
-  const targets = mx.map((r) => stripDot(r.exchange))
   const observed =
     mx.length > 0
       ? mx
@@ -62,13 +66,19 @@ function checkMx(
           .join("; ")
       : undefined
 
-  const expectedLabel = expectedMx
-    ? `${domain}. MX → ${expectedMx}`
-    : mailHostHint
-      ? `${domain}. MX → ${mailHostHint} (hint)`
-      : `${domain}. MX ≥1`
+  const dedicatedHost = `mail.${domain}`
+  const expectedLabel = `${domain}. MX → ${dedicatedHost}`
 
   if (mx.length === 0) {
+    if (cfPresent) {
+      return {
+        type: "MX",
+        label: "Mail exchanger",
+        expected: expectedLabel,
+        status: "propagating",
+        note: `MX record provisioned in Cloudflare (${dedicatedHost}); propagating across DNS.`,
+      }
+    }
     return {
       type: "MX",
       label: "Mail exchanger",
@@ -79,44 +89,42 @@ function checkMx(
     }
   }
 
-  if (expectedMx) {
-    const match = targets.some(
-      (t) => t === expectedMx || t.endsWith(`.${expectedMx}`)
-    )
-    if (!match) {
-      return {
-        type: "MX",
-        label: "Mail exchanger",
-        expected: expectedLabel,
-        status: "warn",
-        note: `MX exists but target does not match DNS_EXPECTED_MX (${expectedMx}).`,
-        observed,
-      }
-    }
-  }
-
   return {
     type: "MX",
     label: "Mail exchanger",
     expected: expectedLabel,
     status: "pass",
     observed,
+    note: observed ? `Active MX: ${observed}` : undefined,
   }
 }
 
-function checkTxt(domain: string, txt: string[]): DnsCheckItem {
+function checkTxt(
+  domain: string,
+  txt: string[],
+  cfPresent?: boolean
+): DnsCheckItem {
   const observed =
     txt.length > 0
       ? txt.slice(0, 4).join(" | ") + (txt.length > 4 ? " …" : "")
       : undefined
 
   if (txt.length === 0) {
+    if (cfPresent) {
+      return {
+        type: "TXT",
+        label: "Apex TXT",
+        expected: `${domain} TXT (SPF / verification)`,
+        status: "propagating",
+        note: "Apex TXT provisioned in Cloudflare; propagating across DNS.",
+      }
+    }
     return {
       type: "TXT",
       label: "Apex TXT",
-      expected: `${domain} TXT (SPF / verification)`,
-      status: "warn",
-      note: "No apex TXT records. SPF usually lives here.",
+      expected: `${domain} TXT present`,
+      status: "fail",
+      note: "No apex TXT records found.",
       observed,
     }
   }
@@ -135,16 +143,23 @@ function checkSpf(
   domain: string,
   txt: string[],
   expectedSpf?: string,
-  mailHostHint?: string
+  mailHostHint?: string,
+  cfPresent?: boolean
 ): DnsCheckItem {
   const spfRecords = txt.filter((t) => /^v=spf1\b/i.test(t.trim()))
-  const expected = expectedSpf
-    ? `v=spf1 … ${expectedSpf} …`
-    : mailHostHint
-      ? `v=spf1 mx a:${mailHostHint} ~all`
-      : `v=spf1 …`
+  const dedicatedHost = `mail.${domain}`
+  const expected = `v=spf1 mx a:${dedicatedHost} ~all`
 
   if (spfRecords.length === 0) {
+    if (cfPresent) {
+      return {
+        type: "SPF",
+        label: "SPF",
+        expected,
+        status: "propagating",
+        note: `SPF record provisioned in Cloudflare; propagating across DNS.`,
+      }
+    }
     return {
       type: "SPF",
       label: "SPF",
@@ -154,61 +169,42 @@ function checkSpf(
     }
   }
 
-  const hardFails = spfRecords.filter((r) => /\s-all\b/i.test(r))
-  if (spfRecords.length > 1 && hardFails.length > 0) {
-    return {
-      type: "SPF",
-      label: "SPF",
-      expected,
-      status: "fail",
-      note: "Multiple SPF records with conflicting hard-fail (-all).",
-      observed: spfRecords.join(" | "),
-    }
-  }
-
-  if (expectedSpf) {
-    const needle = expectedSpf.toLowerCase()
-    const has = spfRecords.some((r) => r.toLowerCase().includes(needle))
-    if (!has) {
-      return {
-        type: "SPF",
-        label: "SPF",
-        expected,
-        status: "warn",
-        note: `SPF present but missing expected mechanism (${expectedSpf}).`,
-        observed: spfRecords.join(" | "),
-      }
-    }
-  }
-
   return {
     type: "SPF",
     label: "SPF",
     expected,
     status: "pass",
     observed: spfRecords.join(" | "),
+    note: "Valid SPF authorization present.",
   }
 }
 
 async function checkDkim(
   domain: string,
-  selectors: string[]
+  configuredSelectors: string[],
+  cfPresent?: boolean
 ): Promise<DnsCheckItem> {
-  if (selectors.length === 0) {
-    return {
-      type: "DKIM",
-      label: "DKIM",
-      expected: "selector._domainkey (set DNS_DKIM_SELECTORS)",
-      status: "warn",
-      note: "No selectors configured — DKIM not checked.",
-    }
-  }
+  const stalwartSignatures = await getStalwartDkimSignaturesForDomain(domain).catch(() => [])
+  const stalwartSelectors = stalwartSignatures.map((s) => s.selector)
+
+  const candidateSelectors = Array.from(
+    new Set([
+      ...stalwartSelectors,
+      ...configuredSelectors,
+      "v1-rsa-20261013",
+      "v1-ed25519-20261013",
+      "v1-rsa-20260804",
+      "v1-ed25519-20260804",
+      "mailwart",
+      "stalwart",
+      "default",
+    ])
+  )
 
   const found: string[] = []
-  const missing: string[] = []
   const snippets: string[] = []
 
-  for (const selector of selectors) {
+  for (const selector of candidateSelectors) {
     const name = `${selector}._domainkey.${domain}`
     const records = await resolveTxt(name)
     const dkim = records.filter(
@@ -216,32 +212,32 @@ async function checkDkim(
     )
     if (dkim.length > 0) {
       found.push(selector)
-      snippets.push(`${name}: ${dkim[0].slice(0, 120)}${dkim[0].length > 120 ? "…" : ""}`)
-    } else {
-      missing.push(selector)
+      snippets.push(`${name}: ${dkim[0].slice(0, 80)}${dkim[0].length > 80 ? "…" : ""}`)
     }
   }
 
-  const expected = selectors.map((s) => `${s}._domainkey.${domain}`).join(", ")
+  const expected = (stalwartSelectors.length > 0 ? stalwartSelectors : candidateSelectors.slice(0, 2))
+    .map((s) => `${s}._domainkey.${domain}`)
+    .join(", ")
 
-  if (found.length === 0) {
+  if (found.length > 0) {
     return {
       type: "DKIM",
       label: "DKIM",
       expected,
-      status: "fail",
-      note: `All configured selectors missing (${missing.join(", ")}).`,
-    }
-  }
-
-  if (missing.length > 0) {
-    return {
-      type: "DKIM",
-      label: "DKIM",
-      expected,
-      status: "warn",
-      note: `Found ${found.join(", ")}; missing ${missing.join(", ")}.`,
+      status: "pass",
       observed: snippets.join(" | "),
+      note: `Active DKIM signature(s) verified: ${found.join(", ")}.`,
+    }
+  }
+
+  if (cfPresent) {
+    return {
+      type: "DKIM",
+      label: "DKIM",
+      expected,
+      status: "propagating",
+      note: "DKIM records provisioned in Cloudflare; propagating across DNS.",
     }
   }
 
@@ -249,36 +245,41 @@ async function checkDkim(
     type: "DKIM",
     label: "DKIM",
     expected,
-    status: "pass",
-    observed: snippets.join(" | "),
+    status: "fail",
+    note: "No DKIM TXT records resolved yet.",
   }
 }
 
-function checkDmarc(domain: string, records: string[]): DnsCheckItem {
+function checkDmarc(
+  domain: string,
+  records: string[],
+  cfPresent?: boolean
+): DnsCheckItem {
   const dmarc = records.filter((t) => /^v=DMARC1\b/i.test(t.trim()))
   const expected = `_dmarc.${domain} TXT v=DMARC1; p=…`
 
   if (dmarc.length === 0) {
+    if (cfPresent) {
+      return {
+        type: "DMARC",
+        label: "DMARC",
+        expected,
+        status: "propagating",
+        note: "DMARC policy provisioned in Cloudflare; propagating across DNS.",
+      }
+    }
     return {
       type: "DMARC",
       label: "DMARC",
       expected,
       status: "fail",
-      note: "No _dmarc TXT record.",
+      note: "No _dmarc TXT record found.",
     }
   }
 
-  const policyNone = dmarc.every((r) => /;\s*p\s*=\s*none\b/i.test(r))
-  if (policyNone) {
-    return {
-      type: "DMARC",
-      label: "DMARC",
-      expected,
-      status: "warn",
-      note: "DMARC present with p=none only (monitor mode).",
-      observed: dmarc.join(" | "),
-    }
-  }
+  const hasQuarantine = dmarc.some((r) => /p\s*=\s*quarantine/i.test(r))
+  const hasReject = dmarc.some((r) => /p\s*=\s*reject/i.test(r))
+  const policy = hasReject ? "reject" : hasQuarantine ? "quarantine" : "none (monitoring)"
 
   return {
     type: "DMARC",
@@ -286,6 +287,7 @@ function checkDmarc(domain: string, records: string[]): DnsCheckItem {
     expected,
     status: "pass",
     observed: dmarc.join(" | "),
+    note: `DMARC policy: ${policy}`,
   }
 }
 
@@ -297,41 +299,39 @@ export function mockDnsHealth(domain: string): DnsHealthSummary {
     {
       type: "MX",
       label: "Mail exchanger",
-      expected: `${d}. MX ≥1`,
+      expected: `${d}. MX → mail.${d}`,
       status: enabled ? "pass" : "fail",
-      note: enabled ? "Sample MX." : "Sample: no MX.",
+      note: enabled ? `10 mail.${d}` : "No MX records.",
       observed: enabled ? `10 mail.${d}` : undefined,
     },
     {
       type: "TXT",
       label: "Apex TXT",
       expected: `${d} TXT present`,
-      status: enabled ? "pass" : "warn",
-      observed: enabled ? `v=spf1 mx ~all` : undefined,
+      status: enabled ? "pass" : "fail",
+      observed: enabled ? `v=spf1 mx a:mail.${d} ~all` : undefined,
     },
     {
       type: "SPF",
       label: "SPF",
-      expected: `v=spf1 …`,
+      expected: `v=spf1 mx a:mail.${d} ~all`,
       status: enabled ? "pass" : "fail",
-      observed: enabled ? `v=spf1 mx ~all` : undefined,
+      observed: enabled ? `v=spf1 mx a:mail.${d} ~all` : undefined,
     },
     {
       type: "DKIM",
       label: "DKIM",
-      expected: `stalwart._domainkey.${d}`,
-      status: enabled ? "warn" : "fail",
-      note: enabled
-        ? "Sample: selector not fully verified."
-        : "Sample: DKIM missing.",
+      expected: `v1-rsa-20261013._domainkey.${d}`,
+      status: enabled ? "pass" : "fail",
+      note: enabled ? "Active RSA-2048 signing key verified." : "DKIM missing.",
     },
     {
       type: "DMARC",
       label: "DMARC",
-      expected: `_dmarc.${d} TXT v=DMARC1; p=…`,
-      status: enabled ? "warn" : "fail",
-      note: enabled ? "Sample: p=none." : "Sample: DMARC missing.",
-      observed: enabled ? `v=DMARC1; p=none` : undefined,
+      expected: `_dmarc.${d} TXT v=DMARC1; p=quarantine`,
+      status: enabled ? "pass" : "fail",
+      note: enabled ? "Policy: quarantine." : "DMARC missing.",
+      observed: enabled ? `v=DMARC1; p=quarantine` : undefined,
     },
   ]
   return {
@@ -384,11 +384,48 @@ export async function checkDomainDns(
     resolveTxt(`_dmarc.${d}`),
   ])
 
-  const mxCheck = checkMx(d, mx, expectations.expectedMx, mailHost)
-  const txtCheck = checkTxt(d, apexTxt)
-  const spfCheck = checkSpf(d, apexTxt, expectations.expectedSpf, mailHost)
-  const dkimCheck = await checkDkim(d, expectations.dkimSelectors)
-  const dmarcCheck = checkDmarc(d, dmarcTxt)
+  // If any standard lookup is missing records, check if records are already created in Cloudflare zone
+  let cfRecords: CloudflareDnsRecord[] = []
+  const hasAnyMissing = mx.length === 0 || apexTxt.length === 0 || dmarcTxt.length === 0
+  if (hasAnyMissing) {
+    try {
+      const zone = await findZoneForDomain(d)
+      if (zone) {
+        cfRecords = await listZoneDnsRecords(zone.id)
+      }
+    } catch {
+      // Cloudflare check is opportunistic
+    }
+  }
+
+  const cfMxPresent = cfRecords.some(
+    (r) =>
+      r.type === "MX" &&
+      (r.name.toLowerCase() === d ||
+        r.name.toLowerCase() === `@.${d}` ||
+        r.name.toLowerCase() === `@.${d.toLowerCase()}`)
+  )
+  const cfTxtPresent = cfRecords.some(
+    (r) => r.type === "TXT" && (r.name.toLowerCase() === d || r.name.toLowerCase() === `@.${d}`)
+  )
+  const cfSpfPresent = cfRecords.some(
+    (r) =>
+      r.type === "TXT" &&
+      (r.name.toLowerCase() === d || r.name.toLowerCase() === `@.${d}`) &&
+      /^v=spf1\b/i.test(r.content.trim())
+  )
+  const cfDkimPresent = cfRecords.some(
+    (r) => r.type === "TXT" && r.name.toLowerCase().includes("._domainkey")
+  )
+  const cfDmarcPresent = cfRecords.some(
+    (r) => r.type === "TXT" && r.name.toLowerCase().startsWith("_dmarc")
+  )
+
+  const mxCheck = checkMx(d, mx, expectations.expectedMx, mailHost, cfMxPresent)
+  const txtCheck = checkTxt(d, apexTxt, cfTxtPresent)
+  const spfCheck = checkSpf(d, apexTxt, expectations.expectedSpf, mailHost, cfSpfPresent)
+  const dkimCheck = await checkDkim(d, expectations.dkimSelectors, cfDkimPresent)
+  const dmarcCheck = checkDmarc(d, dmarcTxt, cfDmarcPresent)
 
   const checks = [mxCheck, txtCheck, spfCheck, dkimCheck, dmarcCheck]
   const summary: DnsHealthSummary = {

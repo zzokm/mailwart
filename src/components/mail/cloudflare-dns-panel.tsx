@@ -120,7 +120,7 @@ export function CloudflareDnsPanel({ domainName }: { domainName: string }) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Automatically creates or updates the required mail records (<code className="font-mono text-[11px]">MX</code> to <code className="font-mono text-[11px]">{cfStatus.defaultMailHost}</code>, <code className="font-mono text-[11px]">SPF</code>, <code className="font-mono text-[11px]">DKIM</code>, and <code className="font-mono text-[11px]">DMARC</code>) in your Cloudflare account with DNS-only proxy.
+        Automatically provisions dedicated mail records (<code className="font-mono text-[11px]">A</code> and <code className="font-mono text-[11px]">MX</code> pointing to <code className="font-mono text-[11px]">mail.{domainName}</code>, <code className="font-mono text-[11px]">SPF</code>, real Stalwart <code className="font-mono text-[11px]">DKIM</code> RSA/Ed25519 keys, and <code className="font-mono text-[11px]">DMARC</code>) in your Cloudflare account with DNS-only proxy.
       </p>
 
       <div className="flex items-center gap-2 pt-1">

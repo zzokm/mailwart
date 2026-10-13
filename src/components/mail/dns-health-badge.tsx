@@ -1,3 +1,4 @@
+import { RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { DnsCheckStatus } from "@/lib/stalwart/types"
 
@@ -5,6 +6,7 @@ const LABEL: Record<DnsCheckStatus, string> = {
   pass: "pass",
   warn: "warn",
   fail: "fail",
+  propagating: "propagating",
   unknown: "—",
 }
 
@@ -16,6 +18,8 @@ export function dnsStatusClass(status: DnsCheckStatus): string {
       return "border-warn/40 text-warn"
     case "fail":
       return "border-destructive/40 text-destructive"
+    case "propagating":
+      return "border-sky-500/40 text-sky-400 bg-sky-500/10"
     default:
       return "border-border text-muted-foreground"
   }
@@ -39,16 +43,20 @@ export function DnsHealthBadge({
       )}
       title={`DNS health: ${LABEL[status]}`}
     >
-      <span
-        className={cn(
-          "size-1.5 rounded-full",
-          status === "pass" && "bg-success",
-          status === "warn" && "bg-warn",
-          status === "fail" && "bg-destructive",
-          status === "unknown" && "bg-muted-foreground/40"
-        )}
-        aria-hidden
-      />
+      {status === "propagating" ? (
+        <RefreshCw className="size-2.5 animate-spin text-sky-400" aria-hidden />
+      ) : (
+        <span
+          className={cn(
+            "size-1.5 rounded-full",
+            status === "pass" && "bg-success",
+            status === "warn" && "bg-warn",
+            status === "fail" && "bg-destructive",
+            status === "unknown" && "bg-muted-foreground/40"
+          )}
+          aria-hidden
+        />
+      )}
       {compact ? LABEL[status] : `dns ${LABEL[status]}`}
     </span>
   )

@@ -1,6 +1,7 @@
 import "server-only"
 
 import { generateDkimRecord } from "@/lib/dns/generate"
+import { getStalwartDkimSignaturesForDomain } from "@/lib/stalwart/dkim"
 import { readCloudflareSettings, writeCloudflareSettings } from "./settings-store"
 import type {
   CloudflareDnsRecord,
@@ -206,7 +207,9 @@ export async function provisionDomainDns(input: {
 }): Promise<CloudflareProvisionResult> {
   const domain = input.domain.trim().toLowerCase()
   const selector = (input.selector?.trim() || "mailwart").toLowerCase()
-  const mailHost = input.mailHost || (await getEffectiveMailHost())
+  // User requirement: mail server for each domain is its own domain: mail.<domain>
+  const mailHost = input.mailHost || `mail.${domain}`
+  const mailServerIp = process.env.MAIL_SERVER_IP?.trim() || "23.94.107.153"
   const forceOverwrite = input.forceOverwrite ?? false
 
   const zone = await findZoneForDomain(domain)
@@ -219,17 +222,90 @@ export async function provisionDomainDns(input: {
   const existingRecords = await listZoneDnsRecords(zone.id)
   const results: ProvisionedRecordResult[] = []
 
-  // 1. Provision MX Record
-  // Target: mailHost (e.g. mail.yehia.dev), priority: 10
+  // 1. Provision A record for dedicated mail host (e.g. mail.lebasko.com -> 23.94.107.153, unproxied)
+  // Email ports (25, 465, 587, 993) cannot go through Cloudflare HTTP CDN proxy; proxied MUST be false!
+  const mailSubdomain = "mail"
+  const expectedFqdn = `mail.${zone.name.toLowerCase()}`
+  const existingA = existingRecords.find(
+    (r) =>
+      r.type === "A" &&
+      (r.name.toLowerCase() === expectedFqdn ||
+        r.name.toLowerCase() === `mail.${domain}` ||
+        r.name.toLowerCase() === mailSubdomain)
+  )
+
+  if (existingA) {
+    if (existingA.content.trim() === mailServerIp && !existingA.proxied) {
+      results.push({
+        type: "A",
+        name: "mail",
+        content: mailServerIp,
+        action: "exists",
+        id: existingA.id,
+        detail: `A record for mail host already points to ${mailServerIp} (DNS-only).`,
+      })
+    } else {
+      await cfRequest(`/zones/${zone.id}/dns_records/${existingA.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          type: "A",
+          name: mailSubdomain,
+          content: mailServerIp,
+          proxied: false,
+          ttl: 1,
+          comment: "Managed by mailwart (DNS-only)",
+        }),
+      })
+      results.push({
+        type: "A",
+        name: "mail",
+        content: mailServerIp,
+        action: "updated",
+        id: existingA.id,
+        detail: `Updated A record to ${mailServerIp} with DNS-only proxy (proxied: false).`,
+      })
+    }
+  } else {
+    const createdA = await cfRequest<CloudflareDnsRecord>(
+      `/zones/${zone.id}/dns_records`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "A",
+          name: mailSubdomain,
+          content: mailServerIp,
+          proxied: false,
+          ttl: 1,
+          comment: "Managed by mailwart (DNS-only)",
+        }),
+      }
+    )
+    results.push({
+      type: "A",
+      name: "mail",
+      content: mailServerIp,
+      action: "created",
+      id: createdA.result.id,
+      detail: `Created A record pointing mail to ${mailServerIp} (DNS-only).`,
+    })
+  }
+
+  // 2. Provision MX Record
+  // Target: mailHost (e.g. mail.lebasko.com), priority: 10, proxied: false
   const existingMx = existingRecords.find(
     (r) =>
       r.type === "MX" &&
-      (r.name.toLowerCase() === domain || r.name.toLowerCase() === `@.${zone.name.toLowerCase()}`) &&
-      r.content.toLowerCase().replace(/\.$/, "") === mailHost.toLowerCase()
+      (r.name.toLowerCase() === domain ||
+        r.name.toLowerCase() === zone.name.toLowerCase() ||
+        r.name.toLowerCase() === `@.${zone.name.toLowerCase()}`)
   )
 
   if (existingMx) {
-    if (existingMx.priority === 10 && !existingMx.proxied) {
+    if (
+      existingMx.content.toLowerCase().replace(/\.$/, "") === mailHost.toLowerCase() &&
+      existingMx.priority === 10 &&
+      !existingMx.proxied
+    ) {
       results.push({
         type: "MX",
         name: "@",
@@ -237,7 +313,7 @@ export async function provisionDomainDns(input: {
         priority: 10,
         action: "exists",
         id: existingMx.id,
-        detail: "MX record already pointing to mail host.",
+        detail: `MX record already pointing to ${mailHost} (priority 10).`,
       })
     } else {
       await cfRequest(`/zones/${zone.id}/dns_records/${existingMx.id}`, {
@@ -259,7 +335,7 @@ export async function provisionDomainDns(input: {
         priority: 10,
         action: "updated",
         id: existingMx.id,
-        detail: "Updated MX priority/proxy settings.",
+        detail: `Updated MX target to ${mailHost} (priority 10, unproxied).`,
       })
     }
   } else {
@@ -285,12 +361,13 @@ export async function provisionDomainDns(input: {
       priority: 10,
       action: "created",
       id: createdMx.result.id,
-      detail: "Created MX pointing to mail host.",
+      detail: `Created MX pointing to ${mailHost}.`,
     })
   }
 
-  // 2. Provision SPF Record
-  // Target: v=spf1 mx ~all (or append mx to existing SPF record)
+  // 3. Provision SPF Record
+  // Target: v=spf1 mx a:mail.<domain> ~all
+  const targetSpf = `v=spf1 mx a:${mailHost} ~all`
   const existingSpf = existingRecords.find(
     (r) =>
       r.type === "TXT" &&
@@ -301,24 +378,27 @@ export async function provisionDomainDns(input: {
   if (existingSpf) {
     const raw = existingSpf.content.trim()
     const lower = raw.toLowerCase()
-    if (lower.includes("mx") || lower.includes(`include:${mailHost.toLowerCase()}`)) {
+    const hasMx = lower.includes("mx")
+    const hasMailHost = lower.includes(`a:${mailHost.toLowerCase()}`) || lower.includes(`ip4:${mailServerIp}`)
+
+    if (hasMx && hasMailHost) {
       results.push({
         type: "TXT",
         name: "@ (SPF)",
         content: raw,
         action: "exists",
         id: existingSpf.id,
-        detail: "SPF already authorizes MX delivery.",
+        detail: "SPF already authorizes MX and mail host delivery.",
       })
     } else {
-      // Smart inject mx before ~all or -all
       let updatedSpf = raw
+      const additions = `${hasMx ? "" : " mx"}${hasMailHost ? "" : ` a:${mailHost}`}`.trim()
       if (/~\s*all\b/i.test(raw)) {
-        updatedSpf = raw.replace(/~\s*all\b/i, "mx ~all")
+        updatedSpf = raw.replace(/~\s*all\b/i, `${additions} ~all`)
       } else if (/-\s*all\b/i.test(raw)) {
-        updatedSpf = raw.replace(/-\s*all\b/i, "mx -all")
+        updatedSpf = raw.replace(/-\s*all\b/i, `${additions} -all`)
       } else {
-        updatedSpf = `${raw} mx`
+        updatedSpf = `${raw} ${additions}`
       }
 
       await cfRequest(`/zones/${zone.id}/dns_records/${existingSpf.id}`, {
@@ -337,7 +417,7 @@ export async function provisionDomainDns(input: {
         content: updatedSpf,
         action: "updated",
         id: existingSpf.id,
-        detail: "Added mx authorization into existing SPF record.",
+        detail: `Updated SPF record to authorize mail host (${mailHost}).`,
       })
     }
   } else {
@@ -348,7 +428,7 @@ export async function provisionDomainDns(input: {
         body: JSON.stringify({
           type: "TXT",
           name: "@",
-          content: "v=spf1 mx ~all",
+          content: targetSpf,
           ttl: 1,
           comment: "Managed by mailwart",
         }),
@@ -357,80 +437,151 @@ export async function provisionDomainDns(input: {
     results.push({
       type: "TXT",
       name: "@ (SPF)",
-      content: "v=spf1 mx ~all",
+      content: targetSpf,
       action: "created",
       id: createdSpf.result.id,
-      detail: "Created baseline SPF record.",
+      detail: `Created baseline SPF record with mx and a:${mailHost}.`,
     })
   }
 
-  // 3. Provision DKIM Record
-  // Target: <selector>._domainkey with v=DKIM1; k=rsa; p=...
-  const dkimGen = generateDkimRecord({ domain, selector })
-  const dkimRecordName = `${selector}._domainkey`
-  const existingDkim = existingRecords.find(
-    (r) =>
-      r.type === "TXT" &&
-      (r.name.toLowerCase() === `${dkimRecordName}.${zone.name.toLowerCase()}` ||
-        r.name.toLowerCase() === dkimRecordName.toLowerCase() ||
-        r.name.toLowerCase() === `${dkimRecordName}.${domain}`)
-  )
+  // 4. Provision Real Stalwart DKIM Record(s)
+  // Stalwart generates actual cryptographic keys (RSA & Ed25519) for each domain.
+  // We query Stalwart JMAP directly for this domain's active DKIM signatures.
+  const stalwartSignatures = await getStalwartDkimSignaturesForDomain(domain).catch(() => [])
 
-  if (existingDkim) {
-    if (forceOverwrite) {
-      await cfRequest(`/zones/${zone.id}/dns_records/${existingDkim.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
+  if (stalwartSignatures.length > 0) {
+    for (const sig of stalwartSignatures) {
+      const dkimRecordName = `${sig.selector}._domainkey`
+      const existingDkim = existingRecords.find(
+        (r) =>
+          r.type === "TXT" &&
+          (r.name.toLowerCase() === `${dkimRecordName}.${zone.name.toLowerCase()}` ||
+            r.name.toLowerCase() === dkimRecordName.toLowerCase() ||
+            r.name.toLowerCase() === `${dkimRecordName}.${domain}`)
+      )
+
+      if (existingDkim) {
+        if (existingDkim.content.trim() === sig.dnsValue.trim()) {
+          results.push({
+            type: "TXT",
+            name: dkimRecordName,
+            content: existingDkim.content,
+            action: "exists",
+            id: existingDkim.id,
+            detail: `Stalwart ${sig.keyType.toUpperCase()} DKIM record verified (${sig.selector}).`,
+          })
+        } else {
+          await cfRequest(`/zones/${zone.id}/dns_records/${existingDkim.id}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              type: "TXT",
+              name: dkimRecordName,
+              content: sig.dnsValue,
+              ttl: 1,
+              comment: "Managed by mailwart (Stalwart signing key)",
+            }),
+          })
+          results.push({
+            type: "TXT",
+            name: dkimRecordName,
+            content: sig.dnsValue,
+            action: "updated",
+            id: existingDkim.id,
+            detail: `Updated Stalwart ${sig.keyType.toUpperCase()} DKIM key (${sig.selector}).`,
+          })
+        }
+      } else {
+        const createdDkim = await cfRequest<CloudflareDnsRecord>(
+          `/zones/${zone.id}/dns_records`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              type: "TXT",
+              name: dkimRecordName,
+              content: sig.dnsValue,
+              ttl: 1,
+              comment: "Managed by mailwart (Stalwart signing key)",
+            }),
+          }
+        )
+        results.push({
+          type: "TXT",
+          name: dkimRecordName,
+          content: sig.dnsValue,
+          action: "created",
+          id: createdDkim.result.id,
+          detail: `Created Stalwart ${sig.keyType.toUpperCase()} DKIM key (${sig.selector}).`,
+        })
+      }
+    }
+  } else {
+    // Fallback if Stalwart signatures are not yet configured for this domain
+    const dkimGen = generateDkimRecord({ domain, selector })
+    const dkimRecordName = `${selector}._domainkey`
+    const existingDkim = existingRecords.find(
+      (r) =>
+        r.type === "TXT" &&
+        (r.name.toLowerCase() === `${dkimRecordName}.${zone.name.toLowerCase()}` ||
+          r.name.toLowerCase() === dkimRecordName.toLowerCase() ||
+          r.name.toLowerCase() === `${dkimRecordName}.${domain}`)
+    )
+
+    if (existingDkim) {
+      if (forceOverwrite) {
+        await cfRequest(`/zones/${zone.id}/dns_records/${existingDkim.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            type: "TXT",
+            name: dkimRecordName,
+            content: dkimGen.dnsValue,
+            ttl: 1,
+            comment: "Managed by mailwart",
+          }),
+        })
+        results.push({
           type: "TXT",
           name: dkimRecordName,
           content: dkimGen.dnsValue,
-          ttl: 1,
-          comment: "Managed by mailwart",
-        }),
-      })
+          action: "updated",
+          id: existingDkim.id,
+          detail: `Overwrote existing fallback DKIM key (${selector}).`,
+        })
+      } else {
+        results.push({
+          type: "TXT",
+          name: dkimRecordName,
+          content: existingDkim.content,
+          action: "exists",
+          id: existingDkim.id,
+          detail: `DKIM record already present for selector "${selector}".`,
+        })
+      }
+    } else {
+      const createdDkim = await cfRequest<CloudflareDnsRecord>(
+        `/zones/${zone.id}/dns_records`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            type: "TXT",
+            name: dkimRecordName,
+            content: dkimGen.dnsValue,
+            ttl: 1,
+            comment: "Managed by mailwart",
+          }),
+        }
+      )
       results.push({
         type: "TXT",
         name: dkimRecordName,
         content: dkimGen.dnsValue,
-        action: "updated",
-        id: existingDkim.id,
-        detail: `Overwrote existing DKIM key (${selector}).`,
-      })
-    } else {
-      results.push({
-        type: "TXT",
-        name: dkimRecordName,
-        content: existingDkim.content,
-        action: "exists",
-        id: existingDkim.id,
-        detail: `DKIM record already present for selector "${selector}".`,
+        action: "created",
+        id: createdDkim.result.id,
+        detail: `Created fallback RSA-2048 DKIM record (${selector}).`,
       })
     }
-  } else {
-    const createdDkim = await cfRequest<CloudflareDnsRecord>(
-      `/zones/${zone.id}/dns_records`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "TXT",
-          name: dkimRecordName,
-          content: dkimGen.dnsValue,
-          ttl: 1,
-          comment: "Managed by mailwart",
-        }),
-      }
-    )
-    results.push({
-      type: "TXT",
-      name: dkimRecordName,
-      content: dkimGen.dnsValue,
-      action: "created",
-      id: createdDkim.result.id,
-      detail: `Generated RSA-2048 key and created DKIM (${selector}).`,
-    })
   }
 
-  // 4. Provision DMARC Record
+  // 5. Provision DMARC Record
   // Target: _dmarc with v=DMARC1; p=quarantine; rua=mailto:dmarc@<domain>
   const dmarcRecordName = "_dmarc"
   const existingDmarc = existingRecords.find(
@@ -450,7 +601,7 @@ export async function provisionDomainDns(input: {
       content: existingDmarc.content,
       action: "exists",
       id: existingDmarc.id,
-      detail: "DMARC policy record already present.",
+      detail: `DMARC policy record already present (${existingDmarc.content.slice(0, 40)}...).`,
     })
   } else {
     const createdDmarc = await cfRequest<CloudflareDnsRecord>(
@@ -474,6 +625,75 @@ export async function provisionDomainDns(input: {
       id: createdDmarc.result.id,
       detail: "Created DMARC policy with quarantine protection.",
     })
+  }
+
+  // 6. Provision Client Discovery CNAMEs (autoconfig and autodiscover)
+  for (const cnameSub of ["autoconfig", "autodiscover"]) {
+    const existingCname = existingRecords.find(
+      (r) =>
+        r.type === "CNAME" &&
+        (r.name.toLowerCase() === `${cnameSub}.${zone.name.toLowerCase()}` ||
+          r.name.toLowerCase() === cnameSub)
+    )
+
+    if (existingCname) {
+      if (
+        existingCname.content.toLowerCase().replace(/\.$/, "") === mailHost.toLowerCase() &&
+        !existingCname.proxied
+      ) {
+        results.push({
+          type: "CNAME",
+          name: cnameSub,
+          content: mailHost,
+          action: "exists",
+          id: existingCname.id,
+          detail: `${cnameSub} CNAME already points to ${mailHost}.`,
+        })
+      } else {
+        await cfRequest(`/zones/${zone.id}/dns_records/${existingCname.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            type: "CNAME",
+            name: cnameSub,
+            content: mailHost,
+            proxied: false,
+            ttl: 1,
+            comment: "Managed by mailwart",
+          }),
+        })
+        results.push({
+          type: "CNAME",
+          name: cnameSub,
+          content: mailHost,
+          action: "updated",
+          id: existingCname.id,
+          detail: `Updated ${cnameSub} CNAME to ${mailHost} (unproxied).`,
+        })
+      }
+    } else {
+      const createdCname = await cfRequest<CloudflareDnsRecord>(
+        `/zones/${zone.id}/dns_records`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            type: "CNAME",
+            name: cnameSub,
+            content: mailHost,
+            proxied: false,
+            ttl: 1,
+            comment: "Managed by mailwart",
+          }),
+        }
+      )
+      results.push({
+        type: "CNAME",
+        name: cnameSub,
+        content: mailHost,
+        action: "created",
+        id: createdCname.result.id,
+        detail: `Created ${cnameSub} CNAME pointing to ${mailHost}.`,
+      })
+    }
   }
 
   return {

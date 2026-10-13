@@ -231,7 +231,7 @@ export function CreateDomainDialog() {
                       Auto-provision Cloudflare DNS records
                     </Label>
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      Automatically creates MX (mail.yehia.dev), SPF, DKIM (RSA-2048), and DMARC records with DNS-only proxy in your Cloudflare zone.
+                      Automatically provisions dedicated mail host A (mail.&lt;domain&gt;), MX (mail.&lt;domain&gt;), SPF, real Stalwart DKIM, and DMARC records (DNS-only) in your Cloudflare zone.
                     </p>
                   </div>
                 </div>

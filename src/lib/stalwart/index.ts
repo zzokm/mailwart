@@ -47,6 +47,10 @@ export {
   type DeliveryFetchResult,
 } from "./delivery"
 export {
+  getStalwartDkimSignaturesForDomain,
+  type StalwartDkimInfo,
+} from "./dkim"
+export {
   parseEmailAliases,
   serializeEmailAliases,
   deriveCatchAllMode,
@@ -67,3 +71,10 @@ export {
   probeSieveJmapSupport,
   loadLiveSpamSettings,
 } from "./filters"
+export {
+  ensureMailboxesOnAllDomains,
+  sendSmtpMessage,
+  runDeliverabilityTest,
+  DEFAULT_TEST_PASSWORD,
+  type MailboxConnectionProfile,
+} from "./deliverability"

@@ -245,7 +245,7 @@ export type HealthStatus = {
 }
 
 /** Pass / warn / fail rubric per ARCHITECTURE §10. `unknown` = not checked. */
-export type DnsCheckStatus = "pass" | "warn" | "fail" | "unknown"
+export type DnsCheckStatus = "pass" | "warn" | "fail" | "propagating" | "unknown"
 
 export type DnsCheckItem = {
   type: "MX" | "TXT" | "SPF" | "DKIM" | "DMARC"

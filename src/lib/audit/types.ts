@@ -29,6 +29,8 @@ export type AuditAction =
   | "copilot.settings_update"
   | "domain.dns_provision"
   | "cloudflare.settings_update"
+  | "deliverability.test_email"
+  | "deliverability.test_email_failed"
 
 export type AuditEvent = {
   id: string

@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { refreshDomainDnsAction } from "@/lib/actions/mail"
@@ -25,6 +25,39 @@ export function DnsHealthPanel({
   const router = useRouter()
   const [dns, setDns] = useState(initial)
   const [pending, startTransition] = useTransition()
+
+  // Auto-poll when records are propagating until all records pass
+  useEffect(() => {
+    if (dns.worst !== "propagating") return
+
+    let cancelled = false
+    let attempts = 0
+    const maxAttempts = 36 // poll for up to 3 minutes (every 5 seconds)
+
+    const interval = setInterval(async () => {
+      attempts++
+      try {
+        const result = await refreshDomainDnsAction(domainName)
+        if (!cancelled && result.ok && result.data) {
+          setDns(result.data)
+          if (result.data.worst === "pass") {
+            toast.success(`DNS propagation confirmed! All records for ${domainName} are active.`)
+            clearInterval(interval)
+            router.refresh()
+          } else if (result.data.worst === "fail" && attempts >= maxAttempts) {
+            clearInterval(interval)
+          }
+        }
+      } catch {
+        // silent retry on network hiccup
+      }
+    }, 5000)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [domainName, dns.worst, router])
 
   function refresh() {
     startTransition(async () => {
@@ -73,6 +106,16 @@ export function DnsHealthPanel({
           Re-check
         </Button>
       </div>
+
+      {dns.worst === "propagating" && (
+        <div className="flex items-center gap-2.5 bg-sky-500/10 border-b border-sky-500/20 px-4 py-2.5 text-xs text-sky-400">
+          <RefreshCw className="size-3.5 animate-spin shrink-0" />
+          <span>
+            Records provisioned in Cloudflare. Auto-rechecking in background every 5s until public DNS propagation completes...
+          </span>
+        </div>
+      )}
+
       <ul className="divide-y divide-border/40">
         {dns.checks.map((item) => (
           <li

@@ -30,7 +30,7 @@ export type CloudflareDnsRecord = {
 export type DnsProvisionAction = "created" | "updated" | "exists" | "failed"
 
 export type ProvisionedRecordResult = {
-  type: "MX" | "TXT"
+  type: "MX" | "TXT" | "A" | "CNAME"
   name: string
   content: string
   priority?: number
