@@ -19,7 +19,7 @@ function getReportFilePath(): string {
 export async function getLatestDeliverabilityReport(): Promise<DeliverabilitySuiteReport | null> {
   try {
     const filePath = getReportFilePath()
-    const content = await readFile(filePath, "utf-8")
+    const content = await readFile(/*turbopackIgnore: true*/ filePath, "utf-8")
     return JSON.parse(content) as DeliverabilitySuiteReport
   } catch {
     return null
@@ -32,7 +32,7 @@ export async function saveDeliverabilityReport(
   try {
     const filePath = getReportFilePath()
     await mkdir(path.dirname(filePath), { recursive: true })
-    await writeFile(filePath, JSON.stringify(report, null, 2), "utf-8")
+    await writeFile(/*turbopackIgnore: true*/ filePath, JSON.stringify(report, null, 2), "utf-8")
   } catch (err) {
     console.error("Failed to save deliverability report:", err)
   }

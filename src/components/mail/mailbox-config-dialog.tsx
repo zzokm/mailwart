@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, Copy, ExternalLink, Globe, Lock, Mail, Server, ShieldCheck } from "lucide-react"
+import { Check, Copy, ExternalLink, Globe, Lock, Mail, Server } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -256,52 +256,7 @@ export function MailboxConfigDialog({
             </div>
           </div>
 
-          {/* Bottom 2-Column Row: Webmail & Security */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-1 border-t border-border/70">
-            {/* Webmail & Protocols */}
-            <div className="space-y-2.5">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                <ExternalLink className="size-3.5" /> Webmail & Modern Protocols
-              </span>
-              <div className="space-y-2">
-                <ConfigFieldBox
-                  label="Webmail URL"
-                  value={`https://${mailHost}`}
-                  helper="Roundcube webmail login portal"
-                />
-                <ConfigFieldBox
-                  label="JMAP Endpoint"
-                  value={`https://${mailHost}/.well-known/jmap`}
-                  helper="Modern JMAP protocol connection URL"
-                />
-              </div>
-            </div>
-
-            {/* Password & Security Notice Card */}
-            <div className="space-y-2.5">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                <ShieldCheck className="size-3.5" /> Password & Security
-              </span>
-              <div className="rounded-lg border border-border/80 bg-muted/15 p-3.5 h-[calc(100%-1.75rem)] flex flex-col justify-center">
-                <div className="flex items-start gap-2.5">
-                  <ShieldCheck className="mt-0.5 size-4.5 shrink-0 text-muted-foreground" />
-                  <div className="space-y-1.5 text-xs text-muted-foreground">
-                    <p className="font-medium text-foreground">
-                      Encrypted Password Security
-                    </p>
-                    <p>
-                      Passwords are cryptographically hashed and never stored or displayed in plaintext.
-                      To change or reset the password for this mailbox, use the{" "}
-                      <span className="font-semibold text-foreground">Edit</span> button
-                      in the actions column.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between pt-1 border-t border-border/60 text-[11px] text-muted-foreground">
+          <div className="flex items-center justify-between pt-3 border-t border-border/60 text-[11px] text-muted-foreground">
             <span>Tip: Click anywhere on any field box to copy its value immediately.</span>
             <span>All ports support standard SSL/TLS encryption.</span>
           </div>

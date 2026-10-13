@@ -1014,7 +1014,7 @@ export async function runComprehensiveDeliverabilityTest(
 
   const suiteReport: DeliverabilitySuiteReport = {
     runId,
-    timestamp: new Date().toISOString(),
+    timestamp: startedAt,
     overallScore,
     overallGrade,
     totalDomains,

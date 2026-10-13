@@ -12,17 +12,12 @@ import {
   Clock,
   Copy,
   ExternalLink,
-  Flame,
   Globe,
   Inbox,
-  Lock,
-  Mail,
   Play,
   RefreshCw,
   Search,
   Send,
-  Server,
-  ShieldAlert,
   ShieldCheck,
   Sparkles,
   XCircle,
@@ -33,10 +28,7 @@ import { Input } from "@/components/ui/input"
 import { runDeliverabilityCheckupAction } from "@/lib/actions/deliverability"
 import type {
   CheckStatus,
-  DeliverabilityIssue,
   DeliverabilitySuiteReport,
-  DnsRecordCheck,
-  DomainDeliverabilityReport,
 } from "@/lib/deliverability/types"
 
 function statusColor(status: CheckStatus) {

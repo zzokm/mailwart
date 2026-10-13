@@ -23,11 +23,6 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -238,7 +233,7 @@ export function MailboxTable({
                 <TableHead className="w-24 hidden font-mono text-[10px] uppercase tracking-[0.14em] sm:table-cell">
                   Status
                 </TableHead>
-                <TableHead className="w-52 hidden font-mono text-[10px] uppercase tracking-[0.14em] lg:table-cell">
+                <TableHead className="hidden text-center font-mono text-[10px] uppercase tracking-[0.14em] lg:table-cell">
                   Space
                 </TableHead>
                 <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-right">
@@ -285,8 +280,10 @@ export function MailboxTable({
                       {suspended ? "suspended" : "active"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="w-52 hidden lg:table-cell">
-                    <QuotaBar quotas={a.quotas} />
+                  <TableCell className="hidden lg:table-cell">
+                    <div className="flex justify-center">
+                      <QuotaBar quotas={a.quotas} />
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end items-center gap-2">
