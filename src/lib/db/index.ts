@@ -16,7 +16,7 @@ let initPromise: Promise<void> | null = null
 export function resolveDatabaseUrl(): string {
   const fromEnv = process.env.DATABASE_URL?.trim()
   if (fromEnv) return fromEnv
-  return "postgres://mailwart:mailwart_secret@postgres:5432/mailwart"
+  return ""
 }
 
 // In-memory fallbacks for offline testing / build environments without Postgres
