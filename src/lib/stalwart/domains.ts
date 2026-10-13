@@ -178,13 +178,103 @@ export async function updateDomain(
   }
 }
 
-export async function destroyDomain(id: string): Promise<void> {
+export async function cleanupDomainDependencies(
+  id: string,
+  domainName?: string
+): Promise<void> {
+  const normName = domainName?.trim().toLowerCase()
+
+  // 1. Clean up DKIM signatures linked to this domain in Stalwart
+  try {
+    const q = await jmapCall(
+      [["x:DkimSignature/query", { filter: null, limit: 100 }, "dk0"]],
+      { retry: true }
+    )
+    const sigIds = (responseById(q, "dk0").ids as string[]) ?? []
+    if (sigIds.length > 0) {
+      const g = await jmapCall([
+        [
+          "x:DkimSignature/get",
+          {
+            ids: sigIds,
+            properties: ["id", "domain", "domainId", "details", "selector"],
+          },
+          "dk1",
+        ],
+      ])
+      const sigList =
+        (responseById(g, "dk1").list as Array<Record<string, unknown>>) ?? []
+      const toDestroy = sigList
+        .filter((s) => {
+          const sDomain = String(s.domain ?? s.details ?? "").toLowerCase()
+          const sDomainId = String(s.domainId ?? "")
+          const sId = String(s.id ?? "").toLowerCase()
+          return (
+            (normName && (sDomain === normName || sId.includes(normName))) ||
+            sDomainId === id ||
+            sDomainId === normName
+          )
+        })
+        .map((s) => String(s.id))
+
+      if (toDestroy.length > 0) {
+        await jmapCall([["x:DkimSignature/set", { destroy: toDestroy }, "dk2"]])
+      }
+    }
+  } catch {
+    // Best-effort for setups where x:DkimSignature is not queryable directly
+  }
+
+  // 2. Clear domain catchAll and aliases so nothing routes to or from it
+  try {
+    await jmapCall([
+      [
+        "x:Domain/set",
+        {
+          update: {
+            [id]: {
+              catchAllAddress: null,
+              aliases: [],
+            },
+          },
+        },
+        "d_clear",
+      ],
+    ])
+  } catch {
+    // Best effort
+  }
+}
+
+export async function destroyDomain(
+  id: string,
+  domainName?: string
+): Promise<void> {
+  // First proactively clean up dependent signatures/aliases
+  await cleanupDomainDependencies(id, domainName)
+
   const r = await jmapCall([["x:Domain/set", { destroy: [id] }, "d2"]])
   const body = responseById(r, "d2")
   const notDestroyed = body.notDestroyed as
     | Record<string, { type?: string; description?: string }>
     | undefined
+
   if (notDestroyed?.[id]) {
+    // If Stalwart reports objectIsLinked, retry cleanup and attempt destroy once more
+    if (notDestroyed[id].type === "objectIsLinked" && domainName) {
+      await cleanupDomainDependencies(id, domainName)
+      const retry = await jmapCall([
+        ["x:Domain/set", { destroy: [id] }, "d2_retry"],
+      ])
+      const retryBody = responseById(retry, "d2_retry")
+      const retryNotDestroyed = retryBody.notDestroyed as
+        | Record<string, { type?: string; description?: string }>
+        | undefined
+      if (!retryNotDestroyed?.[id]) {
+        return
+      }
+    }
+
     throw new StalwartError(
       formatSetFailure(notDestroyed, id),
       "jmap",

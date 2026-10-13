@@ -48,6 +48,14 @@ export function parseActionError(error: unknown): {
 function enrichStalwartMessage(error: StalwartError): string {
   const base = error.message?.trim() || "Stalwart rejected the change."
   const fromDetails = describeJmapDetails(error.details)
+
+  if (
+    base.toLowerCase().includes("objectislinked") ||
+    fromDetails?.toLowerCase().includes("objectislinked")
+  ) {
+    return "Cannot delete domain: mailboxes, aliases, or DKIM keys are still linked in Stalwart. Enable 'Force destroy' to clear them automatically or remove mailboxes first."
+  }
+
   if (!fromDetails) return base
   // Avoid duplicating when formatSetFailure already inlined type:description.
   if (base.includes(fromDetails)) return base

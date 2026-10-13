@@ -761,19 +761,43 @@ export async function destroyDomainAction(
         src
       )
     }
-    const accounts = (await queryAccounts([domain])).filter(
-      (a) => a.domainId === id
-    )
-    if (accounts.length > 0 && !force) {
+    // Match accounts belonging to this domain by ID, domain name, or email domain
+    const allAccounts = await queryAccounts()
+    const domainAccounts = allAccounts.filter((a) => {
+      const matchesId = a.domainId === id || a.domainId === domain.id
+      const matchesName =
+        a.domainName?.toLowerCase() === domain.name.toLowerCase() ||
+        a.domainId?.toLowerCase() === domain.name.toLowerCase()
+      const matchesEmail = a.email
+        .toLowerCase()
+        .endsWith(`@${domain.name.toLowerCase()}`)
+      return Boolean(matchesId || matchesName || matchesEmail)
+    })
+
+    if (domainAccounts.length > 0 && !force) {
       return fail(
         new StalwartError(
-          `${accounts.length} mailboxes remain. Clear them or force destroy.`,
+          `${domainAccounts.length} mailbox(es) remain for this domain (${domainAccounts
+            .map((a) => a.email)
+            .slice(0, 3)
+            .join(", ")}...). Enable "Force destroy" to clear them automatically or delete them under Mailboxes first.`,
           "validation"
         ),
         src
       )
     }
-    await destroyDomain(id)
+
+    if (domainAccounts.length > 0 && force) {
+      for (const acc of domainAccounts) {
+        try {
+          await destroyAccount(acc.id)
+        } catch (accErr) {
+          console.warn(`Failed destroying account ${acc.id} (${acc.email}):`, accErr)
+        }
+      }
+    }
+
+    await destroyDomain(id, domain.name)
     await audit("domain.destroy", {
       target: domain.name,
       detail: force ? "Force-destroyed domain" : "Destroyed domain",

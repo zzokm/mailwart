@@ -24,6 +24,7 @@ export function ConfirmDestroy({
   secondConfirmValue,
   secondConfirmLabel,
   pending,
+  children,
   onConfirm,
 }: {
   open: boolean
@@ -36,6 +37,7 @@ export function ConfirmDestroy({
   secondConfirmValue?: string
   secondConfirmLabel?: string
   pending?: boolean
+  children?: React.ReactNode
   onConfirm: () => void | Promise<void>
 }) {
   const [typed, setTyped] = useState("")
@@ -90,6 +92,7 @@ export function ConfirmDestroy({
               />
             </div>
           ) : null}
+          {children}
         </div>
         <DialogFooter>
           <Button

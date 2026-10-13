@@ -198,7 +198,7 @@ export function CloudflareSettingsClient({
                 type={showToken ? "text" : "password"}
                 value={tokenInput}
                 onChange={(e) => setTokenInput(e.target.value)}
-                placeholder="Enter API token with Zone:Read and DNS:Edit permissions"
+                placeholder="Enter API token with DNS:Edit and Zone:Read permissions"
                 className="font-mono text-xs pr-10"
                 disabled={pending}
               />
@@ -287,15 +287,36 @@ export function CloudflareSettingsClient({
             )}
           </div>
 
-          <div className="rounded-lg border border-border/40 bg-muted/30 p-3 text-xs space-y-1.5 text-muted-foreground">
-            <div className="font-medium text-foreground">Required Cloudflare Token Permissions:</div>
-            <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
-              <li><code className="font-mono text-[10px]">Zone - Zone - Read</code> (All zones in account)</li>
-              <li><code className="font-mono text-[10px]">Zone - DNS - Edit</code> (All zones in account)</li>
-            </ul>
-            <p className="text-[11px] pt-1">
-              Create a custom token at <strong className="text-foreground">Cloudflare &rarr; My Profile &rarr; API Tokens</strong>.
+          <div className="rounded-lg border border-border/40 bg-muted/30 p-3.5 text-xs space-y-2 text-muted-foreground">
+            <div className="font-medium text-foreground">Required Cloudflare Token Permissions (New Cloudflare UI):</div>
+            <p className="text-[11px] leading-relaxed">
+              In Cloudflare &rarr; <strong>My Profile &rarr; API Tokens &rarr; Create Custom Token</strong>:
             </p>
+            <div className="rounded-md border border-border/60 bg-background/80 p-2.5 space-y-1.5 font-mono text-[11px]">
+              <div className="flex items-center justify-between text-foreground">
+                <span className="font-semibold">Category: DNS &amp; Zones</span>
+                <span className="text-[10px] text-muted-foreground font-sans">Permissions</span>
+              </div>
+              <div className="flex items-center justify-between pl-2 border-l-2 border-primary/60">
+                <span>DNS</span>
+                <span className="text-primary font-semibold">Edit</span>
+              </div>
+              <div className="flex items-center justify-between pl-2 border-l-2 border-primary/60">
+                <span>Zone</span>
+                <span className="text-primary font-semibold">Read</span>
+              </div>
+            </div>
+            <div className="text-[11px] space-y-1 pt-0.5">
+              <div className="text-amber-600 dark:text-amber-400 font-medium">
+                ⚠️ Important: Do NOT select &ldquo;DNS View&rdquo; or &ldquo;Account DNS Settings&rdquo;.
+              </div>
+              <p className="text-[10px] text-muted-foreground leading-normal">
+                &ldquo;DNS View&rdquo; is for internal Gateway views. To manage public email records (MX, SPF, DKIM, DMARC), scroll down in the <strong>DNS &amp; Zones</strong> list to find <strong>DNS</strong> and select <strong>Edit</strong>, and <strong>Zone</strong> and select <strong>Read</strong>.
+              </p>
+              <div className="pt-1">
+                <strong>Zone Resources:</strong> Set to <code className="font-mono text-[10px]">Include &rarr; All zones</code> (or select specific domains).
+              </div>
+            </div>
           </div>
         </div>
       )}

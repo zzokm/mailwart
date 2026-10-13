@@ -15,6 +15,7 @@ import { CloudflareDnsPanel } from "@/components/mail/cloudflare-dns-panel"
 import { DnsHealthPanel } from "@/components/mail/dns-health-panel"
 import { DnsRecordGenerator } from "@/components/mail/dns-record-generator"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -285,12 +286,15 @@ export function DomainDetailClient({
 
       <ConfirmDestroy
         open={destroyOpen}
-        onOpenChange={setDestroyOpen}
+        onOpenChange={(next) => {
+          setDestroyOpen(next)
+          if (!next) setForceDestroy(false)
+        }}
         title={`Destroy ${domain.name}?`}
         description={
           forceDestroy
-            ? "Force destroy will remove the domain even if mailboxes remain in the directory. Type the domain name to confirm."
-            : "Type the domain name to confirm. Blocked if mailboxes remain — enable force destroy below if you intend to proceed anyway."
+            ? "Force destroy will remove the domain and automatically clear any associated mailboxes and DKIM signatures. Type the domain name to confirm."
+            : "Type the domain name to confirm. If mailboxes or linked records remain in Stalwart, enable Force destroy below."
         }
         confirmValue={domain.name}
         confirmLabel="Type domain name"
@@ -303,8 +307,11 @@ export function DomainDetailClient({
               forceDestroy
             )
             if (!result.ok) {
+              const err = result.error.toLowerCase()
               if (
-                result.error.toLowerCase().includes("mailboxes remain") &&
+                (err.includes("mailboxes remain") ||
+                  err.includes("linked") ||
+                  err.includes("objectislinked")) &&
                 !forceDestroy
               ) {
                 setForceDestroy(true)
@@ -319,13 +326,28 @@ export function DomainDetailClient({
             router.refresh()
           })
         }}
-      />
-      {destroyOpen && forceDestroy ? (
-        <p className="text-center text-xs text-warn">
-          Force destroy armed — mailboxes on this domain will be cleared in mock
-          mode; live Stalwart may still reject destroy until accounts are gone.
-        </p>
-      ) : null}
+      >
+        <div className="flex items-start gap-2.5 pt-2 border-t border-border/50">
+          <Checkbox
+            id="force-destroy-opt"
+            checked={forceDestroy}
+            onCheckedChange={(c) => setForceDestroy(c === true)}
+            disabled={pending}
+            className="mt-0.5"
+          />
+          <div className="grid gap-1 leading-none">
+            <Label
+              htmlFor="force-destroy-opt"
+              className="cursor-pointer text-xs font-medium text-destructive hover:underline"
+            >
+              Force destroy (delete linked mailboxes &amp; DKIM signatures)
+            </Label>
+            <p className="text-[11px] text-muted-foreground leading-normal">
+              Resolves <code className="font-mono text-[10px]">objectIsLinked</code> errors by automatically clearing all mailboxes, accounts, and cryptographic DKIM keys associated with this domain in Stalwart.
+            </p>
+          </div>
+        </div>
+      </ConfirmDestroy>
     </div>
   )
 }
