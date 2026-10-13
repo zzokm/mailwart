@@ -229,7 +229,7 @@ export async function provisionCloudflareDnsAction(input: {
 
     // Invalidate cached DNS so the health matrix refreshes with latest live records
     clearDnsCache(domain)
-    await checkDomainDns(domain, true)
+    await checkDomainDns(domain, { bustCache: true })
 
     const actor = await sessionActor()
     const summary = result.records
