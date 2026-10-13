@@ -85,6 +85,33 @@ export async function GET(req: Request) {
     }
   }
 
+  // Action: Live DNS Check for domain
+  if (action === "dns-check") {
+    const domain = url.searchParams.get("domain")?.trim()
+    if (!domain) {
+      return NextResponse.json({ error: "domain parameter required" }, { status: 400 })
+    }
+    try {
+      const { checkDomainDns } = await import("@/lib/dns/check")
+      const health = await checkDomainDns(domain, { bustCache: true })
+      return NextResponse.json({ action: "dns-check", domain, health })
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
+  // Action: Audit Logs inspection
+  if (action === "audit-logs") {
+    try {
+      const { getAuditLogsAction } = await import("@/lib/actions/mail")
+      const res = await getAuditLogsAction()
+      const events = res.ok ? res.data.events : []
+      return NextResponse.json({ action: "audit-logs", count: events.length, logs: events.slice(0, 30) })
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
   const results: Record<string, unknown> = {}
 
   // 1. Cloudflare Token Verification
