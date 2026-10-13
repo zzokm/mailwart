@@ -74,17 +74,16 @@ export default async function OverviewPage() {
     },
     {
       key: "storage",
-      label: "Quota sum",
+      label: "Storage used",
       value:
-        stats.storageQuotaBytes != null
-          ? formatBytes(stats.storageQuotaBytes)
+        stats.storageUsedBytes != null
+          ? formatBytes(stats.storageUsedBytes)
           : "—",
       hint:
-        stats.storageUsedBytes != null
-          ? `${formatBytes(stats.storageUsedBytes)} used`
-          : stats.storageQuotaBytes != null
-            ? "Used unknown"
-            : "Server defaults",
+        stats.storageQuotaBytes != null
+          ? `${formatBytes(stats.storageQuotaBytes)} allocated`
+          : "Server defaults",
+      href: "/dashboard/mailboxes",
     },
   ] as const
 
@@ -148,7 +147,7 @@ export default async function OverviewPage() {
                 ) : null}
               </div>
             )
-            return "href" in m && m.href ? (
+            return (
               <Link
                 key={m.key}
                 href={m.href}
@@ -156,8 +155,6 @@ export default async function OverviewPage() {
               >
                 {inner}
               </Link>
-            ) : (
-              <div key={m.key}>{inner}</div>
             )
           })}
         </div>

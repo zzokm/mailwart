@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 
-import { Breadcrumbs, type Crumb } from "@/components/layout/breadcrumbs"
+import { type Crumb } from "@/components/layout/breadcrumbs"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -9,7 +9,6 @@ export function PageHeader({
   title,
   description,
   actions,
-  breadcrumbs,
   back,
   className,
 }: {
@@ -23,9 +22,6 @@ export function PageHeader({
 }) {
   return (
     <div className={cn("mb-6", className)}>
-      {breadcrumbs?.length ? (
-        <Breadcrumbs items={breadcrumbs} className="mb-3" />
-      ) : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0 space-y-1">
           {back ? (

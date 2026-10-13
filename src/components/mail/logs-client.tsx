@@ -117,10 +117,20 @@ export function LogsClient({
   }, [audit.events, auditQuery])
 
   return (
-    <Tabs defaultValue="delivery">
-      <TabsList variant="line" className="mb-4 w-full justify-start sm:w-auto">
-        <TabsTrigger value="delivery">Delivery</TabsTrigger>
-        <TabsTrigger value="audit">Audit</TabsTrigger>
+    <Tabs defaultValue="delivery" className="w-full">
+      <TabsList variant="line" className="mb-6 w-full justify-start gap-8">
+        <TabsTrigger value="delivery" className="gap-2">
+          <span>Delivery Logs</span>
+          <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
+            {delivery.events.length}
+          </Badge>
+        </TabsTrigger>
+        <TabsTrigger value="audit" className="gap-2">
+          <span>Audit Trail</span>
+          <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
+            {audit.events.length}
+          </Badge>
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="delivery" className="space-y-4">

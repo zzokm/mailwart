@@ -1,5 +1,11 @@
 import { cn } from "@/lib/utils"
 import type { HealthStatus } from "@/lib/stalwart/types"
+import {
+  getJmapHealthState,
+  getWebmailHealthState,
+  getHealthColorClasses,
+  type ServiceHealthState,
+} from "@/lib/stalwart/health-status"
 
 function HealthRow({
   label,
@@ -8,18 +14,13 @@ function HealthRow({
 }: {
   label: string
   detail: string
-  state: "ok" | "down" | "unknown" | "sample"
+  state: ServiceHealthState
 }) {
+  const colors = getHealthColorClasses(state)
   return (
     <div className="flex items-start gap-3 px-4 py-3 sm:px-5">
       <span
-        className={cn(
-          "mt-1.5 size-2 shrink-0 rounded-full",
-          state === "ok" && "bg-success",
-          state === "down" && "bg-destructive",
-          state === "sample" && "bg-warn",
-          state === "unknown" && "bg-muted-foreground/40"
-        )}
+        className={cn("mt-1.5 size-2 shrink-0 rounded-full", colors.dot)}
         aria-hidden
       />
       <div className="min-w-0 flex-1">
@@ -28,10 +29,7 @@ function HealthRow({
           <span
             className={cn(
               "font-mono text-[11px] uppercase tracking-[0.12em]",
-              state === "ok" && "text-success",
-              state === "down" && "text-destructive",
-              state === "sample" && "text-warn",
-              state === "unknown" && "text-muted-foreground"
+              colors.text
             )}
           >
             {state === "ok"
@@ -50,12 +48,8 @@ function HealthRow({
 }
 
 export function SystemHealthPanel({ health }: { health: HealthStatus }) {
-  const jmapState =
-    health.source === "mock"
-      ? "sample"
-      : health.jmap.ok
-        ? "ok"
-        : "down"
+  const jmapState = getJmapHealthState(health)
+  const rc = getWebmailHealthState(health)
 
   const jmapDetail =
     health.source === "mock"
@@ -65,13 +59,6 @@ export function SystemHealthPanel({ health }: { health: HealthStatus }) {
           ? `JMAP session ok · ${health.jmap.latencyMs}ms`
           : "JMAP session ok"
         : (health.jmap.error ?? "Stalwart JMAP unreachable")
-
-  const rc =
-    health.roundcube.ok === true
-      ? ("ok" as const)
-      : health.roundcube.ok === false
-        ? ("down" as const)
-        : ("unknown" as const)
 
   const rcDetail =
     rc === "ok"

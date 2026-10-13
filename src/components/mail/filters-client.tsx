@@ -142,11 +142,23 @@ export function FiltersClient({
         </div>
       </div>
 
-      <Tabs defaultValue="autoresponders">
-        <TabsList variant="line" className="w-full justify-start sm:w-auto">
-          <TabsTrigger value="autoresponders">Autoresponders</TabsTrigger>
-          <TabsTrigger value="filters">Filters</TabsTrigger>
-          <TabsTrigger value="spam">Spam</TabsTrigger>
+      <Tabs defaultValue="autoresponders" className="w-full">
+        <TabsList variant="line" className="mb-6 w-full justify-start gap-8">
+          <TabsTrigger value="autoresponders" className="gap-2">
+            <span>Autoresponders</span>
+            <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
+              {autoresponders.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="filters" className="gap-2">
+            <span>Filters</span>
+            <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
+              {filterRules.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="spam" className="gap-2">
+            <span>Spam</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="autoresponders" className="mt-5 space-y-6">

@@ -40,6 +40,12 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { HealthPill } from "@/components/layout/health-pill"
+import { HeaderBreadcrumbs } from "@/components/layout/header-breadcrumbs"
+import {
+  getJmapHealthState,
+  getWebmailHealthState,
+  getHealthColorClasses,
+} from "@/lib/stalwart/health-status"
 import { cn } from "@/lib/utils"
 import type { HealthStatus } from "@/lib/stalwart/types"
 
@@ -69,6 +75,11 @@ export function AppShell({
   adminUiUrl: string
 }) {
   const pathname = usePathname()
+
+  const jmapState = getJmapHealthState(health)
+  const jmapColors = getHealthColorClasses(jmapState)
+  const webmailState = getWebmailHealthState(health)
+  const webmailColors = getHealthColorClasses(webmailState)
 
   return (
     <CopilotProvider>
@@ -121,31 +132,31 @@ export function AppShell({
                 {/* Row 1: JMAP */}
                 <div
                   className="flex items-center gap-2 cursor-default group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:size-6 group-data-[collapsible=icon]:mx-auto"
-                  title={`JMAP: ${health.jmap.ok ? "Online" : "Offline"}${health.jmap.latencyMs ? ` (${health.jmap.latencyMs}ms)` : ""}`}
+                  title={`JMAP: ${jmapState === "ok" ? "Online" : jmapState === "sample" ? "Sample data" : "Offline"}${health.jmap.latencyMs ? ` (${health.jmap.latencyMs}ms)` : ""}`}
                 >
                   <span
                     className={cn(
                       "size-2 shrink-0 rounded-full transition-colors",
-                      health.jmap.ok ? "bg-emerald-500" : "bg-destructive"
+                      jmapColors.dot
                     )}
                   />
                   <span className="font-mono text-[11px] text-muted-foreground group-data-[collapsible=icon]:hidden">
-                    JMAP {health.jmap.ok ? "online" : "offline"}
+                    JMAP {jmapState === "ok" ? "online" : jmapState === "sample" ? "sample" : "offline"}
                   </span>
                 </div>
                 {/* Row 2: Webmail */}
                 <div
                   className="flex items-center gap-2 cursor-default group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:size-6 group-data-[collapsible=icon]:mx-auto"
-                  title={`Webmail: ${health.roundcube.ok ? "Online" : "Offline"}`}
+                  title={`Webmail: ${webmailState === "ok" ? "Online" : webmailState === "sample" ? "Sample mode" : webmailState === "down" ? "Offline" : "Unchecked"}`}
                 >
                   <span
                     className={cn(
                       "size-2 shrink-0 rounded-full transition-colors",
-                      health.roundcube.ok ? "bg-emerald-500" : "bg-destructive"
+                      webmailColors.dot
                     )}
                   />
                   <span className="font-mono text-[11px] text-muted-foreground group-data-[collapsible=icon]:hidden">
-                    Webmail {health.roundcube.ok ? "online" : "offline"}
+                    Webmail {webmailState === "ok" ? "online" : webmailState === "sample" ? "sample" : webmailState === "down" ? "offline" : "unchecked"}
                   </span>
                 </div>
               </div>
@@ -174,7 +185,11 @@ export function AppShell({
           <div className="flex h-full min-h-0 min-w-0 flex-1">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <header className="z-20 flex h-12 shrink-0 items-center justify-between border-b border-border/70 bg-background/90 px-4 backdrop-blur-sm">
-                <SidebarTrigger className="-ml-1" />
+                <div className="flex min-w-0 items-center gap-3">
+                  <SidebarTrigger className="-ml-1" />
+                  <div className="hidden h-4 w-px bg-border/60 sm:block" aria-hidden />
+                  <HeaderBreadcrumbs className="hidden sm:flex" />
+                </div>
                 <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                   <HealthPill health={health} />
                   <CopilotToggleButton />

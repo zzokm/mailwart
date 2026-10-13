@@ -29,13 +29,25 @@ export function StorageMeter({
           <h2 className="font-mono text-[11px] tracking-wide text-muted-foreground">
             global storage
           </h2>
-          <p className="mt-1.5 font-mono text-2xl tracking-tight text-foreground">
-            {usedBytes != null && hasQuota
-              ? `${formatBytes(usedBytes)} / ${formatBytes(quotaBytes)}`
-              : hasQuota
-                ? formatBytes(quotaBytes)
-                : "—"}
-          </p>
+          <div className="mt-1.5 flex items-baseline gap-2.5">
+            <span className="font-mono text-2xl tracking-tight text-foreground">
+              {usedBytes != null ? formatBytes(usedBytes) : "—"}
+            </span>
+            {pct != null ? (
+              <span
+                className={cn(
+                  "font-mono text-base font-normal tabular-nums",
+                  pct >= 90
+                    ? "text-destructive"
+                    : pct >= 75
+                      ? "text-warn"
+                      : "text-muted-foreground"
+                )}
+              >
+                ({pct}%)
+              </span>
+            ) : null}
+          </div>
           <p className="mt-1 text-[12px] text-muted-foreground">
             {hasQuota
               ? usedBytes != null
@@ -44,23 +56,18 @@ export function StorageMeter({
               : "No explicit disk quotas set — mailboxes use server defaults"}
           </p>
         </div>
-        {pct != null ? (
-          <span
-            className={cn(
-              "font-mono text-sm tabular-nums",
-              pct >= 90
-                ? "text-destructive"
-                : pct >= 75
-                  ? "text-warn"
-                  : "text-muted-foreground"
-            )}
-          >
-            {pct}%
-          </span>
-        ) : null}
       </div>
 
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
+      <div className="mt-4 flex items-center justify-between font-mono text-[11px] text-muted-foreground">
+        <span>0 B</span>
+        <span>
+          {hasQuota
+            ? `Scale: ${formatBytes(quotaBytes)} total allocated`
+            : "Server default quota"}
+        </span>
+      </div>
+
+      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
         {hasQuota ? (
           <div
             className={cn(
