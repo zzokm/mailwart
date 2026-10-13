@@ -47,6 +47,11 @@ import {
   upsertForwardingRuleAction,
 } from "@/lib/actions/mail"
 import {
+  getAvailableCloudflareDomainsAction,
+  provisionCloudflareDnsAction,
+} from "@/lib/actions/cloudflare"
+import { provisionCloudflareDnsSchema } from "@/lib/validations/domain"
+import {
   ADMIN_DESTROY_CONFIRM,
   bulkJobIdSchema,
   bulkResetPasswordsSchema,
@@ -224,6 +229,22 @@ export const COPILOT_TOOL_DEFS: CopilotToolDef[] = [
     inputSchema: destroyDomainSchema,
     execute: async ({ id, typedName, force }) =>
       destroyDomainAction(id, typedName, force),
+  },
+  {
+    name: "list_cloudflare_zones",
+    category: "domains",
+    risk: "read",
+    description: "List accessible domains/zones in the connected Cloudflare account.",
+    inputSchema: emptyInput,
+    execute: async () => getAvailableCloudflareDomainsAction(),
+  },
+  {
+    name: "provision_cloudflare_dns",
+    category: "domains",
+    risk: "write",
+    description: "Auto-provision or synchronize MX, SPF, DKIM, and DMARC DNS records for a domain in Cloudflare.",
+    inputSchema: provisionCloudflareDnsSchema,
+    execute: async (input) => provisionCloudflareDnsAction(input),
   },
 
   // mailboxes

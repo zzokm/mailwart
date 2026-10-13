@@ -10,14 +10,17 @@ import { Button } from "@/components/ui/button"
 import { logoutAction } from "@/lib/actions/auth"
 import { getCopilotSettingsAction } from "@/lib/actions/copilot"
 import { getSettingsAction } from "@/lib/actions/mail"
+import { getCloudflareStatusAction } from "@/lib/actions/cloudflare"
+import { CloudflareSettingsClient } from "@/components/mail/cloudflare-settings-client"
 
 export const metadata: Metadata = { title: "Settings" }
 export const runtime = "nodejs"
 
 export default async function SettingsPage() {
-  const [result, copilotResult] = await Promise.all([
+  const [result, copilotResult, cfResult] = await Promise.all([
     getSettingsAction(),
     getCopilotSettingsAction(),
+    getCloudflareStatusAction(),
   ])
 
   if (!result.ok) {
@@ -57,6 +60,20 @@ export default async function SettingsPage() {
               <CopilotSettingsClient initial={copilotResult.data} />
             ) : (
               <p className="text-sm text-destructive">{copilotResult.error}</p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-border/80 p-4 sm:p-5">
+          <h2 className="text-sm font-medium">Cloudflare DNS Automation</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Connect an API token to auto-discover zones and automatically provision or synchronize MX, SPF, DKIM, and DMARC records across your Cloudflare domains.
+          </p>
+          <div className="mt-4">
+            {cfResult.ok ? (
+              <CloudflareSettingsClient initial={cfResult.data} />
+            ) : (
+              <p className="text-sm text-destructive">{cfResult.error}</p>
             )}
           </div>
         </section>

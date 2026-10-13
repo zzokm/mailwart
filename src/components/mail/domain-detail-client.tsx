@@ -11,6 +11,7 @@ import {
 } from "@/lib/actions/mail"
 import { toastActionResult } from "@/lib/action-toast"
 import { ConfirmDestroy } from "@/components/mail/confirm-destroy"
+import { CloudflareDnsPanel } from "@/components/mail/cloudflare-dns-panel"
 import { DnsHealthPanel } from "@/components/mail/dns-health-panel"
 import { DnsRecordGenerator } from "@/components/mail/dns-record-generator"
 import { Button } from "@/components/ui/button"
@@ -277,6 +278,8 @@ export function DomainDetailClient({
 
         <DnsHealthPanel domainName={domain.name} initial={dns} />
       </div>
+
+      <CloudflareDnsPanel domainName={domain.name} />
 
       <DnsRecordGenerator domainName={domain.name} />
 

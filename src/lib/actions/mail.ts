@@ -73,10 +73,12 @@ import {
 } from "@/lib/bulk/prepare"
 import { buildRoundcubeUrl } from "@/lib/roundcube"
 import {
+  clearDnsCache,
   generateDkimRecord,
   generateDmarcRecord,
   generateSpfRecord,
 } from "@/lib/dns"
+import { provisionDomainDns } from "@/lib/cloudflare"
 import {
   bulkCreateAccounts,
   createAccount,
@@ -472,6 +474,7 @@ export async function generateDmarcAction(input: {
 export async function createDomainAction(input: {
   name: string
   description?: string
+  autoProvisionDns?: boolean
 }): Promise<ActionResult<StalwartDomain>> {
   const denied = await denyUnlessAuthed<StalwartDomain>()
   if (denied) return denied
@@ -516,7 +519,19 @@ export async function createDomainAction(input: {
       target: domain.name,
       detail: "Created domain",
     })
-    return ok(domain, src)
+
+    let note: string | undefined
+    if (parsed.data.autoProvisionDns) {
+      try {
+        const cfResult = await provisionDomainDns({ domain: name })
+        clearDnsCache(name)
+        note = `Cloudflare DNS auto-provisioned (${cfResult.records.length} records: ${cfResult.records.map((r) => `${r.type}:${r.action}`).join(", ")}).`
+      } catch (cfErr) {
+        note = `Domain created in Stalwart, but Cloudflare DNS provisioning failed: ${cfErr instanceof Error ? cfErr.message : String(cfErr)}`
+      }
+    }
+
+    return ok(domain, src, note)
   } catch (err) {
     return fail(err, src)
   }

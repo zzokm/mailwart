@@ -12,8 +12,12 @@ export function dataSource(): DataSource {
   return hasStalwartConfig() ? "live" : "mock"
 }
 
-export function okResult<T>(data: T, src: DataSource = dataSource()): ActionResult<T> {
-  return { ok: true, data, source: src }
+export function okResult<T>(
+  data: T,
+  src: DataSource = dataSource(),
+  note?: string
+): ActionResult<T> {
+  return { ok: true, data, source: src, note }
 }
 
 export function failResult<T = never>(

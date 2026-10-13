@@ -297,7 +297,7 @@ export type BulkImportResultRow = BulkImportRow & {
 }
 
 export type ActionResult<T = void> =
-  | { ok: true; data: T; source: DataSource }
+  | { ok: true; data: T; source: DataSource; note?: string }
   | {
       ok: false
       error: string

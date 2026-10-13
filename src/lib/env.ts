@@ -21,6 +21,10 @@ const envSchema = z.object({
   DNS_EXPECTED_SPF: z.string().optional(),
   /** Append-only audit JSONL path (Architecture §9.2). Relative to cwd or absolute. */
   AUDIT_LOG_PATH: z.string().optional(),
+  /** Cloudflare API Token for automated DNS provisioning across zones. */
+  CLOUDFLARE_API_TOKEN: z.string().optional(),
+  /** Path to persistent Cloudflare settings JSON file. */
+  CLOUDFLARE_SETTINGS_PATH: z.string().optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -49,6 +53,8 @@ function readRawEnv(): Record<string, string | undefined> {
     DNS_DKIM_SELECTORS: unset(process.env.DNS_DKIM_SELECTORS),
     DNS_EXPECTED_SPF: unset(process.env.DNS_EXPECTED_SPF),
     AUDIT_LOG_PATH: unset(process.env.AUDIT_LOG_PATH),
+    CLOUDFLARE_API_TOKEN: unset(process.env.CLOUDFLARE_API_TOKEN),
+    CLOUDFLARE_SETTINGS_PATH: unset(process.env.CLOUDFLARE_SETTINGS_PATH),
   };
 }
 

@@ -5,6 +5,7 @@ import { domainNameSchema, entityIdSchema, nonEmptyString } from "./common"
 export const createDomainSchema = z.object({
   name: domainNameSchema,
   description: z.string().trim().optional(),
+  autoProvisionDns: z.boolean().optional(),
 })
 
 export const updateDomainSchema = z.object({
@@ -48,3 +49,15 @@ export const updateMailExchangerSchema = z.object({
   domainId: entityIdSchema,
   mode: z.enum(["local", "backup", "remote"]),
 })
+
+export const provisionCloudflareDnsSchema = z.object({
+  domain: domainNameSchema,
+  selector: z.string().trim().optional(),
+  forceOverwrite: z.boolean().optional().default(false),
+})
+
+export const saveCloudflareSettingsSchema = z.object({
+  apiToken: z.string().trim().min(1, "Cloudflare API token is required"),
+  defaultMailHost: z.string().trim().optional(),
+})
+

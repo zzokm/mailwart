@@ -27,6 +27,8 @@ export type AuditAction =
   | "app_password.create"
   | "app_password.revoke"
   | "copilot.settings_update"
+  | "domain.dns_provision"
+  | "cloudflare.settings_update"
 
 export type AuditEvent = {
   id: string
