@@ -2,6 +2,11 @@
 
 import { revalidatePath } from "next/cache"
 
+import {
+  dataSource as source,
+  failResult as fail,
+  okResult as ok,
+} from "@/lib/actions/result"
 import { AuthError, requireSession, sessionActor } from "@/lib/auth/session"
 import { recordAudit } from "@/lib/audit"
 import {
@@ -16,23 +21,21 @@ import {
   type CloudflareZone,
 } from "@/lib/cloudflare"
 import { checkDomainDns, clearDnsCache } from "@/lib/dns"
-import { listDomains } from "@/lib/stalwart"
+import { queryDomains, StalwartError } from "@/lib/stalwart"
+import type { ActionResult } from "@/lib/stalwart/types"
 import {
   provisionCloudflareDnsSchema,
   saveCloudflareSettingsSchema,
 } from "@/lib/validations/domain"
 
-export type ActionResult<T> =
-  | { ok: true; data: T; source?: string }
-  | { ok: false; error: string; source?: string }
-
 async function denyUnlessAuthed<T>(): Promise<ActionResult<T> | null> {
+  const src = source()
   try {
     await requireSession()
     return null
   } catch (err) {
     if (err instanceof AuthError) {
-      return { ok: false, error: "Unauthorized." }
+      return fail(new StalwartError("Unauthorized.", "auth"), src)
     }
     throw err
   }
@@ -41,12 +44,13 @@ async function denyUnlessAuthed<T>(): Promise<ActionResult<T> | null> {
 export async function getCloudflareStatusAction(): Promise<ActionResult<CloudflareStatus>> {
   const denied = await denyUnlessAuthed<CloudflareStatus>()
   if (denied) return denied
+  const src = source()
 
   try {
     const status = await getCloudflareStatus()
-    return { ok: true, data: status }
+    return ok(status, src)
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    return fail(err, src)
   }
 }
 
@@ -68,18 +72,16 @@ export async function testCloudflareTokenAction(input?: {
     accessibleZonesCount: number
   }>()
   if (denied) return denied
+  const src = source()
 
   try {
     const result = await verifyCloudflareToken(input?.token)
     if (!result.ok) {
-      return {
-        ok: false,
-        error: result.error || "Token verification failed.",
-      }
+      return fail(new Error(result.error || "Token verification failed."), src)
     }
-    return { ok: true, data: result }
+    return ok(result, src)
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    return fail(err, src)
   }
 }
 
@@ -89,19 +91,20 @@ export async function saveCloudflareSettingsAction(input: {
 }): Promise<ActionResult<CloudflareStatus>> {
   const denied = await denyUnlessAuthed<CloudflareStatus>()
   if (denied) return denied
+  const src = source()
 
   const parsed = saveCloudflareSettingsSchema.safeParse(input)
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message || "Invalid input" }
+    return fail(new Error(parsed.error.issues[0]?.message || "Invalid input"), src)
   }
 
   try {
     const test = await verifyCloudflareToken(parsed.data.apiToken)
     if (!test.ok) {
-      return {
-        ok: false,
-        error: `Could not verify token with Cloudflare: ${test.error || "Invalid token"}`,
-      }
+      return fail(
+        new Error(`Could not verify token with Cloudflare: ${test.error || "Invalid token"}`),
+        src
+      )
     }
 
     await writeCloudflareSettings({
@@ -122,9 +125,9 @@ export async function saveCloudflareSettingsAction(input: {
     revalidatePath("/dashboard/domains")
 
     const status = await getCloudflareStatus()
-    return { ok: true, data: status }
+    return ok(status, src)
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    return fail(err, src)
   }
 }
 
@@ -133,6 +136,7 @@ export async function clearCloudflareSettingsAction(): Promise<
 > {
   const denied = await denyUnlessAuthed<{ cleared: true }>()
   if (denied) return denied
+  const src = source()
 
   try {
     await clearCloudflareSettings()
@@ -146,9 +150,9 @@ export async function clearCloudflareSettingsAction(): Promise<
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/domains")
 
-    return { ok: true, data: { cleared: true } }
+    return ok({ cleared: true }, src)
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    return fail(err, src)
   }
 }
 
@@ -165,37 +169,38 @@ export async function getAvailableCloudflareDomainsAction(): Promise<
     alreadyAddedDomains: string[]
   }>()
   if (denied) return denied
+  const src = source()
 
   try {
     const status = await getCloudflareStatus()
     if (!status.configured) {
-      return {
-        ok: true,
-        data: {
+      return ok(
+        {
           configured: false,
           zones: [],
           alreadyAddedDomains: [],
         },
-      }
+        src
+      )
     }
 
     const [zones, stalwartDomains] = await Promise.all([
       listCloudflareZones(),
-      listDomains().catch(() => []),
+      queryDomains().catch(() => []),
     ])
 
     const alreadyAdded = (stalwartDomains || []).map((d) => d.name.toLowerCase())
 
-    return {
-      ok: true,
-      data: {
+    return ok(
+      {
         configured: true,
         zones,
         alreadyAddedDomains: alreadyAdded,
       },
-    }
+      src
+    )
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    return fail(err, src)
   }
 }
 
@@ -206,10 +211,11 @@ export async function provisionCloudflareDnsAction(input: {
 }): Promise<ActionResult<CloudflareProvisionResult>> {
   const denied = await denyUnlessAuthed<CloudflareProvisionResult>()
   if (denied) return denied
+  const src = source()
 
   const parsed = provisionCloudflareDnsSchema.safeParse(input)
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message || "Invalid domain name" }
+    return fail(new Error(parsed.error.issues[0]?.message || "Invalid domain name"), src)
   }
 
   const domain = parsed.data.domain.toLowerCase()
@@ -240,8 +246,8 @@ export async function provisionCloudflareDnsAction(input: {
     revalidatePath(`/dashboard/domains`)
     revalidatePath(`/dashboard/domains/${domain}`)
 
-    return { ok: true, data: result }
+    return ok(result, src)
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    return fail(err, src)
   }
 }
