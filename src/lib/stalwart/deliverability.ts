@@ -1,6 +1,7 @@
 import "server-only"
 
 import net from "node:net"
+import tls from "node:tls"
 import { queryDomains } from "./domains"
 import { queryAccounts, createAccount, updateAccountPassword } from "./accounts"
 import { recordAudit } from "@/lib/audit"
@@ -106,7 +107,7 @@ export async function ensureMailboxesOnAllDomains(
 }
 
 /**
- * Lightweight, zero-dependency SMTP client to send outbound email via Stalwart.
+ * Lightweight, zero-dependency SMTP client with STARTTLS support to send outbound emails via Stalwart.
  * Connects directly to internal `stalwart-mail:587` or public IP.
  */
 export async function sendSmtpMessage(options: {
@@ -123,17 +124,19 @@ export async function sendSmtpMessage(options: {
 }): Promise<{ ok: boolean; response: string; queueId?: string }> {
   const host = options.host || "stalwart-mail"
   const port = options.port || 587
-  const timeoutMs = options.timeoutMs || 15000
+  const timeoutMs = options.timeoutMs || 20000
 
   return new Promise((resolve, reject) => {
+    let rawSocket: net.Socket | null = null
+    let activeSocket: net.Socket | tls.TLSSocket | null = null
     let step = 0
     let buffer = ""
-
-    const socket = net.createConnection({ host, port })
+    let isTlsActive = false
 
     const cleanup = () => {
       try {
-        socket.destroy()
+        activeSocket?.destroy()
+        rawSocket?.destroy()
       } catch {
         // ignore
       }
@@ -143,6 +146,10 @@ export async function sendSmtpMessage(options: {
       cleanup()
       reject(new Error(`SMTP connection timeout after ${timeoutMs}ms`))
     }, timeoutMs)
+
+    rawSocket = net.createConnection({ host, port }, () => {
+      activeSocket = rawSocket
+    })
 
     const onData = (chunk: Buffer) => {
       buffer += chunk.toString("utf-8")
@@ -155,21 +162,48 @@ export async function sendSmtpMessage(options: {
         const isMulti = line[3] === "-"
         if (isMulti) continue // Wait for final line of multi-line response
 
-        handleResponse(code, line)
+        void handleResponse(code, line)
       }
     }
 
-    socket.on("data", onData)
-    socket.on("error", (err) => {
+    rawSocket.on("data", onData)
+    rawSocket.on("error", (err) => {
       clearTimeout(timer)
       reject(new Error(`Socket error: ${err.message}`))
     })
 
     function write(data: string) {
-      socket.write(data + "\r\n")
+      if (!activeSocket) return
+      activeSocket.write(data + "\r\n")
     }
 
-    function handleResponse(code: number, line: string) {
+    function upgradeToTls(): Promise<void> {
+      return new Promise((res, rej) => {
+        if (!rawSocket) return rej(new Error("No socket to upgrade"))
+        rawSocket.removeAllListeners("data")
+
+        const secure = tls.connect(
+          {
+            socket: rawSocket,
+            rejectUnauthorized: false,
+          },
+          () => {
+            isTlsActive = true
+            activeSocket = secure
+            secure.on("data", onData)
+            res()
+          }
+        )
+
+        secure.on("error", (err) => {
+          clearTimeout(timer)
+          cleanup()
+          rej(new Error(`TLS handshake failed: ${err.message}`))
+        })
+      })
+    }
+
+    async function handleResponse(code: number, line: string) {
       if (code >= 400 && code <= 599) {
         clearTimeout(timer)
         cleanup()
@@ -183,44 +217,65 @@ export async function sendSmtpMessage(options: {
           write(`EHLO ${options.from.split("@")[1] || "mail.yehia.dev"}`)
           break
 
-        case 1: // EHLO response received
-          if (options.user && options.pass) {
+        case 1: // First EHLO response received
+          // If credentials provided and TLS not yet active, send STARTTLS
+          if (options.user && options.pass && !isTlsActive) {
             step = 2
-            // Send AUTH LOGIN
+            write("STARTTLS")
+          } else if (options.user && options.pass) {
+            step = 4
             write("AUTH LOGIN")
           } else {
-            step = 5
+            step = 7
             write(`MAIL FROM:<${options.from}>`)
           }
           break
 
-        case 2: // 334 VXNlcm5hbWU6 (Username prompt)
+        case 2: // 220 Ready to start TLS
           step = 3
+          try {
+            await upgradeToTls()
+            // Send EHLO again over encrypted channel
+            write(`EHLO ${options.from.split("@")[1] || "mail.yehia.dev"}`)
+          } catch (err) {
+            clearTimeout(timer)
+            cleanup()
+            reject(err)
+          }
+          break
+
+        case 3: // Post-TLS EHLO response received
+          step = 4
+          write("AUTH LOGIN")
+          break
+
+        case 4: // 334 VXNlcm5hbWU6 (Username prompt)
+          step = 5
           write(Buffer.from(options.user || "").toString("base64"))
           break
 
-        case 3: // 334 UGFzc3dvcmQ6 (Password prompt)
-          step = 4
+        case 5: // 334 UGFzc3dvcmQ6 (Password prompt)
+          step = 6
           write(Buffer.from(options.pass || "").toString("base64"))
           break
 
-        case 4: // 235 Authentication successful
-          step = 5
+        case 6: // 235 Authentication successful
+          step = 7
           write(`MAIL FROM:<${options.from}>`)
           break
 
-        case 5: // 250 Sender OK
-          step = 6
+        case 7: // 250 Sender OK
+          step = 8
           write(`RCPT TO:<${options.to}>`)
           break
 
-        case 6: // 250 Recipient OK
-          step = 7
+        case 8: // 250 Recipient OK
+          step = 9
           write("DATA")
           break
 
-        case 7: // 354 Start mail input
-          step = 8
+        case 9: // 354 Start mail input
+          step = 10
           const domain = options.from.split("@")[1] || "yehia.dev"
           const boundary = `----=_Part_${Date.now()}_${Math.random().toString(36).substring(2)}`
           const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2)}@${domain}>`
@@ -261,9 +316,9 @@ export async function sendSmtpMessage(options: {
           write(body)
           break
 
-        case 8: // 250 Message accepted for delivery
+        case 10: // 250 Message accepted for delivery
           clearTimeout(timer)
-          step = 9
+          step = 11
           write("QUIT")
           setTimeout(() => cleanup(), 200)
 

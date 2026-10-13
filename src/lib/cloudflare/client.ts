@@ -85,10 +85,23 @@ async function cfRequest<T>(
     throw new Error("Cloudflare API token is not configured. Add it in Settings or CLOUDFLARE_API_TOKEN env.")
   }
 
+  const cleanToken = token.trim()
+  const isGlobalKey = /^[a-f0-9]{37}$/i.test(cleanToken)
+  const authEmail = process.env.CLOUDFLARE_EMAIL || "yeh.ia@icloud.com"
+
+  const authHeaders: Record<string, string> = isGlobalKey
+    ? {
+        "X-Auth-Key": cleanToken,
+        "X-Auth-Email": authEmail,
+      }
+    : {
+        Authorization: `Bearer ${cleanToken}`,
+      }
+
   const res = await fetch(`${CF_API_BASE}${endpoint}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
+      ...authHeaders,
       "Content-Type": "application/json",
       ...(options.headers || {}),
     },
@@ -97,9 +110,12 @@ async function cfRequest<T>(
 
   const json = await res.json()
   if (!res.ok || !json.success) {
-    const errMsg =
+    let errMsg =
       json.errors?.map((e: { message: string }) => e.message).join(", ") ||
       `Cloudflare API error (${res.status} ${res.statusText})`
+    if (errMsg.includes("Cannot use the access token from location: 23.94.107.153")) {
+      errMsg = `Cloudflare IP Whitelist Restriction: Token blocks server IP 23.94.107.153. Please add 23.94.107.153 to your Cloudflare Token's Client IP Filtering, or remove the IP restriction.`
+    }
     throw new Error(errMsg)
   }
 
