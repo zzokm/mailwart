@@ -2,75 +2,104 @@ import "server-only"
 
 import { generateDkimRecord } from "@/lib/dns/generate"
 import { getStalwartDkimSignaturesForDomain } from "@/lib/stalwart/dkim"
-import { readCloudflareSettings, writeCloudflareSettings } from "./settings-store"
+import { detectOlderMailRecords } from "./detect"
+import {
+  readCloudflareSettings,
+  saveCloudflareAccount,
+} from "./settings-store"
 import type {
+  CloudflareAccountConfig,
+  CloudflareAccountSummary,
   CloudflareDnsRecord,
   CloudflareProvisionResult,
   CloudflareStatus,
   CloudflareZone,
   ProvisionedRecordResult,
+  ZoneMailAudit,
 } from "./types"
 
 const CF_API_BASE = "https://api.cloudflare.com/client/v4"
+
+export async function resolveAllCloudflareAccounts(): Promise<CloudflareAccountConfig[]> {
+  const stored = await readCloudflareSettings()
+  const accounts = [...stored.accounts]
+
+  const envToken = process.env.CLOUDFLARE_API_TOKEN?.trim()
+  if (envToken && !accounts.some((a) => a.apiToken === envToken)) {
+    accounts.unshift({
+      id: "acc_env",
+      accountName: process.env.CLOUDFLARE_ACCOUNT_NAME?.trim() || "Environment Account",
+      apiToken: envToken,
+      status: "active",
+    })
+  }
+
+  return accounts
+}
 
 export async function resolveCloudflareApiToken(): Promise<{
   token?: string
   source: "env" | "settings" | "none"
 }> {
-  const fromEnv = process.env.CLOUDFLARE_API_TOKEN?.trim()
-  if (fromEnv) {
-    return { token: fromEnv, source: "env" }
+  const accounts = await resolveAllCloudflareAccounts()
+  if (accounts.length > 0) {
+    const first = accounts[0]
+    return {
+      token: first.apiToken,
+      source: first.id === "acc_env" ? "env" : "settings",
+    }
   }
-
-  const stored = await readCloudflareSettings()
-  if (stored.apiToken?.trim()) {
-    return { token: stored.apiToken.trim(), source: "settings" }
-  }
-
   return { source: "none" }
 }
 
-export async function getEffectiveMailHost(): Promise<string> {
-  const stored = await readCloudflareSettings()
-  if (stored.defaultMailHost?.trim()) {
-    return stored.defaultMailHost.trim()
-  }
-  const fromEnv = process.env.DNS_EXPECTED_MX?.trim()
-  if (fromEnv) {
-    return fromEnv
-  }
-  return "mail.yehia.dev"
+function maskToken(token: string): string {
+  const clean = token.trim()
+  if (clean.length <= 8) return "••••••••"
+  return `${clean.slice(0, 4)}••••${clean.slice(-4)}`
 }
 
 export async function getCloudflareStatus(): Promise<CloudflareStatus> {
-  const { token, source } = await resolveCloudflareApiToken()
-  const defaultMailHost = await getEffectiveMailHost()
-  const stored = await readCloudflareSettings()
-
-  if (!token) {
+  const accounts = await resolveAllCloudflareAccounts()
+  if (accounts.length === 0) {
     return {
       configured: false,
       source: "none",
-      defaultMailHost,
+      accounts: [],
+      totalZonesCount: 0,
     }
   }
 
-  const masked =
-    token.length > 8
-      ? `${token.slice(0, 4)}••••${token.slice(-4)}`
-      : "••••••••"
+  const summaries: CloudflareAccountSummary[] = accounts.map((a) => ({
+    id: a.id,
+    accountName: a.accountName,
+    accountId: a.accountId,
+    tokenMasked: maskToken(a.apiToken),
+    lastVerifiedAt: a.lastVerifiedAt,
+    zonesCount: a.zonesCount ?? 0,
+    status: a.status ?? "active",
+    errorMessage: a.errorMessage,
+    isEnv: a.id === "acc_env",
+  }))
+
+  const totalZones = accounts.reduce((acc, curr) => acc + (curr.zonesCount ?? 0), 0)
+  const hasEnv = accounts.some((a) => a.id === "acc_env")
+  const hasSettings = accounts.some((a) => a.id !== "acc_env")
+  const source = hasEnv && hasSettings ? "both" : hasEnv ? "env" : "settings"
+
+  const primary = accounts[0]
 
   return {
     configured: true,
     source,
-    tokenMasked: masked,
-    accountName: stored.accountName,
-    lastVerifiedAt: stored.lastVerifiedAt,
-    defaultMailHost,
+    accounts: summaries,
+    totalZonesCount: totalZones,
+    tokenMasked: maskToken(primary.apiToken),
+    accountName: primary.accountName,
+    lastVerifiedAt: primary.lastVerifiedAt,
   }
 }
 
-async function cfRequest<T>(
+export async function cfRequest<T>(
   endpoint: string,
   options: RequestInit = {},
   tokenOverride?: string
@@ -82,7 +111,7 @@ async function cfRequest<T>(
   }
 
   if (!token) {
-    throw new Error("Cloudflare API token is not configured. Add it in Settings or CLOUDFLARE_API_TOKEN env.")
+    throw new Error("Cloudflare API token is not configured. Add an account in Settings.")
   }
 
   const cleanToken = token.trim()
@@ -114,7 +143,7 @@ async function cfRequest<T>(
       json.errors?.map((e: { message: string }) => e.message).join(", ") ||
       `Cloudflare API error (${res.status} ${res.statusText})`
     if (errMsg.includes("Cannot use the access token from location: 23.94.107.153")) {
-      errMsg = `Cloudflare IP Whitelist Restriction: Token blocks server IP 23.94.107.153. Please add 23.94.107.153 to your Cloudflare Token's Client IP Filtering, or remove the IP restriction.`
+      errMsg = `Cloudflare IP Whitelist Restriction: Token blocks server IP 23.94.107.153. Please add 23.94.107.153 to your Cloudflare Token Client IP Filtering.`
     }
     throw new Error(errMsg)
   }
@@ -126,11 +155,12 @@ export async function verifyCloudflareToken(tokenOverride?: string): Promise<{
   ok: boolean
   status: string
   accountName?: string
+  accountId?: string
   accessibleZonesCount: number
+  zones: CloudflareZone[]
   error?: string
 }> {
   try {
-    // 1. Verify token validity endpoint
     let status = "active"
     try {
       const verifyRes = await cfRequest<{ id: string; status: string }>(
@@ -140,10 +170,9 @@ export async function verifyCloudflareToken(tokenOverride?: string): Promise<{
       )
       status = verifyRes.result.status
     } catch {
-      // Some scoped tokens don't have User:Read perm but have Zone:Read perm, fallback to zones check
+      // Some tokens lack User:Read but have Zone:Read, so we continue
     }
 
-    // 2. Fetch accessible zones to confirm permission & get account name
     const zonesRes = await cfRequest<CloudflareZone[]>(
       "/zones?per_page=50&status=active",
       { method: "GET" },
@@ -152,100 +181,268 @@ export async function verifyCloudflareToken(tokenOverride?: string): Promise<{
 
     const zones = zonesRes.result || []
     const accountName = zones[0]?.account?.name || undefined
-
-    if (tokenOverride) {
-      await writeCloudflareSettings({
-        apiToken: tokenOverride,
-        accountName,
-        lastVerifiedAt: new Date().toISOString(),
-      })
-    } else {
-      await writeCloudflareSettings({
-        accountName,
-        lastVerifiedAt: new Date().toISOString(),
-      })
-    }
+    const accountId = zones[0]?.account?.id || undefined
 
     return {
       ok: true,
       status,
       accountName,
+      accountId,
       accessibleZonesCount: zones.length,
+      zones,
     }
   } catch (err) {
     return {
       ok: false,
       status: "invalid",
       accessibleZonesCount: 0,
+      zones: [],
       error: err instanceof Error ? err.message : String(err),
     }
   }
 }
 
-export async function listCloudflareZones(): Promise<CloudflareZone[]> {
-  const res = await cfRequest<CloudflareZone[]>("/zones?per_page=50&status=active", {
-    method: "GET",
-  })
-  return res.result || []
+/**
+ * Onboarding helper: Audits all zones accessible by a token to detect existing/older mail service records.
+ */
+export async function auditTokenZonesForMail(token: string): Promise<{
+  ok: boolean
+  accountName: string
+  accountId?: string
+  totalZonesCount: number
+  zonesAudits: ZoneMailAudit[]
+  conflictsCount: number
+  error?: string
+}> {
+  const verified = await verifyCloudflareToken(token)
+  if (!verified.ok) {
+    return {
+      ok: false,
+      accountName: "Unknown",
+      totalZonesCount: 0,
+      zonesAudits: [],
+      conflictsCount: 0,
+      error: verified.error,
+    }
+  }
+
+  const mailServerIp = process.env.MAIL_SERVER_IP?.trim() || "23.94.107.153"
+  const audits: ZoneMailAudit[] = []
+  let conflictsCount = 0
+
+  for (const z of verified.zones) {
+    try {
+      const records = await listZoneDnsRecords(z.id, token)
+      const audit = detectOlderMailRecords(z.name, z.id, z.name, records, mailServerIp)
+      audits.push({
+        ...audit,
+        accountName: verified.accountName,
+      })
+      if (audit.hasConflicts) {
+        conflictsCount++
+      }
+    } catch (err) {
+      console.error(`Failed to audit zone ${z.name}:`, err)
+    }
+  }
+
+  return {
+    ok: true,
+    accountName: verified.accountName || "Cloudflare Account",
+    accountId: verified.accountId,
+    totalZonesCount: verified.accessibleZonesCount,
+    zonesAudits: audits,
+    conflictsCount,
+  }
 }
 
-export async function findZoneForDomain(domainName: string): Promise<CloudflareZone | null> {
+/**
+ * Pools all zones across all registered Cloudflare accounts.
+ */
+export async function listCloudflareZones(): Promise<CloudflareZone[]> {
+  const accounts = await resolveAllCloudflareAccounts()
+  if (accounts.length === 0) {
+    return []
+  }
+
+  const pooled: CloudflareZone[] = []
+  const seenZoneIds = new Set<string>()
+
+  for (const account of accounts) {
+    try {
+      const res = await cfRequest<CloudflareZone[]>(
+        "/zones?per_page=50&status=active",
+        { method: "GET" },
+        account.apiToken
+      )
+      const zones = res.result || []
+
+      // Opportunistically update cached zone count
+      if (account.zonesCount !== zones.length) {
+        account.zonesCount = zones.length
+        account.status = "active"
+        account.lastVerifiedAt = new Date().toISOString()
+        await saveCloudflareAccount(account).catch(() => {})
+      }
+
+      for (const z of zones) {
+        if (!seenZoneIds.has(z.id)) {
+          seenZoneIds.add(z.id)
+          pooled.push({
+            ...z,
+            accountConfigId: account.id,
+            accountLabel: account.accountName,
+          })
+        }
+      }
+    } catch (err) {
+      console.error(`Failed to fetch zones for Cloudflare account ${account.accountName}:`, err)
+      account.status = "error"
+      account.errorMessage = err instanceof Error ? err.message : String(err)
+      await saveCloudflareAccount(account).catch(() => {})
+    }
+  }
+
+  return pooled
+}
+
+/**
+ * Finds the zone for a domain across all pooled accounts and returns the zone plus the owning account.
+ */
+export async function findZoneForDomain(domainName: string): Promise<{
+  zone: CloudflareZone
+  account: CloudflareAccountConfig
+} | null> {
   const norm = domainName.trim().toLowerCase()
   const zones = await listCloudflareZones()
+  const accounts = await resolveAllCloudflareAccounts()
 
   // 1. Exact match
-  const exact = zones.find((z) => z.name.toLowerCase() === norm)
-  if (exact) return exact
+  let matchedZone = zones.find((z) => z.name.toLowerCase() === norm)
 
   // 2. Apex match for subdomains
-  const apex = zones.find((z) => norm.endsWith(`.${z.name.toLowerCase()}`))
-  if (apex) return apex
+  if (!matchedZone) {
+    matchedZone = zones.find((z) => norm.endsWith(`.${z.name.toLowerCase()}`))
+  }
 
-  return null
+  if (!matchedZone) return null
+
+  // Find owning account
+  const owningAccount =
+    accounts.find((a) => a.id === matchedZone?.accountConfigId) ||
+    accounts.find((a) => a.accountId && a.accountId === matchedZone?.account?.id) ||
+    accounts[0]
+
+  if (!owningAccount) return null
+
+  return {
+    zone: matchedZone,
+    account: owningAccount,
+  }
 }
 
-export async function listZoneDnsRecords(zoneId: string): Promise<CloudflareDnsRecord[]> {
+/**
+ * Lists DNS records for a given zone using its owning account token.
+ */
+export async function listZoneDnsRecords(
+  zoneId: string,
+  tokenOverride?: string
+): Promise<CloudflareDnsRecord[]> {
+  let token = tokenOverride
+  if (!token) {
+    const zones = await listCloudflareZones()
+    const targetZone = zones.find((z) => z.id === zoneId)
+    if (targetZone?.accountConfigId) {
+      const accounts = await resolveAllCloudflareAccounts()
+      const acc = accounts.find((a) => a.id === targetZone.accountConfigId)
+      if (acc) token = acc.apiToken
+    }
+  }
+
   const res = await cfRequest<CloudflareDnsRecord[]>(
     `/zones/${zoneId}/dns_records?per_page=100`,
-    { method: "GET" }
+    { method: "GET" },
+    token
   )
   return res.result || []
 }
 
 /**
  * Auto-provisions or synchronizes required mail records (MX, SPF, DKIM, DMARC) in Cloudflare.
+ * Dedicated mail host is ALWAYS mail.<domain>.
+ * Does NOT touch or modify any unrelated DNS records.
+ * If older conflicting records are detected and forceOverwrite is false, returns them without replacing.
  */
 export async function provisionDomainDns(input: {
   domain: string
   selector?: string
-  mailHost?: string
   forceOverwrite?: boolean
 }): Promise<CloudflareProvisionResult> {
   const domain = input.domain.trim().toLowerCase()
   const selector = (input.selector?.trim() || "mailwart").toLowerCase()
-  // User requirement: mail server for each domain is its own domain: mail.<domain>
-  const mailHost = input.mailHost || `mail.${domain}`
+  const dedicatedMailHost = `mail.${domain}`
   const mailServerIp = process.env.MAIL_SERVER_IP?.trim() || "23.94.107.153"
   const forceOverwrite = input.forceOverwrite ?? false
 
-  const zone = await findZoneForDomain(domain)
-  if (!zone) {
+  const found = await findZoneForDomain(domain)
+  if (!found) {
     throw new Error(
-      `No active Cloudflare zone found for "${domain}". Ensure this domain is added and active in your Cloudflare account.`
+      `No active Cloudflare zone found for "${domain}". Ensure this domain is added and active in one of your connected Cloudflare accounts.`
     )
   }
 
-  const existingRecords = await listZoneDnsRecords(zone.id)
+  const { zone, account } = found
+  const token = account.apiToken
+  const existingRecords = await listZoneDnsRecords(zone.id, token)
+
+  // Pre-flight check: Audit older/conflicting records
+  const audit = detectOlderMailRecords(domain, zone.id, zone.name, existingRecords, mailServerIp)
+  if (audit.hasConflicts && !forceOverwrite) {
+    return {
+      domain,
+      zoneId: zone.id,
+      zoneName: zone.name,
+      records: [],
+      success: false,
+      error: `Detected ${audit.olderRecords.length} existing mail service record(s) on ${domain}. Explicit permission required to replace them.`,
+      conflictsDetected: audit.olderRecords,
+    }
+  }
+
   const results: ProvisionedRecordResult[] = []
 
-  // 1. Provision A record for dedicated mail host (e.g. mail.lebasko.com -> 23.94.107.153, unproxied)
-  // Email ports (25, 465, 587, 993) cannot go through Cloudflare HTTP CDN proxy; proxied MUST be false!
+  // If forceOverwrite is true, delete older conflicting MX records first to ensure clean mail delivery
+  if (forceOverwrite && audit.hasConflicts) {
+    for (const oldRec of audit.olderRecords) {
+      if (oldRec.category === "mx") {
+        try {
+          await cfRequest(
+            `/zones/${zone.id}/dns_records/${oldRec.id}`,
+            { method: "DELETE" },
+            token
+          )
+          results.push({
+            type: "MX",
+            name: oldRec.name,
+            content: oldRec.content,
+            action: "deleted",
+            id: oldRec.id,
+            detail: `Removed previous ${oldRec.providerDetected || "external"} MX exchanger.`,
+          })
+        } catch (delErr) {
+          console.error(`Failed to delete older MX record ${oldRec.id}:`, delErr)
+        }
+      }
+    }
+  }
+
+  // 1. Dedicated A record for mail.<domain> -> mailServerIp (unproxied!)
   const mailSubdomain = "mail"
-  const expectedFqdn = `mail.${zone.name.toLowerCase()}`
+  const expectedMailFqdn = `mail.${zone.name.toLowerCase()}`
   const existingA = existingRecords.find(
     (r) =>
       r.type === "A" &&
-      (r.name.toLowerCase() === expectedFqdn ||
+      (r.name.toLowerCase() === expectedMailFqdn ||
         r.name.toLowerCase() === `mail.${domain}` ||
         r.name.toLowerCase() === mailSubdomain)
   )
@@ -261,17 +458,21 @@ export async function provisionDomainDns(input: {
         detail: `A record for mail host already points to ${mailServerIp} (DNS-only).`,
       })
     } else {
-      await cfRequest(`/zones/${zone.id}/dns_records/${existingA.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          type: "A",
-          name: mailSubdomain,
-          content: mailServerIp,
-          proxied: false,
-          ttl: 1,
-          comment: "Managed by mailwart (DNS-only)",
-        }),
-      })
+      await cfRequest(
+        `/zones/${zone.id}/dns_records/${existingA.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            type: "A",
+            name: mailSubdomain,
+            content: mailServerIp,
+            proxied: false,
+            ttl: 1,
+            comment: "Managed by mailwart (DNS-only)",
+          }),
+        },
+        token
+      )
       results.push({
         type: "A",
         name: "mail",
@@ -294,7 +495,8 @@ export async function provisionDomainDns(input: {
           ttl: 1,
           comment: "Managed by mailwart (DNS-only)",
         }),
-      }
+      },
+      token
     )
     results.push({
       type: "A",
@@ -306,52 +508,52 @@ export async function provisionDomainDns(input: {
     })
   }
 
-  // 2. Provision MX Record
-  // Target: mailHost (e.g. mail.lebasko.com), priority: 10, proxied: false
+  // 2. Provision MX Record: @ -> mail.<domain> (priority 10, proxied: false)
   const existingMx = existingRecords.find(
     (r) =>
       r.type === "MX" &&
       (r.name.toLowerCase() === domain ||
         r.name.toLowerCase() === zone.name.toLowerCase() ||
-        r.name.toLowerCase() === `@.${zone.name.toLowerCase()}`)
+        r.name.toLowerCase() === `@.${zone.name.toLowerCase()}`) &&
+      r.content.toLowerCase().replace(/\.$/, "") === dedicatedMailHost
   )
 
   if (existingMx) {
-    if (
-      existingMx.content.toLowerCase().replace(/\.$/, "") === mailHost.toLowerCase() &&
-      existingMx.priority === 10 &&
-      !existingMx.proxied
-    ) {
+    if (existingMx.priority === 10 && !existingMx.proxied) {
       results.push({
         type: "MX",
         name: "@",
-        content: mailHost,
+        content: dedicatedMailHost,
         priority: 10,
         action: "exists",
         id: existingMx.id,
-        detail: `MX record already pointing to ${mailHost} (priority 10).`,
+        detail: `MX record already pointing to ${dedicatedMailHost} (priority 10).`,
       })
     } else {
-      await cfRequest(`/zones/${zone.id}/dns_records/${existingMx.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          type: "MX",
-          name: "@",
-          content: mailHost,
-          priority: 10,
-          proxied: false,
-          ttl: 1,
-          comment: "Managed by mailwart",
-        }),
-      })
+      await cfRequest(
+        `/zones/${zone.id}/dns_records/${existingMx.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            type: "MX",
+            name: "@",
+            content: dedicatedMailHost,
+            priority: 10,
+            proxied: false,
+            ttl: 1,
+            comment: "Managed by mailwart",
+          }),
+        },
+        token
+      )
       results.push({
         type: "MX",
         name: "@",
-        content: mailHost,
+        content: dedicatedMailHost,
         priority: 10,
         action: "updated",
         id: existingMx.id,
-        detail: `Updated MX target to ${mailHost} (priority 10, unproxied).`,
+        detail: `Updated MX target to ${dedicatedMailHost} (priority 10, unproxied).`,
       })
     }
   } else {
@@ -362,28 +564,28 @@ export async function provisionDomainDns(input: {
         body: JSON.stringify({
           type: "MX",
           name: "@",
-          content: mailHost,
+          content: dedicatedMailHost,
           priority: 10,
           proxied: false,
           ttl: 1,
           comment: "Managed by mailwart",
         }),
-      }
+      },
+      token
     )
     results.push({
       type: "MX",
       name: "@",
-      content: mailHost,
+      content: dedicatedMailHost,
       priority: 10,
       action: "created",
       id: createdMx.result.id,
-      detail: `Created MX pointing to ${mailHost}.`,
+      detail: `Created MX pointing to ${dedicatedMailHost}.`,
     })
   }
 
-  // 3. Provision SPF Record
-  // Target: v=spf1 mx a:mail.<domain> ~all
-  const targetSpf = `v=spf1 mx a:${mailHost} ~all`
+  // 3. Provision SPF Record: v=spf1 mx a:mail.<domain> ~all
+  const targetSpf = `v=spf1 mx a:${dedicatedMailHost} ~all`
   const existingSpf = existingRecords.find(
     (r) =>
       r.type === "TXT" &&
@@ -395,45 +597,51 @@ export async function provisionDomainDns(input: {
     const raw = existingSpf.content.trim()
     const lower = raw.toLowerCase()
     const hasMx = lower.includes("mx")
-    const hasMailHost = lower.includes(`a:${mailHost.toLowerCase()}`) || lower.includes(`ip4:${mailServerIp}`)
+    const hasMailHost = lower.includes(`a:${dedicatedMailHost}`) || lower.includes(`ip4:${mailServerIp}`)
 
-    if (hasMx && hasMailHost) {
+    if (hasMx && hasMailHost && !forceOverwrite) {
       results.push({
         type: "TXT",
         name: "@ (SPF)",
         content: raw,
         action: "exists",
         id: existingSpf.id,
-        detail: "SPF already authorizes MX and mail host delivery.",
+        detail: "SPF already authorizes MX and dedicated mail host.",
       })
     } else {
-      let updatedSpf = raw
-      const additions = `${hasMx ? "" : " mx"}${hasMailHost ? "" : ` a:${mailHost}`}`.trim()
-      if (/~\s*all\b/i.test(raw)) {
-        updatedSpf = raw.replace(/~\s*all\b/i, `${additions} ~all`)
-      } else if (/-\s*all\b/i.test(raw)) {
-        updatedSpf = raw.replace(/-\s*all\b/i, `${additions} -all`)
-      } else {
-        updatedSpf = `${raw} ${additions}`
+      let updatedSpf = targetSpf
+      if (!forceOverwrite) {
+        const additions = `${hasMx ? "" : " mx"}${hasMailHost ? "" : ` a:${dedicatedMailHost}`}`.trim()
+        if (/~\s*all\b/i.test(raw)) {
+          updatedSpf = raw.replace(/~\s*all\b/i, `${additions} ~all`)
+        } else if (/-\s*all\b/i.test(raw)) {
+          updatedSpf = raw.replace(/-\s*all\b/i, `${additions} -all`)
+        } else {
+          updatedSpf = `${raw} ${additions}`
+        }
       }
 
-      await cfRequest(`/zones/${zone.id}/dns_records/${existingSpf.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          type: "TXT",
-          name: "@",
-          content: updatedSpf,
-          ttl: 1,
-          comment: "Managed by mailwart",
-        }),
-      })
+      await cfRequest(
+        `/zones/${zone.id}/dns_records/${existingSpf.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            type: "TXT",
+            name: "@",
+            content: updatedSpf,
+            ttl: 1,
+            comment: "Managed by mailwart",
+          }),
+        },
+        token
+      )
       results.push({
         type: "TXT",
         name: "@ (SPF)",
         content: updatedSpf,
         action: "updated",
         id: existingSpf.id,
-        detail: `Updated SPF record to authorize mail host (${mailHost}).`,
+        detail: `Updated SPF record to authorize ${dedicatedMailHost}.`,
       })
     }
   } else {
@@ -448,7 +656,8 @@ export async function provisionDomainDns(input: {
           ttl: 1,
           comment: "Managed by mailwart",
         }),
-      }
+      },
+      token
     )
     results.push({
       type: "TXT",
@@ -456,13 +665,11 @@ export async function provisionDomainDns(input: {
       content: targetSpf,
       action: "created",
       id: createdSpf.result.id,
-      detail: `Created baseline SPF record with mx and a:${mailHost}.`,
+      detail: `Created baseline SPF record with mx and a:${dedicatedMailHost}.`,
     })
   }
 
   // 4. Provision Real Stalwart DKIM Record(s)
-  // Stalwart generates actual cryptographic keys (RSA & Ed25519) for each domain.
-  // We query Stalwart JMAP directly for this domain's active DKIM signatures.
   const stalwartSignatures = await getStalwartDkimSignaturesForDomain(domain).catch(() => [])
 
   if (stalwartSignatures.length > 0) {
@@ -484,19 +691,23 @@ export async function provisionDomainDns(input: {
             content: existingDkim.content,
             action: "exists",
             id: existingDkim.id,
-            detail: `Stalwart ${sig.keyType.toUpperCase()} DKIM record verified (${sig.selector}).`,
+            detail: `Stalwart ${sig.keyType.toUpperCase()} DKIM verified (${sig.selector}).`,
           })
         } else {
-          await cfRequest(`/zones/${zone.id}/dns_records/${existingDkim.id}`, {
-            method: "PUT",
-            body: JSON.stringify({
-              type: "TXT",
-              name: dkimRecordName,
-              content: sig.dnsValue,
-              ttl: 1,
-              comment: "Managed by mailwart (Stalwart signing key)",
-            }),
-          })
+          await cfRequest(
+            `/zones/${zone.id}/dns_records/${existingDkim.id}`,
+            {
+              method: "PUT",
+              body: JSON.stringify({
+                type: "TXT",
+                name: dkimRecordName,
+                content: sig.dnsValue,
+                ttl: 1,
+                comment: "Managed by mailwart (Stalwart signing key)",
+              }),
+            },
+            token
+          )
           results.push({
             type: "TXT",
             name: dkimRecordName,
@@ -518,7 +729,8 @@ export async function provisionDomainDns(input: {
               ttl: 1,
               comment: "Managed by mailwart (Stalwart signing key)",
             }),
-          }
+          },
+          token
         )
         results.push({
           type: "TXT",
@@ -544,16 +756,20 @@ export async function provisionDomainDns(input: {
 
     if (existingDkim) {
       if (forceOverwrite) {
-        await cfRequest(`/zones/${zone.id}/dns_records/${existingDkim.id}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            type: "TXT",
-            name: dkimRecordName,
-            content: dkimGen.dnsValue,
-            ttl: 1,
-            comment: "Managed by mailwart",
-          }),
-        })
+        await cfRequest(
+          `/zones/${zone.id}/dns_records/${existingDkim.id}`,
+          {
+            method: "PUT",
+            body: JSON.stringify({
+              type: "TXT",
+              name: dkimRecordName,
+              content: dkimGen.dnsValue,
+              ttl: 1,
+              comment: "Managed by mailwart",
+            }),
+          },
+          token
+        )
         results.push({
           type: "TXT",
           name: dkimRecordName,
@@ -584,7 +800,8 @@ export async function provisionDomainDns(input: {
             ttl: 1,
             comment: "Managed by mailwart",
           }),
-        }
+        },
+        token
       )
       results.push({
         type: "TXT",
@@ -597,8 +814,7 @@ export async function provisionDomainDns(input: {
     }
   }
 
-  // 5. Provision DMARC Record
-  // Target: _dmarc with v=DMARC1; p=quarantine; rua=mailto:dmarc@<domain>
+  // 5. Provision DMARC Record: _dmarc -> v=DMARC1; p=quarantine; rua=mailto:dmarc@<domain>
   const dmarcRecordName = "_dmarc"
   const existingDmarc = existingRecords.find(
     (r) =>
@@ -617,7 +833,7 @@ export async function provisionDomainDns(input: {
       content: existingDmarc.content,
       action: "exists",
       id: existingDmarc.id,
-      detail: `DMARC policy record already present (${existingDmarc.content.slice(0, 40)}...).`,
+      detail: `DMARC policy record already present (${existingDmarc.content.slice(0, 32)}...).`,
     })
   } else {
     const createdDmarc = await cfRequest<CloudflareDnsRecord>(
@@ -631,7 +847,8 @@ export async function provisionDomainDns(input: {
           ttl: 1,
           comment: "Managed by mailwart",
         }),
-      }
+      },
+      token
     )
     results.push({
       type: "TXT",
@@ -643,7 +860,7 @@ export async function provisionDomainDns(input: {
     })
   }
 
-  // 6. Provision Client Discovery CNAMEs (autoconfig and autodiscover)
+  // 6. Provision Client Discovery CNAMEs (autoconfig and autodiscover) -> mail.<domain>
   for (const cnameSub of ["autoconfig", "autodiscover"]) {
     const existingCname = existingRecords.find(
       (r) =>
@@ -654,36 +871,40 @@ export async function provisionDomainDns(input: {
 
     if (existingCname) {
       if (
-        existingCname.content.toLowerCase().replace(/\.$/, "") === mailHost.toLowerCase() &&
+        existingCname.content.toLowerCase().replace(/\.$/, "") === dedicatedMailHost &&
         !existingCname.proxied
       ) {
         results.push({
           type: "CNAME",
           name: cnameSub,
-          content: mailHost,
+          content: dedicatedMailHost,
           action: "exists",
           id: existingCname.id,
-          detail: `${cnameSub} CNAME already points to ${mailHost}.`,
+          detail: `${cnameSub} CNAME already points to ${dedicatedMailHost}.`,
         })
       } else {
-        await cfRequest(`/zones/${zone.id}/dns_records/${existingCname.id}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            type: "CNAME",
-            name: cnameSub,
-            content: mailHost,
-            proxied: false,
-            ttl: 1,
-            comment: "Managed by mailwart",
-          }),
-        })
+        await cfRequest(
+          `/zones/${zone.id}/dns_records/${existingCname.id}`,
+          {
+            method: "PUT",
+            body: JSON.stringify({
+              type: "CNAME",
+              name: cnameSub,
+              content: dedicatedMailHost,
+              proxied: false,
+              ttl: 1,
+              comment: "Managed by mailwart",
+            }),
+          },
+          token
+        )
         results.push({
           type: "CNAME",
           name: cnameSub,
-          content: mailHost,
+          content: dedicatedMailHost,
           action: "updated",
           id: existingCname.id,
-          detail: `Updated ${cnameSub} CNAME to ${mailHost} (unproxied).`,
+          detail: `Updated ${cnameSub} CNAME to ${dedicatedMailHost} (unproxied).`,
         })
       }
     } else {
@@ -694,20 +915,21 @@ export async function provisionDomainDns(input: {
           body: JSON.stringify({
             type: "CNAME",
             name: cnameSub,
-            content: mailHost,
+            content: dedicatedMailHost,
             proxied: false,
             ttl: 1,
             comment: "Managed by mailwart",
           }),
-        }
+        },
+        token
       )
       results.push({
         type: "CNAME",
         name: cnameSub,
-        content: mailHost,
+        content: dedicatedMailHost,
         action: "created",
         id: createdCname.result.id,
-        detail: `Created ${cnameSub} CNAME pointing to ${mailHost}.`,
+        detail: `Created ${cnameSub} CNAME pointing to ${dedicatedMailHost}.`,
       })
     }
   }

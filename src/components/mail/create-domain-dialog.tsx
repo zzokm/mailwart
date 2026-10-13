@@ -82,6 +82,13 @@ export function CreateDomainDialog() {
     (z) => !alreadyAdded.includes(z.name.toLowerCase())
   )
 
+  const zonesByAccount = unaddedZones.reduce<Record<string, CloudflareZone[]>>((acc, z) => {
+    const label = z.accountLabel || z.account?.name || "Cloudflare Account"
+    if (!acc[label]) acc[label] = []
+    acc[label].push(z)
+    return acc
+  }, {})
+
   const isSelectedFromCf = selectedSource !== "external"
   const matchingCfZone = zones.find(
     (z) => z.name.toLowerCase() === name.trim().toLowerCase()
@@ -148,19 +155,19 @@ export function CreateDomainDialog() {
                     <SelectValue placeholder="Select domain source..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {unaddedZones.length > 0 && (
-                      <SelectGroup>
+                    {Object.entries(zonesByAccount).map(([accLabel, accZones]) => (
+                      <SelectGroup key={accLabel}>
                         <SelectLabel className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
                           <Cloud className="size-3 text-amber-500" />
-                          Cloudflare account ({unaddedZones.length} available)
+                          {accLabel} ({accZones.length} available)
                         </SelectLabel>
-                        {unaddedZones.map((z) => (
+                        {accZones.map((z) => (
                           <SelectItem key={z.id} value={z.name}>
                             <span className="font-mono">{z.name}</span>
                           </SelectItem>
                         ))}
                       </SelectGroup>
-                    )}
+                    ))}
                     <SelectGroup>
                       <SelectLabel className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
                         <Globe className="size-3" />
@@ -181,7 +188,7 @@ export function CreateDomainDialog() {
                 {isSelectedFromCf && (
                   <Badge variant="outline" className="gap-1 border-amber-500/30 text-[11px] text-amber-600 dark:text-amber-400">
                     <Cloud className="size-3" />
-                    Cloudflare Zone
+                    {matchingCfZone?.accountLabel || "Cloudflare Zone"}
                   </Badge>
                 )}
               </div>
@@ -197,7 +204,7 @@ export function CreateDomainDialog() {
               />
               {isSelectedFromCf && (
                 <p className="text-[12px] text-muted-foreground">
-                  Selected directly from your connected Cloudflare account.
+                  Selected directly from pooled Cloudflare account ({matchingCfZone?.accountLabel || "Cloudflare"}).
                 </p>
               )}
             </div>
@@ -231,7 +238,7 @@ export function CreateDomainDialog() {
                       Auto-provision Cloudflare DNS records
                     </Label>
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      Automatically provisions dedicated mail host A (mail.&lt;domain&gt;), MX (mail.&lt;domain&gt;), SPF, real Stalwart DKIM, and DMARC records (DNS-only) in your Cloudflare zone.
+                      Provisions dedicated mail host A (mail.&lt;domain&gt;), MX (mail.&lt;domain&gt;), SPF, real Stalwart DKIM, and DMARC records (DNS-only) in your Cloudflare zone.
                     </p>
                   </div>
                 </div>

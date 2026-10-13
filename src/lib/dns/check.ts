@@ -389,9 +389,9 @@ export async function checkDomainDns(
   const hasAnyMissing = mx.length === 0 || apexTxt.length === 0 || dmarcTxt.length === 0
   if (hasAnyMissing) {
     try {
-      const zone = await findZoneForDomain(d)
-      if (zone) {
-        cfRecords = await listZoneDnsRecords(zone.id)
+      const found = await findZoneForDomain(d)
+      if (found) {
+        cfRecords = await listZoneDnsRecords(found.zone.id, found.account.apiToken)
       }
     } catch {
       // Cloudflare check is opportunistic

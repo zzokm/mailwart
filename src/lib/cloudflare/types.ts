@@ -9,6 +9,8 @@ export type CloudflareZone = {
   status: string
   account: CloudflareAccount
   nameServers?: string[]
+  accountConfigId?: string // Internal account configuration ID
+  accountLabel?: string // User-visible account or org name
 }
 
 export type CloudflareDnsRecord = {
@@ -27,7 +29,7 @@ export type CloudflareDnsRecord = {
   modified_on?: string
 }
 
-export type DnsProvisionAction = "created" | "updated" | "exists" | "failed"
+export type DnsProvisionAction = "created" | "updated" | "exists" | "deleted" | "failed"
 
 export type ProvisionedRecordResult = {
   type: "MX" | "TXT" | "A" | "CNAME"
@@ -46,19 +48,67 @@ export type CloudflareProvisionResult = {
   records: ProvisionedRecordResult[]
   success: boolean
   error?: string
+  conflictsDetected?: DetectedOlderRecord[]
+}
+
+export type DetectedOlderRecord = {
+  id: string
+  type: "MX" | "TXT" | "A" | "CNAME"
+  name: string
+  content: string
+  priority?: number
+  proxied?: boolean
+  providerDetected?: string // e.g. "Google Workspace", "Microsoft 365", "ProtonMail", "Zoho Mail", "Legacy Server"
+  category: "mx" | "spf" | "dkim" | "dmarc" | "mail_host"
+  reason: string
+}
+
+export type ZoneMailAudit = {
+  zoneId: string
+  zoneName: string
+  accountConfigId?: string
+  accountName?: string
+  olderRecords: DetectedOlderRecord[]
+  hasConflicts: boolean
+}
+
+export type CloudflareAccountConfig = {
+  id: string
+  accountName: string
+  accountId?: string
+  apiToken: string
+  lastVerifiedAt?: string
+  zonesCount?: number
+  status?: "active" | "error" | "invalid"
+  errorMessage?: string
+}
+
+export type CloudflareAccountSummary = {
+  id: string
+  accountName: string
+  accountId?: string
+  tokenMasked: string
+  lastVerifiedAt?: string
+  zonesCount: number
+  status: "active" | "error" | "invalid"
+  errorMessage?: string
+  isEnv?: boolean
 }
 
 export type CloudflareStatus = {
   configured: boolean
-  source: "env" | "settings" | "none"
+  source: "env" | "settings" | "both" | "none"
+  accounts: CloudflareAccountSummary[]
+  totalZonesCount: number
+  // Legacy compatibility fields if any legacy component looks for them
   tokenMasked?: string
   accountName?: string
-  accessibleZonesCount?: number
   lastVerifiedAt?: string
-  defaultMailHost: string
 }
 
 export type CloudflareSettings = {
+  accounts: CloudflareAccountConfig[]
+  // Legacy compatibility fields for migration
   apiToken?: string
   accountName?: string
   lastVerifiedAt?: string

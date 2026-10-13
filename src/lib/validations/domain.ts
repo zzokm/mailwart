@@ -61,3 +61,17 @@ export const saveCloudflareSettingsSchema = z.object({
   defaultMailHost: z.string().trim().optional(),
 })
 
+export const addCloudflareAccountSchema = z.object({
+  apiToken: z.string().trim().min(1, "Cloudflare API token is required"),
+  accountName: z.string().trim().optional(),
+  overwriteConflicts: z.boolean().optional().default(false),
+})
+
+export const auditCloudflareTokenSchema = z.object({
+  apiToken: z.string().trim().min(1, "Cloudflare API token is required"),
+})
+
+export const removeCloudflareAccountSchema = z.object({
+  accountId: z.string().trim().min(1, "Account ID is required"),
+})
+
