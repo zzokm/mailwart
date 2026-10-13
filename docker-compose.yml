@@ -16,7 +16,13 @@ services:
       dockerfile: Dockerfile
     image: email-manager:latest
     container_name: email-manager
-    restart: unless-stopped
+    restart: always
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/', (r) => {process.exit(r.statusCode < 500 ? 0 : 1)}).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     environment:
       STALWART_JMAP_URL: ${STALWART_JMAP_URL:-http://stalwart-mail:8080/jmap}
       STALWART_ADMIN_USER: ${STALWART_ADMIN_USER}
@@ -83,7 +89,14 @@ services:
       context: ./roundcube
       dockerfile: Dockerfile
     image: email-manager-roundcube:latest
-    restart: unless-stopped
+    container_name: email-manager-roundcube
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       ROUNDCUBEMAIL_DEFAULT_HOST: ssl://stalwart-mail
       ROUNDCUBEMAIL_DEFAULT_PORT: "993"
