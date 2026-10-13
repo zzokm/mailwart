@@ -103,10 +103,15 @@ export async function GET(req: Request) {
   // Action: Audit Logs inspection
   if (action === "audit-logs") {
     try {
-      const { getAuditLogsAction } = await import("@/lib/actions/mail")
-      const res = await getAuditLogsAction()
-      const events = res.ok ? res.data.events : []
-      return NextResponse.json({ action: "audit-logs", count: events.length, logs: events.slice(0, 30) })
+      const { readAuditEvents } = await import("@/lib/audit/store")
+      const res = await readAuditEvents({ limit: 50, allowSampleFallback: false })
+      return NextResponse.json({
+        action: "audit-logs",
+        count: res.events.length,
+        path: res.path,
+        fromSample: res.fromSample,
+        logs: res.events.slice(0, 30),
+      })
     } catch (err) {
       return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
     }
