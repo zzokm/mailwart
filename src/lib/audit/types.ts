@@ -34,6 +34,9 @@ export type AuditAction =
   | "deliverability.test_suite"
   | "deliverability.test_mailbox_created"
   | "deliverability.test_mailbox_cleaned"
+  | "user.create"
+  | "user.update"
+  | "user.destroy"
 
 export type AuditEvent = {
   id: string

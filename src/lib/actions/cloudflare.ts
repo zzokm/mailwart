@@ -244,6 +244,7 @@ export async function testCloudflareAccountAction(input: {
 }): Promise<
   ActionResult<{
     ok: boolean
+    status?: CloudflareStatus
     accountName: string
     zonesCount: number
     error?: string
@@ -251,6 +252,7 @@ export async function testCloudflareAccountAction(input: {
 > {
   const denied = await denyUnlessAuthed<{
     ok: boolean
+    status?: CloudflareStatus
     accountName: string
     zonesCount: number
   }>()
@@ -282,9 +284,11 @@ export async function testCloudflareAccountAction(input: {
     await saveCloudflareAccount(target)
     revalidatePath("/dashboard/settings")
 
+    const updatedStatus = await getCloudflareStatus()
     return ok(
       {
         ok: true,
+        status: updatedStatus,
         accountName: target.accountName,
         zonesCount: verified.accessibleZonesCount,
       },

@@ -9,10 +9,14 @@ export const SESSION_COOKIE_NAME = "em_session"
 /** Session TTL: 8 hours. */
 export const SESSION_TTL_SECONDS = 60 * 60 * 8
 
+export type UserRole = "admin" | "user"
+
 export type SessionData = {
-  role?: "admin"
-  /** APP_ADMIN_USER at login — used for audit attribution. */
+  userId?: string
+  role?: UserRole
+  /** Username at login — used for audit attribution and greeting. */
   username?: string
+  email?: string
   exp?: number
 }
 
@@ -37,7 +41,7 @@ export function getSessionOptions(): SessionOptions {
 }
 
 export function isSessionValid(session: SessionData): boolean {
-  if (session.role !== "admin") return false
+  if (session.role !== "admin" && session.role !== "user") return false
   if (typeof session.exp === "number" && Date.now() > session.exp) return false
   return true
 }

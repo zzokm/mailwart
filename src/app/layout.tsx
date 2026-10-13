@@ -46,7 +46,7 @@ export default function RootLayout({
         {/*
           THESIS: Zone-file precision — the mailbox directory reads like a named zone sheet, not a SaaS feature grid.
           OWN-WORLD: Cool paper by day, near-black ink by night; zone-blue accent, hairline record rules, mono for addresses only.
-          STORY: Operator sees live-shaped directory truth, then enters Secure Admin Login.
+          STORY: Operator sees live-shaped directory truth, then signs in.
           FORM: Zone-file precision sheet · brand wordmark in Bricolage Grotesque ExtraLight 200.
         */}
         <ThemeProvider

@@ -14,8 +14,8 @@ import {
 import { redirectIfAuthenticated } from "@/lib/actions/auth"
 
 export const metadata: Metadata = {
-  title: "Secure Admin Login",
-  description: "Operator sign-in for the mailwart directory console.",
+  title: "Sign in",
+  description: "Sign in to the mailwart directory console.",
 }
 
 export default async function LoginPage() {
@@ -44,17 +44,17 @@ export default async function LoginPage() {
         <div className="w-full max-w-md">
           <div className="mb-8">
             <h1 className="text-2xl font-semibold tracking-[-0.03em]">
-              Secure Admin Login
+              Sign in
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Operator access to the Stalwart directory console.
+              Sign in to the mailwart directory console.
             </p>
           </div>
           <Card className="border-border/80 bg-card/80 backdrop-blur-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-base font-medium">Sign in</CardTitle>
               <CardDescription>
-                Use app admin credentials, not a mailbox password.
+                Enter your account credentials to access your console.
               </CardDescription>
             </CardHeader>
             <CardContent>

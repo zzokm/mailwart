@@ -3034,7 +3034,7 @@ export async function getDeliveryLogsAction(): Promise<
   const adminUiUrl = getStalwartAdminUiUrl()
 
   if (src === "mock") {
-    const dbEvents = queryDeliveryLogs({ limit: 250 })
+    const dbEvents = await queryDeliveryLogs({ limit: 250 })
     return ok(
       {
         events: dbEvents,
@@ -3067,7 +3067,7 @@ export async function getDeliveryLogsAction(): Promise<
         : err instanceof Error
           ? err.message
           : "Delivery trace query failed."
-    const localEvents = queryDeliveryLogs({ limit: 250 })
+    const localEvents = await queryDeliveryLogs({ limit: 250 })
     return ok(
       {
         events: localEvents,

@@ -119,13 +119,13 @@ function parseLine(line: string): AuditEvent | null {
   }
 }
 
-import { insertAuditLog, queryAuditLogs, resolveDatabasePath } from "@/lib/db"
+import { insertAuditLog, queryAuditLogs } from "@/lib/db"
 
 export async function appendAuditEvent(
   input: AuditEventInput
 ): Promise<AuditEvent> {
-  // 1. Insert into persistent SQLite DB
-  const event = insertAuditLog(input)
+  // 1. Insert into persistent PostgreSQL DB
+  const event = await insertAuditLog(input)
 
   // 2. Also append to JSONL for dual-persistence / easy shell inspection
   try {
@@ -168,11 +168,11 @@ export async function readAuditEvents(
   options: ReadAuditOptions = {}
 ): Promise<{ events: AuditEvent[]; fromSample: boolean; path: string }> {
   const limit = Math.min(options.limit ?? 500, MAX_READ)
-  const dbPath = resolveDatabasePath()
+  const dbPath = "PostgreSQL (audit_logs)"
 
   try {
-    // 1. Try querying the persistent SQLite database
-    const dbEvents = queryAuditLogs({ limit })
+    // 1. Try querying the persistent PostgreSQL database
+    const dbEvents = await queryAuditLogs({ limit })
     if (dbEvents.length > 0) {
       return { events: dbEvents, fromSample: false, path: dbPath }
     }
@@ -189,9 +189,9 @@ export async function readAuditEvents(
         const parsed = parseLine(lines[i])
         if (parsed) {
           events.push(parsed)
-          // Backfill into SQLite DB
+          // Backfill into DB
           try {
-            insertAuditLog(parsed)
+            await insertAuditLog(parsed)
           } catch {
             // ignore backfill conflict
           }
@@ -229,5 +229,5 @@ export async function readAuditEvents(
 }
 
 export function getAuditLogPath(): string {
-  return resolveDatabasePath()
+  return "PostgreSQL: audit_logs"
 }

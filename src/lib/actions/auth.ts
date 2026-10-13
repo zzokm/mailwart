@@ -15,11 +15,16 @@ import {
   recordFailedLogin,
 } from "@/lib/auth/rate-limit"
 import {
-  createAdminSession,
+  createUserSession,
   destroySession,
   isAuthenticated,
   sessionActor,
 } from "@/lib/auth/session"
+import {
+  ensureAdminUser,
+  findUserByUsernameOrEmail,
+  verifyPassword,
+} from "@/lib/db/users"
 import { loginSchema } from "@/lib/validations/auth"
 import { zodIssuesMessage } from "@/lib/validations/common"
 
@@ -60,17 +65,63 @@ export async function loginAction(input: {
 
   const { username, password } = parsed.data
 
-  if (!verifyAppAdminCredentials(username, password)) {
+  // Ensure admin user exists in DB
+  await ensureAdminUser().catch((err) => {
+    console.error("[auth] failed to ensure admin user:", err)
+  })
+
+  // 1. Look up user in PostgreSQL by username or email
+  const dbUser = await findUserByUsernameOrEmail(username).catch(() => null)
+
+  let sessionUser: {
+    id: string
+    username: string
+    email: string
+    role: "admin" | "user"
+  } | null = null
+
+  if (dbUser && verifyPassword(password, dbUser.passwordHash, dbUser.salt)) {
+    sessionUser = {
+      id: dbUser.id,
+      username: dbUser.username,
+      email: dbUser.email,
+      role: dbUser.role === "admin" ? "admin" : "user",
+    }
+  }
+
+  // 2. Fallback check against environment admin credentials
+  if (!sessionUser) {
+    const adminUser = process.env.APP_ADMIN_USER?.trim() || "yehia"
+    if (
+      (username.toLowerCase() === adminUser.toLowerCase() ||
+        username.toLowerCase() === "yehia" ||
+        username.toLowerCase() === "admin") &&
+      verifyAppAdminCredentials(username, password)
+    ) {
+      // Re-seed admin user and authenticate
+      const admin = await ensureAdminUser()
+      if (admin) {
+        sessionUser = {
+          id: admin.id,
+          username: admin.username,
+          email: admin.email,
+          role: "admin",
+        }
+      }
+    }
+  }
+
+  if (!sessionUser) {
     recordFailedLogin(ip)
     return { ok: false, error: "Invalid username or password.", code: "auth" }
   }
 
   clearLoginFailures(ip)
-  await createAdminSession(username)
+  await createUserSession(sessionUser)
   await recordAudit({
-    actor: username,
+    actor: sessionUser.username,
     action: "login",
-    detail: "Dashboard session started",
+    detail: `Dashboard session started (${sessionUser.role})`,
   })
   return { ok: true }
 }

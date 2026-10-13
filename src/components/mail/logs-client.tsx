@@ -185,7 +185,7 @@ export function LogsClient({
         {deliveryRows.length === 0 ? (
           <EmptyState
             title="No delivery logs found"
-            description="Persistent SQLite database active. SMTP messages routed through Stalwart will appear here."
+            description="Persistent PostgreSQL database active. SMTP messages routed through Stalwart will appear here."
           />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border/70">
@@ -236,7 +236,7 @@ export function LogsClient({
 
       <TabsContent value="audit" className="space-y-4">
         <p className="text-xs text-muted-foreground">
-          Persistent SQLite database & JSONL audit stream ·{" "}
+          Persistent PostgreSQL database & JSONL audit stream ·{" "}
           <code className="font-mono text-[11px]">{audit.pathHint}</code>
         </p>
 

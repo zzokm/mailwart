@@ -21,11 +21,20 @@ export async function isAuthenticated(): Promise<boolean> {
   return isSessionValid(session)
 }
 
-/** Throws if there is no valid admin session. */
+/** Throws if there is no valid session. */
 export async function requireSession(): Promise<IronSession<SessionData>> {
   const session = await getSession()
   if (!isSessionValid(session)) {
     throw new AuthError("Unauthorized")
+  }
+  return session
+}
+
+/** Throws if the current session does not have the admin role. */
+export async function requireAdminSession(): Promise<IronSession<SessionData>> {
+  const session = await requireSession()
+  if (session.role !== "admin") {
+    throw new AuthError("Forbidden: Admin role required")
   }
   return session
 }
@@ -35,6 +44,21 @@ export class AuthError extends Error {
     super(message)
     this.name = "AuthError"
   }
+}
+
+export async function createUserSession(user: {
+  id: string
+  username: string
+  email: string
+  role: "admin" | "user"
+}): Promise<void> {
+  const session = await getSession()
+  session.userId = user.id
+  session.username = user.username
+  session.email = user.email
+  session.role = user.role
+  session.exp = Date.now() + SESSION_TTL_SECONDS * 1000
+  await session.save()
 }
 
 export async function createAdminSession(username?: string): Promise<void> {
@@ -53,7 +77,7 @@ export async function sessionActor(): Promise<string> {
   } catch {
     /* ignore */
   }
-  return process.env.APP_ADMIN_USER?.trim() || "admin"
+  return process.env.APP_ADMIN_USER?.trim() || "yehia"
 }
 
 export async function destroySession(): Promise<void> {

@@ -14,16 +14,21 @@ import { getCloudflareStatusAction } from "@/lib/actions/cloudflare"
 import { CloudflareSettingsClient } from "@/components/mail/cloudflare-settings-client"
 import { getLatestDeliverabilityReportAction } from "@/lib/actions/deliverability"
 import { SettingsDeliverabilitySection } from "@/components/mail/settings-deliverability-section"
+import { listUsersAction } from "@/lib/actions/users"
+import { getSession } from "@/lib/auth/session"
+import { UserManagementClient } from "@/components/mail/user-management-client"
 
 export const metadata: Metadata = { title: "Settings" }
 export const runtime = "nodejs"
 
 export default async function SettingsPage() {
-  const [result, copilotResult, cfResult, deliverabilityResult] = await Promise.all([
+  const [result, copilotResult, cfResult, deliverabilityResult, usersResult, session] = await Promise.all([
     getSettingsAction(),
     getCopilotSettingsAction(),
     getCloudflareStatusAction(),
     getLatestDeliverabilityReportAction(),
+    listUsersAction(),
+    getSession(),
   ])
 
   if (!result.ok) {
@@ -132,10 +137,19 @@ export default async function SettingsPage() {
         </section>
 
         <section className="rounded-xl border border-border/80 p-4 sm:p-5">
+          <UserManagementClient
+            initialUsers={usersResult.ok && usersResult.data ? usersResult.data : []}
+            currentUserId={session.userId}
+            currentUsername={session.username}
+            currentUserRole={session.role}
+          />
+        </section>
+
+        <section className="rounded-xl border border-border/80 p-4 sm:p-5">
           <h2 className="text-sm font-medium">Session</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Signed in with app admin credentials (`APP_ADMIN_*`). Session is an
-            HttpOnly iron-session cookie, so Stalwart secrets stay server-side.
+            Signed in as <span className="font-mono text-foreground font-semibold">{session.username || "yehia"}</span> with role <span className="font-semibold text-primary">{session.role || "admin"}</span>. Session is an
+            HttpOnly iron-session cookie, secured with PostgreSQL backing.
           </p>
           <form action={logoutAction} className="mt-3">
             <Button type="submit" size="sm" variant="outline">

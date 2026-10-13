@@ -58,7 +58,7 @@ function maskToken(token: string): string {
   return `${clean.slice(0, 4)}••••${clean.slice(-4)}`
 }
 
-export async function getCloudflareStatus(): Promise<CloudflareStatus> {
+export async function getCloudflareStatus(options?: { refreshZones?: boolean }): Promise<CloudflareStatus> {
   const accounts = await resolveAllCloudflareAccounts()
   if (accounts.length === 0) {
     return {
@@ -66,6 +66,31 @@ export async function getCloudflareStatus(): Promise<CloudflareStatus> {
       source: "none",
       accounts: [],
       totalZonesCount: 0,
+    }
+  }
+
+  // Auto-refresh zone counts if unpopulated or if refresh is requested
+  for (const a of accounts) {
+    if (a.zonesCount === undefined || a.zonesCount === 0 || options?.refreshZones) {
+      try {
+        const res = await cfRequest<CloudflareZone[]>(
+          "/zones?per_page=50",
+          { method: "GET" },
+          a.apiToken
+        )
+        const zones = res.result || []
+        a.zonesCount = zones.length
+        a.status = "active"
+        a.lastVerifiedAt = new Date().toISOString()
+        a.errorMessage = undefined
+        if ((!a.accountName || a.accountName === "Cloudflare Account") && zones[0]?.account?.name) {
+          a.accountName = zones[0].account.name
+        }
+        await saveCloudflareAccount(a).catch(() => {})
+      } catch (err) {
+        a.status = "error"
+        a.errorMessage = err instanceof Error ? err.message : String(err)
+      }
     }
   }
 
@@ -174,7 +199,7 @@ export async function verifyCloudflareToken(tokenOverride?: string): Promise<{
     }
 
     const zonesRes = await cfRequest<CloudflareZone[]>(
-      "/zones?per_page=50&status=active",
+      "/zones?per_page=50",
       { method: "GET" },
       tokenOverride
     )
@@ -271,7 +296,7 @@ export async function listCloudflareZones(): Promise<CloudflareZone[]> {
   for (const account of accounts) {
     try {
       const res = await cfRequest<CloudflareZone[]>(
-        "/zones?per_page=50&status=active",
+        "/zones?per_page=50",
         { method: "GET" },
         account.apiToken
       )

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import {
   AlertTriangle,
   CheckCircle2,
@@ -18,6 +18,7 @@ import {
 import {
   addCloudflareAccountAction,
   auditNewCloudflareTokenAction,
+  getCloudflareStatusAction,
   removeCloudflareAccountAction,
   testCloudflareAccountAction,
 } from "@/lib/actions/cloudflare"
@@ -67,6 +68,14 @@ export function CloudflareSettingsClient({
   const [pending, startTransition] = useTransition()
   const [testingId, setTestingId] = useState<string | null>(null)
   const [removingId, setRemovingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (status.accounts.length > 0 && status.totalZonesCount === 0) {
+      getCloudflareStatusAction().then((res) => {
+        if (res.ok) setStatus(res.data)
+      })
+    }
+  }, [status.accounts.length, status.totalZonesCount])
 
   function openAddDialog() {
     setTokenInput("")
@@ -157,6 +166,9 @@ export function CloudflareSettingsClient({
         return
       }
 
+      if (res.data.status) {
+        setStatus(res.data.status)
+      }
       toastActionResult(res, {
         success: `Connection verified for "${res.data.accountName}" (${res.data.zonesCount} active zones pooled).`,
       })

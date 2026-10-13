@@ -22,15 +22,18 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://mailwart:mailwart_secret@postgres:5432/mailwart}
       STALWART_JMAP_URL: ${STALWART_JMAP_URL:-http://stalwart-mail:8080/jmap}
       STALWART_ADMIN_USER: ${STALWART_ADMIN_USER}
       STALWART_ADMIN_PASSWORD: ${STALWART_ADMIN_PASSWORD}
       STALWART_ADMIN_UI_URL: ${STALWART_ADMIN_UI_URL:-https://mail.yehia.dev/admin}
       ROUNDCUBE_URL: ${ROUNDCUBE_URL:-https://email.yehia.dev/webmail/}
       WEBMAIL_SSO_SECRET: ${WEBMAIL_SSO_SECRET}
-      APP_ADMIN_USER: ${APP_ADMIN_USER:-admin}
+      APP_ADMIN_USER: ${APP_ADMIN_USER:-yehia}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET}
       DNS_EXPECTED_MX: ${DNS_EXPECTED_MX:-}
@@ -133,6 +136,25 @@ services:
       - dokploy-network
       - stalwart-net
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: mailwart-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mailwart}
+      POSTGRES_USER: ${POSTGRES_USER:-mailwart}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mailwart_secret}
+    volumes:
+      - mailwart_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-mailwart} -d $${POSTGRES_DB:-mailwart}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - default
+
 networks:
   dokploy-network:
     external: true
@@ -143,3 +165,4 @@ networks:
 volumes:
   roundcube_db:
   mailwart_audit:
+  mailwart_postgres:

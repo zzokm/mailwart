@@ -1,122 +1,237 @@
 import "server-only"
 
-import { existsSync, mkdirSync } from "node:fs"
+import { existsSync } from "node:fs"
 import path from "node:path"
-import { DatabaseSync } from "node:sqlite"
 import { randomUUID } from "node:crypto"
+import { Pool } from "pg"
 
 import type { AuditEvent, AuditEventInput } from "@/lib/audit/types"
 import type { DeliveryEvent, DeliveryStatus } from "@/lib/stalwart/types"
+import { ensureAdminUser } from "./users"
 
-let dbInstance: DatabaseSync | null = null
+let poolInstance: Pool | null = null
+let isInitialized = false
+let initPromise: Promise<void> | null = null
 
-export function resolveDatabasePath(): string {
-  const fromEnv = process.env.DATABASE_PATH?.trim()
-  if (fromEnv) {
-    return path.isAbsolute(fromEnv)
-      ? fromEnv
-      : path.join(/*turbopackIgnore: true*/ process.cwd(), fromEnv)
-  }
-
-  // Persistent docker volume mount in production
-  if (existsSync("/data")) {
-    return "/data/mailwart.db"
-  }
-
-  return path.join(/*turbopackIgnore: true*/ process.cwd(), "data", "mailwart.db")
+export function resolveDatabaseUrl(): string {
+  const fromEnv = process.env.DATABASE_URL?.trim()
+  if (fromEnv) return fromEnv
+  return "postgres://mailwart:mailwart_secret@postgres:5432/mailwart"
 }
 
-export function getDatabase(): DatabaseSync {
-  if (dbInstance) return dbInstance
+// In-memory fallbacks for offline testing / build environments without Postgres
+const memoryAuditLogs: AuditEvent[] = []
+const memoryDeliveryLogs: DeliveryEvent[] = []
 
-  const dbPath = resolveDatabasePath()
-  const dir = path.dirname(dbPath)
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true })
+export function getPool(): Pool | null {
+  if (poolInstance) return poolInstance
+
+  const connectionString = resolveDatabaseUrl()
+  try {
+    const pool = new Pool({
+      connectionString,
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 3000,
+    })
+
+    pool.on("error", (err) => {
+      console.warn("[postgres] unexpected idle client error:", err.message)
+    })
+
+    poolInstance = pool
+    return pool
+  } catch (err) {
+    console.warn("[postgres] failed to create pool:", err)
+    return null
   }
+}
 
-  const db = new DatabaseSync(dbPath)
+/**
+ * Initializes PostgreSQL schema, seeds admin user yehia, and migrates legacy SQLite records.
+ */
+export async function initDatabase(): Promise<void> {
+  if (isInitialized) return
+  if (initPromise) return initPromise
 
-  // Configure pragmas for reliability and high concurrency
-  db.exec("PRAGMA journal_mode = WAL;")
-  db.exec("PRAGMA synchronous = NORMAL;")
-  db.exec("PRAGMA foreign_keys = ON;")
+  initPromise = (async () => {
+    const pool = getPool()
+    if (!pool) return
 
-  // Schema creation
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id TEXT PRIMARY KEY,
-      timestamp TEXT NOT NULL,
-      actor TEXT NOT NULL,
-      action TEXT NOT NULL,
-      target TEXT,
-      detail TEXT,
-      meta TEXT,
-      created_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
-    CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+    try {
+      // 1. Create tables
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id VARCHAR(64) PRIMARY KEY,
+          username VARCHAR(64) UNIQUE NOT NULL,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          salt TEXT NOT NULL,
+          role VARCHAR(32) NOT NULL DEFAULT 'user',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_users_username ON users(LOWER(username));
+        CREATE INDEX IF NOT EXISTS idx_users_email ON users(LOWER(email));
 
-    CREATE TABLE IF NOT EXISTS delivery_logs (
-      id TEXT PRIMARY KEY,
-      timestamp TEXT NOT NULL,
-      sender TEXT NOT NULL,
-      recipient TEXT NOT NULL,
-      status TEXT NOT NULL,
-      size_bytes INTEGER,
-      detail TEXT,
-      queue_id TEXT,
-      created_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_delivery_logs_timestamp ON delivery_logs(timestamp DESC);
-    CREATE INDEX IF NOT EXISTS idx_delivery_logs_sender ON delivery_logs(sender);
-    CREATE INDEX IF NOT EXISTS idx_delivery_logs_recipient ON delivery_logs(recipient);
-    CREATE INDEX IF NOT EXISTS idx_delivery_logs_status ON delivery_logs(status);
+        CREATE TABLE IF NOT EXISTS audit_logs (
+          id VARCHAR(64) PRIMARY KEY,
+          timestamp TIMESTAMPTZ NOT NULL,
+          actor VARCHAR(64) NOT NULL,
+          action VARCHAR(64) NOT NULL,
+          target TEXT,
+          detail TEXT,
+          meta JSONB,
+          created_at BIGINT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
 
-    CREATE TABLE IF NOT EXISTS system_logs (
-      id TEXT PRIMARY KEY,
-      timestamp TEXT NOT NULL,
-      level TEXT NOT NULL,
-      subsystem TEXT NOT NULL,
-      message TEXT NOT NULL,
-      details TEXT,
-      created_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_system_logs_timestamp ON system_logs(timestamp DESC);
-  `)
+        CREATE TABLE IF NOT EXISTS delivery_logs (
+          id VARCHAR(64) PRIMARY KEY,
+          timestamp TIMESTAMPTZ NOT NULL,
+          sender VARCHAR(255) NOT NULL,
+          recipient VARCHAR(255) NOT NULL,
+          status VARCHAR(64) NOT NULL,
+          size_bytes BIGINT,
+          detail TEXT,
+          queue_id VARCHAR(128),
+          created_at BIGINT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_delivery_logs_timestamp ON delivery_logs(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_delivery_logs_sender ON delivery_logs(sender);
+        CREATE INDEX IF NOT EXISTS idx_delivery_logs_recipient ON delivery_logs(recipient);
+        CREATE INDEX IF NOT EXISTS idx_delivery_logs_status ON delivery_logs(status);
 
-  dbInstance = db
-  return db
+        CREATE TABLE IF NOT EXISTS system_logs (
+          id VARCHAR(64) PRIMARY KEY,
+          timestamp TIMESTAMPTZ NOT NULL,
+          level VARCHAR(16) NOT NULL,
+          subsystem VARCHAR(64) NOT NULL,
+          message TEXT NOT NULL,
+          details TEXT,
+          created_at BIGINT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_system_logs_timestamp ON system_logs(timestamp DESC);
+      `)
+
+      // 2. Seed primary admin account yehia
+      await ensureAdminUser()
+
+      // 3. Migrate from SQLite if existing database file is found
+      await migrateFromSqlite(pool)
+
+      isInitialized = true
+    } catch (err) {
+      console.warn("[postgres] initDatabase warning (PostgreSQL offline or starting):", (err as Error).message)
+    }
+  })()
+
+  return initPromise
+}
+
+async function migrateFromSqlite(pool: Pool): Promise<void> {
+  const possiblePaths = [
+    "/data/mailwart.db",
+    path.join(/*turbopackIgnore: true*/ process.cwd(), "data", "mailwart.db"),
+  ]
+
+  const sqlitePath = possiblePaths.find((p) => existsSync(p))
+  if (!sqlitePath) return
+
+  try {
+    // Dynamic import to avoid hard dependency on node:sqlite
+    const sqliteMod = await import("node:sqlite")
+    const sqlite = new sqliteMod.DatabaseSync(sqlitePath)
+
+    // Migrate audit_logs
+    try {
+      const stmt = sqlite.prepare("SELECT * FROM audit_logs")
+      const rows = stmt.all() as Array<{
+        id: string
+        timestamp: string
+        actor: string
+        action: string
+        target: string | null
+        detail: string | null
+        meta: string | null
+        created_at: number
+      }>
+      for (const r of rows) {
+        await pool.query(
+          `INSERT INTO audit_logs (id, timestamp, actor, action, target, detail, meta, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           ON CONFLICT (id) DO NOTHING`,
+          [
+            r.id,
+            r.timestamp,
+            r.actor,
+            r.action,
+            r.target,
+            r.detail,
+            r.meta ? JSON.parse(r.meta) : null,
+            r.created_at,
+          ]
+        )
+      }
+    } catch {
+      // Table may not exist in SQLite
+    }
+
+    // Migrate delivery_logs
+    try {
+      const stmt = sqlite.prepare("SELECT * FROM delivery_logs")
+      const rows = stmt.all() as Array<{
+        id: string
+        timestamp: string
+        sender: string
+        recipient: string
+        status: string
+        size_bytes: number | null
+        detail: string | null
+        queue_id: string | null
+        created_at: number
+      }>
+      for (const r of rows) {
+        await pool.query(
+          `INSERT INTO delivery_logs (id, timestamp, sender, recipient, status, size_bytes, detail, queue_id, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (id) DO NOTHING`,
+          [
+            r.id,
+            r.timestamp,
+            r.sender,
+            r.recipient,
+            r.status,
+            r.size_bytes,
+            r.detail,
+            r.queue_id,
+            r.created_at,
+          ]
+        )
+      }
+    } catch {
+      // Table may not exist in SQLite
+    }
+
+    console.log(`[migration] successfully migrated existing SQLite data from ${sqlitePath} to PostgreSQL.`)
+  } catch (err) {
+    console.warn("[migration] SQLite to PostgreSQL migration notice:", err)
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Audit Log Operations
 // ---------------------------------------------------------------------------
 
-export function insertAuditLog(input: AuditEventInput): AuditEvent {
-  const db = getDatabase()
+export async function insertAuditLog(input: AuditEventInput): Promise<AuditEvent> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
   const id = input.id ?? `aud-${Date.now()}-${randomUUID().slice(0, 8)}`
   const timestamp = input.at ?? new Date().toISOString()
-  const metaJson = input.meta ? JSON.stringify(input.meta) : null
   const now = Date.now()
 
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO audit_logs (id, timestamp, actor, action, target, detail, meta, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `)
-
-  stmt.run(
-    id,
-    timestamp,
-    input.actor,
-    input.action,
-    input.target ?? null,
-    input.detail ?? null,
-    metaJson,
-    now
-  )
-
-  return {
+  const event: AuditEvent = {
     id,
     at: timestamp,
     actor: input.actor,
@@ -125,76 +240,112 @@ export function insertAuditLog(input: AuditEventInput): AuditEvent {
     detail: input.detail,
     meta: input.meta,
   }
+
+  if (pool) {
+    try {
+      await pool.query(
+        `INSERT INTO audit_logs (id, timestamp, actor, action, target, detail, meta, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (id) DO UPDATE
+         SET actor = EXCLUDED.actor, action = EXCLUDED.action, target = EXCLUDED.target, detail = EXCLUDED.detail, meta = EXCLUDED.meta`,
+        [
+          id,
+          timestamp,
+          input.actor,
+          input.action,
+          input.target ?? null,
+          input.detail ?? null,
+          input.meta ? JSON.stringify(input.meta) : null,
+          now,
+        ]
+      )
+      return event
+    } catch (err) {
+      console.warn("[postgres] insertAuditLog failed, using memory fallback:", (err as Error).message)
+    }
+  }
+
+  memoryAuditLogs.unshift(event)
+  if (memoryAuditLogs.length > 500) memoryAuditLogs.pop()
+  return event
 }
 
-export function queryAuditLogs(options?: {
+export async function queryAuditLogs(options?: {
   limit?: number
   query?: string
-}): AuditEvent[] {
-  const db = getDatabase()
+}): Promise<AuditEvent[]> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
   const limit = Math.min(Math.max(options?.limit ?? 500, 1), 2000)
   const q = options?.query?.trim().toLowerCase()
 
-  if (q) {
-    const stmt = db.prepare(`
-      SELECT id, timestamp, actor, action, target, detail, meta
-      FROM audit_logs
-      WHERE LOWER(actor) LIKE ? OR LOWER(action) LIKE ? OR LOWER(target) LIKE ? OR LOWER(detail) LIKE ?
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `)
-    const pattern = `%${q}%`
-    const rows = stmt.all(pattern, pattern, pattern, pattern, limit) as Array<{
-      id: string
-      timestamp: string
-      actor: string
-      action: string
-      target: string | null
-      detail: string | null
-      meta: string | null
-    }>
-    return rows.map(mapAuditRow)
+  if (pool) {
+    try {
+      if (q) {
+        const pattern = `%${q}%`
+        const res = await pool.query(
+          `SELECT id, timestamp, actor, action, target, detail, meta
+           FROM audit_logs
+           WHERE LOWER(actor) LIKE $1 OR LOWER(action) LIKE $1 OR LOWER(COALESCE(target, '')) LIKE $1 OR LOWER(COALESCE(detail, '')) LIKE $1
+           ORDER BY timestamp DESC
+           LIMIT $2`,
+          [pattern, limit]
+        )
+        return res.rows.map(mapAuditRow)
+      }
+
+      const res = await pool.query(
+        `SELECT id, timestamp, actor, action, target, detail, meta
+         FROM audit_logs
+         ORDER BY timestamp DESC
+         LIMIT $1`,
+        [limit]
+      )
+      return res.rows.map(mapAuditRow)
+    } catch (err) {
+      console.warn("[postgres] queryAuditLogs failed, using memory fallback:", (err as Error).message)
+    }
   }
 
-  const stmt = db.prepare(`
-    SELECT id, timestamp, actor, action, target, detail, meta
-    FROM audit_logs
-    ORDER BY timestamp DESC
-    LIMIT ?
-  `)
-  const rows = stmt.all(limit) as Array<{
-    id: string
-    timestamp: string
-    actor: string
-    action: string
-    target: string | null
-    detail: string | null
-    meta: string | null
-  }>
-  return rows.map(mapAuditRow)
+  let list = memoryAuditLogs
+  if (q) {
+    list = list.filter(
+      (e) =>
+        e.actor.toLowerCase().includes(q) ||
+        e.action.toLowerCase().includes(q) ||
+        e.target?.toLowerCase().includes(q) ||
+        e.detail?.toLowerCase().includes(q)
+    )
+  }
+  return list.slice(0, limit)
 }
 
 function mapAuditRow(row: {
   id: string
-  timestamp: string
+  timestamp: string | Date
   actor: string
   action: string
   target: string | null
   detail: string | null
-  meta: string | null
+  meta: unknown
 }): AuditEvent {
+  const at = row.timestamp instanceof Date ? row.timestamp.toISOString() : String(row.timestamp)
   let meta: Record<string, string | number | boolean | null> | undefined
   if (row.meta) {
-    try {
-      meta = JSON.parse(row.meta)
-    } catch {
-      // ignore malformed meta
+    if (typeof row.meta === "object") {
+      meta = row.meta as Record<string, string | number | boolean | null>
+    } else {
+      try {
+        meta = JSON.parse(String(row.meta))
+      } catch {
+        // ignore
+      }
     }
   }
 
   return {
     id: row.id,
-    at: row.timestamp,
+    at,
     actor: row.actor,
     action: row.action as AuditEvent["action"],
     target: row.target ?? undefined,
@@ -207,31 +358,15 @@ function mapAuditRow(row: {
 // Delivery Log Operations
 // ---------------------------------------------------------------------------
 
-export function insertDeliveryLog(
+export async function insertDeliveryLog(
   input: Omit<DeliveryEvent, "id"> & { id?: string }
-): DeliveryEvent {
-  const db = getDatabase()
+): Promise<DeliveryEvent> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
   const id = input.id ?? `del-${Date.now()}-${randomUUID().slice(0, 8)}`
   const now = Date.now()
 
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO delivery_logs (id, timestamp, sender, recipient, status, size_bytes, detail, queue_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `)
-
-  stmt.run(
-    id,
-    input.timestamp,
-    input.sender,
-    input.recipient,
-    input.status,
-    input.sizeBytes ?? null,
-    input.detail ?? null,
-    input.queueId ?? null,
-    now
-  )
-
-  return {
+  const event: DeliveryEvent = {
     id,
     timestamp: input.timestamp,
     sender: input.sender,
@@ -241,119 +376,132 @@ export function insertDeliveryLog(
     detail: input.detail,
     queueId: input.queueId,
   }
+
+  if (pool) {
+    try {
+      await pool.query(
+        `INSERT INTO delivery_logs (id, timestamp, sender, recipient, status, size_bytes, detail, queue_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (id) DO UPDATE
+         SET status = EXCLUDED.status, detail = EXCLUDED.detail, queue_id = EXCLUDED.queue_id`,
+        [
+          id,
+          input.timestamp,
+          input.sender,
+          input.recipient,
+          input.status,
+          input.sizeBytes ?? null,
+          input.detail ?? null,
+          input.queueId ?? null,
+          now,
+        ]
+      )
+      return event
+    } catch (err) {
+      console.warn("[postgres] insertDeliveryLog failed, using memory fallback:", (err as Error).message)
+    }
+  }
+
+  memoryDeliveryLogs.unshift(event)
+  if (memoryDeliveryLogs.length > 500) memoryDeliveryLogs.pop()
+  return event
 }
 
-export function queryDeliveryLogs(options?: {
+export async function queryDeliveryLogs(options?: {
   limit?: number
   query?: string
   status?: string
-}): DeliveryEvent[] {
-  const db = getDatabase()
+}): Promise<DeliveryEvent[]> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
   const limit = Math.min(Math.max(options?.limit ?? 500, 1), 2000)
   const q = options?.query?.trim().toLowerCase()
   const status = options?.status && options.status !== "all" ? options.status : null
 
-  if (q && status) {
-    const stmt = db.prepare(`
-      SELECT id, timestamp, sender, recipient, status, size_bytes, detail, queue_id
-      FROM delivery_logs
-      WHERE status = ? AND (LOWER(sender) LIKE ? OR LOWER(recipient) LIKE ? OR LOWER(detail) LIKE ?)
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `)
-    const pattern = `%${q}%`
-    const rows = stmt.all(status, pattern, pattern, pattern, limit) as Array<{
-      id: string
-      timestamp: string
-      sender: string
-      recipient: string
-      status: string
-      size_bytes: number | null
-      detail: string | null
-      queue_id: string | null
-    }>
-    return rows.map(mapDeliveryRow)
+  if (pool) {
+    try {
+      if (q && status) {
+        const pattern = `%${q}%`
+        const res = await pool.query(
+          `SELECT id, timestamp, sender, recipient, status, size_bytes, detail, queue_id
+           FROM delivery_logs
+           WHERE status = $1 AND (LOWER(sender) LIKE $2 OR LOWER(recipient) LIKE $2 OR LOWER(COALESCE(detail, '')) LIKE $2)
+           ORDER BY timestamp DESC
+           LIMIT $3`,
+          [status, pattern, limit]
+        )
+        return res.rows.map(mapDeliveryRow)
+      }
+
+      if (q) {
+        const pattern = `%${q}%`
+        const res = await pool.query(
+          `SELECT id, timestamp, sender, recipient, status, size_bytes, detail, queue_id
+           FROM delivery_logs
+           WHERE LOWER(sender) LIKE $1 OR LOWER(recipient) LIKE $1 OR LOWER(COALESCE(detail, '')) LIKE $1
+           ORDER BY timestamp DESC
+           LIMIT $2`,
+          [pattern, limit]
+        )
+        return res.rows.map(mapDeliveryRow)
+      }
+
+      if (status) {
+        const res = await pool.query(
+          `SELECT id, timestamp, sender, recipient, status, size_bytes, detail, queue_id
+           FROM delivery_logs
+           WHERE status = $1
+           ORDER BY timestamp DESC
+           LIMIT $2`,
+          [status, limit]
+        )
+        return res.rows.map(mapDeliveryRow)
+      }
+
+      const res = await pool.query(
+        `SELECT id, timestamp, sender, recipient, status, size_bytes, detail, queue_id
+         FROM delivery_logs
+         ORDER BY timestamp DESC
+         LIMIT $1`,
+        [limit]
+      )
+      return res.rows.map(mapDeliveryRow)
+    } catch (err) {
+      console.warn("[postgres] queryDeliveryLogs failed, using memory fallback:", (err as Error).message)
+    }
   }
 
+  let list = memoryDeliveryLogs
+  if (status) list = list.filter((e) => e.status === status)
   if (q) {
-    const stmt = db.prepare(`
-      SELECT id, timestamp, sender, recipient, status, size_bytes, detail, queue_id
-      FROM delivery_logs
-      WHERE LOWER(sender) LIKE ? OR LOWER(recipient) LIKE ? OR LOWER(detail) LIKE ?
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `)
-    const pattern = `%${q}%`
-    const rows = stmt.all(pattern, pattern, pattern, limit) as Array<{
-      id: string
-      timestamp: string
-      sender: string
-      recipient: string
-      status: string
-      size_bytes: number | null
-      detail: string | null
-      queue_id: string | null
-    }>
-    return rows.map(mapDeliveryRow)
+    list = list.filter(
+      (e) =>
+        e.sender.toLowerCase().includes(q) ||
+        e.recipient.toLowerCase().includes(q) ||
+        e.detail?.toLowerCase().includes(q)
+    )
   }
-
-  if (status) {
-    const stmt = db.prepare(`
-      SELECT id, timestamp, sender, recipient, status, size_bytes, detail, queue_id
-      FROM delivery_logs
-      WHERE status = ?
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `)
-    const rows = stmt.all(status, limit) as Array<{
-      id: string
-      timestamp: string
-      sender: string
-      recipient: string
-      status: string
-      size_bytes: number | null
-      detail: string | null
-      queue_id: string | null
-    }>
-    return rows.map(mapDeliveryRow)
-  }
-
-  const stmt = db.prepare(`
-    SELECT id, timestamp, sender, recipient, status, size_bytes, detail, queue_id
-    FROM delivery_logs
-    ORDER BY timestamp DESC
-    LIMIT ?
-  `)
-  const rows = stmt.all(limit) as Array<{
-    id: string
-    timestamp: string
-    sender: string
-    recipient: string
-    status: string
-    size_bytes: number | null
-    detail: string | null
-    queue_id: string | null
-  }>
-  return rows.map(mapDeliveryRow)
+  return list.slice(0, limit)
 }
 
 function mapDeliveryRow(row: {
   id: string
-  timestamp: string
+  timestamp: string | Date
   sender: string
   recipient: string
   status: string
-  size_bytes: number | null
+  size_bytes: string | number | null
   detail: string | null
   queue_id: string | null
 }): DeliveryEvent {
+  const at = row.timestamp instanceof Date ? row.timestamp.toISOString() : String(row.timestamp)
   return {
     id: row.id,
-    timestamp: row.timestamp,
+    timestamp: at,
     sender: row.sender,
     recipient: row.recipient,
     status: row.status as DeliveryStatus,
-    sizeBytes: row.size_bytes ?? null,
+    sizeBytes: row.size_bytes != null ? Number(row.size_bytes) : null,
     detail: row.detail ?? undefined,
     queueId: row.queue_id ?? undefined,
   }
@@ -363,30 +511,32 @@ function mapDeliveryRow(row: {
 // System Log Operations
 // ---------------------------------------------------------------------------
 
-export function insertSystemLog(
+export async function insertSystemLog(
   level: "info" | "warn" | "error",
   subsystem: string,
   message: string,
   details?: unknown
-): void {
-  try {
-    const db = getDatabase()
-    const id = `sys-${Date.now()}-${randomUUID().slice(0, 8)}`
-    const timestamp = new Date().toISOString()
-    const now = Date.now()
-    const detailsStr = details
-      ? typeof details === "string"
-        ? details
-        : JSON.stringify(details)
-      : null
+): Promise<void> {
+  const pool = getPool()
+  const id = `sys-${Date.now()}-${randomUUID().slice(0, 8)}`
+  const timestamp = new Date().toISOString()
+  const now = Date.now()
+  const detailsStr = details
+    ? typeof details === "string"
+      ? details
+      : JSON.stringify(details)
+    : null
 
-    const stmt = db.prepare(`
-      INSERT INTO system_logs (id, timestamp, level, subsystem, message, details, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `)
-
-    stmt.run(id, timestamp, level, subsystem, message, detailsStr, now)
-  } catch (err) {
-    console.error("[system_log] failed to record log:", err)
+  if (pool) {
+    try {
+      await pool.query(
+        `INSERT INTO system_logs (id, timestamp, level, subsystem, message, details, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [id, timestamp, level, subsystem, message, detailsStr, now]
+      )
+      return
+    } catch {
+      // ignore
+    }
   }
 }

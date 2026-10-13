@@ -105,7 +105,7 @@ export function LandingPage() {
               render={<Link href="/login" />}
             >
               <ShieldCheck data-icon="inline-start" strokeWidth={1.5} />
-              Secure Admin Login
+              Sign in
             </Button>
           </div>
         </div>
@@ -134,7 +134,7 @@ export function LandingPage() {
                   render={<Link href="/login" />}
                 >
                   <ShieldCheck data-icon="inline-start" strokeWidth={1.5} />
-                  Secure Admin Login
+                  Sign in
                 </Button>
               </div>
             </motion.div>
@@ -263,9 +263,9 @@ export function LandingPage() {
               The console is private by default.
             </h2>
             <p className="mx-auto mt-4 max-w-[52ch] text-sm leading-relaxed text-muted-foreground sm:text-base">
-              There is no public sign-up and no tenant directory. Operator
-              credentials are configured at deploy time, and the session is an
-              HttpOnly cookie scoped to this instance.
+              There is no public sign-up. Console accounts are provisioned by
+              administrators with role-based access control, secured by
+              PostgreSQL and HttpOnly session cookies.
             </p>
             <div className="mt-8">
               <Button
@@ -274,7 +274,7 @@ export function LandingPage() {
                 render={<Link href="/login" />}
               >
                 <ShieldCheck data-icon="inline-start" strokeWidth={1.5} />
-                Secure Admin Login
+                Sign in
               </Button>
             </div>
           </div>

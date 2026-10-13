@@ -205,7 +205,7 @@ export function DeliverabilityClient({
           </span>
           <span className="flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-sky-500" />
-            Action events are permanently indexed in the SQLite Audit Log.
+            Action events are permanently indexed in the PostgreSQL Audit Log.
           </span>
           <span className="flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-purple-500" />

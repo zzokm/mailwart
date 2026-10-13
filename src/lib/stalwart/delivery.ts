@@ -237,7 +237,7 @@ export async function queryDeliveryTracesLive(limit = 200): Promise<{
         const id = asString(item.id) ?? ids[i] ?? `trace-${i}`
         const mapped = mapTraceToDelivery(id, item)
         try {
-          insertDeliveryLog(mapped)
+          await insertDeliveryLog(mapped)
         } catch {
           // ignore duplicate insert
         }
@@ -284,7 +284,7 @@ export async function queryDeliveryTracesLive(limit = 200): Promise<{
                       ? "queued"
                       : "delivered"
               try {
-                insertDeliveryLog({
+                await insertDeliveryLog({
                   id: String(item.id ?? `log-${Date.now()}`),
                   timestamp: String(item.timestamp ?? new Date().toISOString()),
                   sender: from || "mailer-daemon",
@@ -305,13 +305,13 @@ export async function queryDeliveryTracesLive(limit = 200): Promise<{
     }
   }
 
-  // 2. Query persistent delivery logs from the SQLite database
-  const dbEvents = queryDeliveryLogs({ limit: capped })
+  // 2. Query persistent delivery logs from the PostgreSQL database
+  const dbEvents = await queryDeliveryLogs({ limit: capped })
 
   if (dbEvents.length > 0) {
     return {
       events: dbEvents,
-      note: "Showing real delivery records from the persistent database.",
+      note: "Showing real delivery records from the persistent PostgreSQL database.",
     }
   }
 

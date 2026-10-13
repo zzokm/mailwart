@@ -55,11 +55,11 @@ export function LoginForm() {
           name="username"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Username</FormLabel>
+              <FormLabel>Username or Email</FormLabel>
               <FormControl>
                 <Input
                   autoComplete="username"
-                  placeholder="admin"
+                  placeholder="yehia or user@domain.com"
                   disabled={pending}
                   {...field}
                 />
@@ -96,7 +96,7 @@ export function LoginForm() {
           Sign in
         </Button>
         <p className="text-center text-xs text-muted-foreground">
-          App credentials are separate from Stalwart admin.{" "}
+          Use your mailwart console account credentials.{" "}
           <Link
             href="/"
             className="text-foreground/80 underline-offset-4 hover:underline"
