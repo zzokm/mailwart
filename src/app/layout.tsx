@@ -1,11 +1,11 @@
 import type { Metadata } from "next"
-import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google"
+import { Bricolage_Grotesque, Plus_Jakarta_Sans, Geist_Mono } from "next/font/google"
 import { Toaster } from "@/components/ui/sonner"
 import { ThemeProvider } from "@/components/layout/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "./globals.css"
 
-const geistSans = Geist({
+const plusJakartaSans = Plus_Jakarta_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
 })
@@ -40,7 +40,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} h-dvh max-h-dvh overflow-hidden antialiased`}
+      className={`${plusJakartaSans.variable} ${geistMono.variable} ${bricolage.variable} h-dvh max-h-dvh overflow-hidden antialiased`}
     >
       <body className="flex h-dvh max-h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
         {/*

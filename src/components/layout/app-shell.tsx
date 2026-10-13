@@ -37,12 +37,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  SidebarRail,
-  SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { Separator } from "@/components/ui/separator"
 import { HealthPill } from "@/components/layout/health-pill"
+import { cn } from "@/lib/utils"
 import type { HealthStatus } from "@/lib/stalwart/types"
 
 const NAV: Array<{
@@ -75,24 +73,20 @@ export function AppShell({
   return (
     <CopilotProvider>
       <SidebarProvider className="h-dvh max-h-dvh min-h-0 w-full overflow-hidden">
-        <Sidebar collapsible="icon" variant="inset">
-          <SidebarHeader className="gap-3 px-3 py-3">
+        <Sidebar collapsible="icon" variant="inset" className="border-none outline-none ring-0 shadow-none bg-sidebar text-sidebar-foreground">
+          <SidebarHeader className="p-2 group-data-[collapsible=icon]:p-2">
             <Link
               href="/dashboard"
-              className="flex items-center gap-2.5 rounded-lg px-1 py-0.5 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+              className="flex h-9 items-center gap-2.5 rounded-lg px-2 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             >
-              <BrandGlyph className="border-sidebar-border bg-sidebar-accent" />
+              <BrandGlyph className="size-7 border-sidebar-border bg-sidebar-accent" />
               <div className="min-w-0 group-data-[collapsible=icon]:hidden">
                 <div className="truncate font-brand text-base font-[200] lowercase leading-tight tracking-[-0.015em] text-sidebar-foreground">
                   mailwart
                 </div>
-                <div className="truncate text-[11px] text-muted-foreground">
-                  directory ops
-                </div>
               </div>
             </Link>
           </SidebarHeader>
-          <SidebarSeparator />
           <SidebarContent>
             <SidebarGroup>
               <SidebarGroupLabel>Directory</SidebarGroupLabel>
@@ -120,7 +114,41 @@ export function AppShell({
               </SidebarGroupContent>
             </SidebarGroup>
           </SidebarContent>
-          <SidebarFooter className="gap-2 px-2 pb-3">
+          <SidebarFooter className="gap-1.5 px-2 pb-3">
+            {/* Health indicators above Stalwart Admin */}
+            <div className="px-1.5 py-1 group-data-[collapsible=icon]:px-0">
+              <div className="flex items-center gap-2.5 rounded-md px-1 py-0.5 text-xs text-muted-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+                <div
+                  className="flex items-center gap-1.5 cursor-default"
+                  title={`JMAP: ${health.jmap.ok ? "Online" : "Offline"}${health.jmap.latencyMs ? ` (${health.jmap.latencyMs}ms)` : ""}`}
+                >
+                  <span
+                    className={cn(
+                      "size-2 shrink-0 rounded-full transition-colors",
+                      health.jmap.ok ? "bg-emerald-500" : "bg-destructive"
+                    )}
+                  />
+                  <span className="font-mono text-[10px] text-muted-foreground group-data-[collapsible=icon]:hidden">
+                    JMAP
+                  </span>
+                </div>
+                <div
+                  className="flex items-center gap-1.5 cursor-default"
+                  title={`Webmail: ${health.roundcube.ok ? "Online" : "Offline"}`}
+                >
+                  <span
+                    className={cn(
+                      "size-2 shrink-0 rounded-full transition-colors",
+                      health.roundcube.ok ? "bg-emerald-500" : "bg-destructive"
+                    )}
+                  />
+                  <span className="font-mono text-[10px] text-muted-foreground group-data-[collapsible=icon]:hidden">
+                    Webmail
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -138,15 +166,13 @@ export function AppShell({
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarFooter>
-          <SidebarRail />
         </Sidebar>
 
-        <SidebarInset className="h-dvh max-h-dvh md:h-[calc(100dvh-1rem)] md:max-h-[calc(100dvh-1rem)] min-h-0 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0">
+        <SidebarInset className="h-dvh max-h-dvh md:h-[calc(100dvh-1rem)] md:max-h-[calc(100dvh-1rem)] min-h-0 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-2xl md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-border/80 dark:md:peer-data-[variant=inset]:border-border/50 md:peer-data-[variant=inset]:shadow-xl bg-background">
           <div className="flex h-full min-h-0 min-w-0 flex-1">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <header className="z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/70 bg-background/90 px-4 backdrop-blur-sm">
+              <header className="z-20 flex h-12 shrink-0 items-center justify-between border-b border-border/70 bg-background/90 px-4 backdrop-blur-sm">
                 <SidebarTrigger className="-ml-1" />
-                <Separator orientation="vertical" className="h-4" />
                 <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                   <HealthPill health={health} />
                   <CopilotToggleButton />

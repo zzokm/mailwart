@@ -235,10 +235,10 @@ export function MailboxTable({
                 <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
                   Email
                 </TableHead>
-                <TableHead className="hidden font-mono text-[10px] uppercase tracking-[0.14em] sm:table-cell">
+                <TableHead className="w-24 hidden font-mono text-[10px] uppercase tracking-[0.14em] sm:table-cell">
                   Status
                 </TableHead>
-                <TableHead className="hidden font-mono text-[10px] uppercase tracking-[0.14em] lg:table-cell">
+                <TableHead className="w-52 hidden font-mono text-[10px] uppercase tracking-[0.14em] lg:table-cell">
                   Space
                 </TableHead>
                 <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-right">
@@ -277,7 +277,7 @@ export function MailboxTable({
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell">
+                  <TableCell className="w-24 hidden sm:table-cell">
                     <Badge
                       variant={suspended ? "destructive" : "outline"}
                       className="font-mono text-[10px]"
@@ -285,62 +285,43 @@ export function MailboxTable({
                       {suspended ? "suspended" : "active"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell">
+                  <TableCell className="w-52 hidden lg:table-cell">
                     <QuotaBar quotas={a.quotas} />
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-end items-center gap-1.5">
-                      {/* 1. Open Webmail square button */}
+                    <div className="flex justify-end items-center gap-2">
+                      {/* 1. Open Webmail button with text */}
                       <RoundcubeButton
                         href={buildRoundcubeUrl(a.email)}
                         email={a.email}
-                        iconOnly
                       />
 
-                      {/* 2. 'i' square button (Configuration & Server settings) */}
-                      <Tooltip>
-                        <TooltipTrigger
-                          delay={0}
-                          render={
-                            <Button
-                              variant="outline"
-                              size="icon-sm"
-                              onClick={() => setConfigAccount(a)}
-                              aria-label={`Email configuration for ${a.email}`}
-                            />
-                          }
-                        >
-                          <Info className="size-3.5" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs text-xs">
-                          Email Configuration & Server Settings
-                        </TooltipContent>
-                      </Tooltip>
+                      {/* 2. 'i' Configuration button with text */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setConfigAccount(a)}
+                        aria-label={`Email configuration for ${a.email}`}
+                      >
+                        <Info className="size-3.5" data-icon="inline-start" />
+                        Configuration
+                      </Button>
 
-                      {/* 3. Edit square button with Pencil icon */}
-                      <Tooltip>
-                        <TooltipTrigger
-                          delay={0}
-                          render={
-                            <Button
-                              variant="outline"
-                              size="icon-sm"
-                              nativeButton={false}
-                              render={
-                                <Link
-                                  href={`/dashboard/mailboxes/${a.id}`}
-                                  aria-label={`Edit ${a.email}`}
-                                />
-                              }
-                            />
-                          }
-                        >
-                          <Pencil className="size-3.5" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs text-xs">
-                          Edit mailbox
-                        </TooltipContent>
-                      </Tooltip>
+                      {/* 3. Edit button with pencil icon and text */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        nativeButton={false}
+                        render={
+                          <Link
+                            href={`/dashboard/mailboxes/${a.id}`}
+                            aria-label={`Edit ${a.email}`}
+                          />
+                        }
+                      >
+                        <Pencil className="size-3.5" data-icon="inline-start" />
+                        Edit
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
