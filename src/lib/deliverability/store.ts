@@ -1,11 +1,18 @@
 import "server-only"
 
+import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import type { DeliverabilitySuiteReport } from "./types"
 
 function getReportFilePath(): string {
+  if (process.env.DELIVERABILITY_REPORT_PATH) {
+    return process.env.DELIVERABILITY_REPORT_PATH
+  }
+  if (existsSync("/data")) {
+    return "/data/deliverability-latest.json"
+  }
   return path.join(/*turbopackIgnore: true*/ process.cwd(), "data", "deliverability-latest.json")
 }
 
