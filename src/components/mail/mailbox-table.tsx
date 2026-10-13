@@ -227,16 +227,16 @@ export function MailboxTable({
                     aria-label="Select all"
                   />
                 </TableHead>
-                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                <TableHead className="w-[260px] font-mono text-[10px] uppercase tracking-[0.14em]">
                   Email
                 </TableHead>
-                <TableHead className="w-24 hidden font-mono text-[10px] uppercase tracking-[0.14em] sm:table-cell">
+                <TableHead className="w-24 hidden text-center font-mono text-[10px] uppercase tracking-[0.14em] sm:table-cell">
                   Status
                 </TableHead>
                 <TableHead className="hidden text-center font-mono text-[10px] uppercase tracking-[0.14em] lg:table-cell">
                   Space
                 </TableHead>
-                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-right">
+                <TableHead className="w-[340px] font-mono text-[10px] uppercase tracking-[0.14em] text-right">
                   Actions
                 </TableHead>
               </TableRow>
@@ -249,7 +249,7 @@ export function MailboxTable({
                   key={a.id}
                   className={suspended ? "opacity-70" : undefined}
                 >
-                  <TableCell>
+                  <TableCell className="w-10">
                     <Checkbox
                       checked={selected.has(a.id)}
                       onCheckedChange={(v) => toggleOne(a.id, !!v)}
@@ -257,7 +257,7 @@ export function MailboxTable({
                       disabled={a.isAdmin}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="w-[260px]">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={`/dashboard/mailboxes/${a.id}`}
@@ -272,20 +272,22 @@ export function MailboxTable({
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="w-24 hidden sm:table-cell">
-                    <Badge
-                      variant={suspended ? "destructive" : "outline"}
-                      className="font-mono text-[10px]"
-                    >
-                      {suspended ? "suspended" : "active"}
-                    </Badge>
+                  <TableCell className="w-24 hidden text-center sm:table-cell">
+                    <div className="flex justify-center">
+                      <Badge
+                        variant={suspended ? "destructive" : "outline"}
+                        className="font-mono text-[10px]"
+                      >
+                        {suspended ? "suspended" : "active"}
+                      </Badge>
+                    </div>
                   </TableCell>
                   <TableCell className="hidden lg:table-cell">
                     <div className="flex justify-center">
                       <QuotaBar quotas={a.quotas} />
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="w-[340px]">
                     <div className="flex justify-end items-center gap-2">
                       {/* 1. Open Webmail button with text */}
                       <RoundcubeButton
