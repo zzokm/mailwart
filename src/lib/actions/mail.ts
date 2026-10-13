@@ -6,7 +6,11 @@ import {
   type AuditAction,
   type AuditEvent,
 } from "@/lib/audit"
-import { queryDeliveryLogs } from "@/lib/db"
+import {
+  queryDeliveryLogs,
+  syncDomainsToDb,
+  syncMailboxesToDb,
+} from "@/lib/db"
 import {
   dataSource as source,
   failResult as fail,
@@ -165,6 +169,18 @@ async function loadLiveDirectory(): Promise<{
 }> {
   const domains = await queryDomains()
   const accounts = await queryAccounts(domains)
+  syncDomainsToDb(domains).catch(() => {})
+  syncMailboxesToDb(
+    accounts.map((a) => ({
+      id: a.id,
+      email: a.email,
+      name: a.name,
+      domainId: a.domainId,
+      quotaBytes: 0,
+      usedBytes: a.usedDiskQuota || 0,
+      status: a.isEnabled === false ? "suspended" : "active",
+    }))
+  ).catch(() => {})
   return { domains, accounts }
 }
 

@@ -264,24 +264,45 @@ export async function ensureAdminUser(): Promise<SafeUser | null> {
   if (!pool) return null
 
   try {
+    const adminUser = process.env.APP_ADMIN_USER?.trim() || "yehia"
     const defaultPassword = process.env.APP_ADMIN_PASSWORD?.trim() || "admin"
     const defaultEmail = process.env.APP_ADMIN_EMAIL?.trim() || "yehia@yehia.dev"
 
     // 1. Check if user 'yehia' already exists
-    const yehiaUser = await findUserByUsernameOrEmail("yehia")
+    const yehiaUser = await findUserByUsernameOrEmail(adminUser)
     if (yehiaUser) {
+      // Check on each deploy: if APP_ADMIN_PASSWORD was changed in env, update the hash!
+      if (
+        defaultPassword &&
+        !verifyPassword(defaultPassword, yehiaUser.passwordHash, yehiaUser.salt)
+      ) {
+        const newSalt = generateSalt()
+        const newHash = hashPassword(defaultPassword, newSalt)
+        const updated = await pool.query(
+          `UPDATE users
+           SET password_hash = $1, salt = $2, updated_at = NOW()
+           WHERE id = $3
+           RETURNING id, username, email, password_hash, salt, role, created_at, updated_at`,
+          [newHash, newSalt, yehiaUser.id]
+        )
+        if (updated.rows.length > 0) {
+          return toSafeUser(mapUserRow(updated.rows[0]))
+        }
+      }
       return toSafeUser(yehiaUser)
     }
 
     // 2. Check if legacy 'admin' exists — migrate to 'yehia'
     const legacyAdmin = await findUserByUsernameOrEmail("admin")
     if (legacyAdmin) {
+      const newSalt = generateSalt()
+      const newHash = hashPassword(defaultPassword, newSalt)
       const res = await pool.query(
         `UPDATE users
-         SET username = 'yehia', role = 'admin', updated_at = NOW()
-         WHERE id = $1
+         SET username = $1, password_hash = $2, salt = $3, role = 'admin', updated_at = NOW()
+         WHERE id = $4
          RETURNING id, username, email, password_hash, salt, role, created_at, updated_at`,
-        [legacyAdmin.id]
+        [adminUser, newHash, newSalt, legacyAdmin.id]
       )
       return toSafeUser(mapUserRow(res.rows[0]))
     }
@@ -296,14 +317,14 @@ export async function ensureAdminUser(): Promise<SafeUser | null> {
        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
        ON CONFLICT (username) DO NOTHING
        RETURNING id, username, email, password_hash, salt, role, created_at, updated_at`,
-      [id, "yehia", defaultEmail, passwordHash, salt, "admin"]
+      [id, adminUser, defaultEmail, passwordHash, salt, "admin"]
     )
 
     if (res.rows.length > 0) {
       return toSafeUser(mapUserRow(res.rows[0]))
     }
 
-    const created = await findUserByUsernameOrEmail("yehia")
+    const created = await findUserByUsernameOrEmail(adminUser)
     return created ? toSafeUser(created) : null
   } catch (err) {
     console.error("Failed to seed admin user 'yehia':", err)

@@ -9,7 +9,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import { redirectIfAuthenticated } from "@/lib/actions/auth"
 
@@ -51,8 +50,7 @@ export default async function LoginPage() {
             </p>
           </div>
           <Card className="border-border/80 bg-card/80 backdrop-blur-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-base font-medium">Sign in</CardTitle>
+            <CardHeader className="pb-3 pt-5">
               <CardDescription>
                 Enter your account credentials to access your console.
               </CardDescription>

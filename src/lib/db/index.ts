@@ -113,6 +113,28 @@ export async function initDatabase(): Promise<void> {
           created_at BIGINT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_system_logs_timestamp ON system_logs(timestamp DESC);
+
+        CREATE TABLE IF NOT EXISTS mailboxes (
+          id VARCHAR(128) PRIMARY KEY,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          name VARCHAR(255),
+          domain_id VARCHAR(128) NOT NULL,
+          quota_bytes BIGINT DEFAULT 0,
+          used_bytes BIGINT DEFAULT 0,
+          status VARCHAR(32) DEFAULT 'active',
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_mailboxes_domain_id ON mailboxes(domain_id);
+        CREATE INDEX IF NOT EXISTS idx_mailboxes_email ON mailboxes(LOWER(email));
+
+        CREATE TABLE IF NOT EXISTS domains (
+          id VARCHAR(128) PRIMARY KEY,
+          name VARCHAR(255) UNIQUE NOT NULL,
+          description TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_domains_name ON domains(LOWER(name));
       `)
 
       // 2. Seed primary admin account yehia
@@ -214,9 +236,155 @@ async function migrateFromSqlite(pool: Pool): Promise<void> {
       // Table may not exist in SQLite
     }
 
+    // Migrate system_logs
+    try {
+      const stmt = sqlite.prepare("SELECT * FROM system_logs")
+      const rows = stmt.all() as Array<{
+        id: string
+        timestamp: string
+        level: string
+        subsystem: string
+        message: string
+        details: string | null
+        created_at: number
+      }>
+      for (const r of rows) {
+        await pool.query(
+          `INSERT INTO system_logs (id, timestamp, level, subsystem, message, details, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (id) DO NOTHING`,
+          [
+            r.id,
+            r.timestamp,
+            r.level,
+            r.subsystem,
+            r.message,
+            r.details,
+            r.created_at,
+          ]
+        )
+      }
+    } catch {
+      // Table may not exist in SQLite
+    }
+
+    // Close SQLite and remove old SQLite database file completely
+    sqlite.close()
+    try {
+      const { unlinkSync } = await import("node:fs")
+      if (existsSync(sqlitePath)) {
+        unlinkSync(sqlitePath)
+        console.log(`[migration] successfully removed old SQLite file at ${sqlitePath}`)
+      }
+    } catch (rmErr) {
+      console.warn("[migration] notice removing SQLite file:", rmErr)
+    }
+
     console.log(`[migration] successfully migrated existing SQLite data from ${sqlitePath} to PostgreSQL.`)
   } catch (err) {
     console.warn("[migration] SQLite to PostgreSQL migration notice:", err)
+  }
+}
+
+export async function syncMailboxesToDb(
+  accounts: Array<{
+    id: string
+    email: string
+    name?: string
+    domainId?: string
+    quotaBytes?: number
+    usedBytes?: number
+    status?: string
+  }>
+): Promise<void> {
+  const pool = getPool()
+  if (!pool || accounts.length === 0) return
+  try {
+    for (const a of accounts) {
+      await pool.query(
+        `INSERT INTO mailboxes (id, email, name, domain_id, quota_bytes, used_bytes, status, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (id) DO UPDATE
+         SET email = EXCLUDED.email,
+             name = EXCLUDED.name,
+             domain_id = EXCLUDED.domain_id,
+             quota_bytes = EXCLUDED.quota_bytes,
+             used_bytes = EXCLUDED.used_bytes,
+             status = EXCLUDED.status,
+             updated_at = NOW()`,
+        [
+          a.id,
+          a.email,
+          a.name ?? null,
+          a.domainId ?? "",
+          a.quotaBytes ?? 0,
+          a.usedBytes ?? 0,
+          a.status ?? "active",
+        ]
+      )
+    }
+  } catch (err) {
+    console.error("[postgres] syncMailboxesToDb error:", err)
+  }
+}
+
+export async function queryMailboxesFromDb(domainId?: string): Promise<
+  Array<{
+    id: string
+    email: string
+    name: string | null
+    domainId: string
+    quotaBytes: number
+    usedBytes: number
+    status: string
+  }>
+> {
+  const pool = getPool()
+  if (!pool) return []
+  try {
+    const res = domainId
+      ? await pool.query(
+          `SELECT id, email, name, domain_id, quota_bytes, used_bytes, status
+           FROM mailboxes WHERE domain_id = $1 ORDER BY email ASC`,
+          [domainId]
+        )
+      : await pool.query(
+          `SELECT id, email, name, domain_id, quota_bytes, used_bytes, status
+           FROM mailboxes ORDER BY email ASC`
+        )
+    return res.rows.map((r) => ({
+      id: r.id,
+      email: r.email,
+      name: r.name,
+      domainId: r.domain_id,
+      quotaBytes: Number(r.quota_bytes || 0),
+      usedBytes: Number(r.used_bytes || 0),
+      status: r.status,
+    }))
+  } catch {
+    return []
+  }
+}
+
+export async function syncDomainsToDb(
+  domains: Array<{ id: string; name: string; description?: string }>
+): Promise<void> {
+  const pool = getPool()
+  if (!pool || domains.length === 0) return
+  try {
+    for (const d of domains) {
+      await pool.query(
+        `INSERT INTO domains (id, name, description, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (id) DO UPDATE
+         SET name = EXCLUDED.name,
+             description = EXCLUDED.description,
+             updated_at = NOW()`,
+        [d.id, d.name, d.description ?? null]
+      )
+    }
+  } catch (err) {
+    console.error("[postgres] syncDomainsToDb error:", err)
   }
 }
 
