@@ -127,17 +127,17 @@ export function LogsClient({
         {delivery.note ? (
           <div
             role="status"
-            className="rounded-lg border border-border/80 bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+            className="flex flex-col gap-2 rounded-lg border border-border/80 bg-muted/40 px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
           >
             <p>{delivery.note}</p>
-            {delivery.usedFallback ? (
+            {delivery.adminUiUrl ? (
               <a
                 href={delivery.adminUiUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-1.5 inline-flex items-center gap-1 text-foreground underline-offset-4 hover:underline"
+                className="inline-flex shrink-0 items-center gap-1 text-foreground underline-offset-4 hover:underline text-xs"
               >
-                Open Stalwart Admin
+                Stalwart Admin
                 <ExternalLink className="size-3" strokeWidth={1.5} />
               </a>
             ) : null}
@@ -174,8 +174,8 @@ export function LogsClient({
 
         {deliveryRows.length === 0 ? (
           <EmptyState
-            title="No delivery rows"
-            description="Adjust search or open Stalwart Admin › History for full Trace data."
+            title="No delivery logs found"
+            description="Persistent SQLite database active. SMTP messages routed through Stalwart will appear here."
           />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border/70">
@@ -225,23 +225,10 @@ export function LogsClient({
       </TabsContent>
 
       <TabsContent value="audit" className="space-y-4">
-        {audit.fromSample ? (
-          <div
-            role="status"
-            className="rounded-lg border border-border/80 bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
-          >
-            Showing sample audit rows. Live mutations append to JSONL at{" "}
-            <code className="font-mono text-[12px] text-foreground">
-              {audit.pathHint}
-            </code>
-            .
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            Append-only JSONL ·{" "}
-            <code className="font-mono text-[11px]">{audit.pathHint}</code>
-          </p>
-        )}
+        <p className="text-xs text-muted-foreground">
+          Persistent SQLite database & JSONL audit stream ·{" "}
+          <code className="font-mono text-[11px]">{audit.pathHint}</code>
+        </p>
 
         <div className="relative min-w-0 sm:max-w-xs">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />

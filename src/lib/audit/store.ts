@@ -119,22 +119,26 @@ function parseLine(line: string): AuditEvent | null {
   }
 }
 
+import { insertAuditLog, queryAuditLogs, resolveDatabasePath } from "@/lib/db"
+
 export async function appendAuditEvent(
   input: AuditEventInput
 ): Promise<AuditEvent> {
-  const event: AuditEvent = {
-    id: input.id ?? `aud-${crypto.randomUUID()}`,
-    at: input.at ?? new Date().toISOString(),
-    actor: input.actor,
-    action: input.action,
-    target: input.target,
-    detail: input.detail,
-    meta: input.meta,
+  // 1. Insert into persistent SQLite DB
+  const event = insertAuditLog(input)
+
+  // 2. Also append to JSONL for dual-persistence / easy shell inspection
+  try {
+    const filePath = resolveAuditPath()
+    await ensureParent(filePath)
+    await appendFile(filePath, `${JSON.stringify(event)}\n`, "utf8")
+  } catch (err) {
+    console.error(
+      "[audit] JSONL backup append failed:",
+      err instanceof Error ? err.message : err
+    )
   }
 
-  const filePath = resolveAuditPath()
-  await ensureParent(filePath)
-  await appendFile(filePath, `${JSON.stringify(event)}\n`, "utf8")
   return event
 }
 
@@ -148,7 +152,7 @@ export async function recordAudit(
     await appendAuditEvent(input)
   } catch (err) {
     console.error(
-      "[audit] append failed:",
+      "[audit] DB/file record failed:",
       err instanceof Error ? err.message : err
     )
   }
@@ -156,7 +160,7 @@ export async function recordAudit(
 
 export type ReadAuditOptions = {
   limit?: number
-  /** When true and the file is empty/missing, return SAMPLE_AUDIT_EVENTS. */
+  /** When true and the store is empty, return sample events for mock mode. */
   allowSampleFallback?: boolean
 }
 
@@ -164,41 +168,66 @@ export async function readAuditEvents(
   options: ReadAuditOptions = {}
 ): Promise<{ events: AuditEvent[]; fromSample: boolean; path: string }> {
   const limit = Math.min(options.limit ?? 500, MAX_READ)
-  const filePath = resolveAuditPath()
+  const dbPath = resolveDatabasePath()
 
   try {
-    await access(filePath, constants.R_OK)
-  } catch {
+    // 1. Try querying the persistent SQLite database
+    const dbEvents = queryAuditLogs({ limit })
+    if (dbEvents.length > 0) {
+      return { events: dbEvents, fromSample: false, path: dbPath }
+    }
+
+    // 2. If DB is empty, check if legacy JSONL file exists and backfill
+    const filePath = resolveAuditPath()
+    try {
+      await access(filePath, constants.R_OK)
+      const text = await readFile(filePath, "utf8")
+      const lines = text.split(/\r?\n/)
+      const events: AuditEvent[] = []
+
+      for (let i = lines.length - 1; i >= 0 && events.length < limit; i--) {
+        const parsed = parseLine(lines[i])
+        if (parsed) {
+          events.push(parsed)
+          // Backfill into SQLite DB
+          try {
+            insertAuditLog(parsed)
+          } catch {
+            // ignore backfill conflict
+          }
+        }
+      }
+
+      if (events.length > 0) {
+        return { events, fromSample: false, path: dbPath }
+      }
+    } catch {
+      // JSONL missing or unreadable
+    }
+
+    // 3. If still empty, check allowSampleFallback (only for pure mock testing)
     if (options.allowSampleFallback) {
       return {
         events: SAMPLE_AUDIT_EVENTS.slice(0, limit),
         fromSample: true,
-        path: filePath,
+        path: dbPath,
       }
     }
-    return { events: [], fromSample: false, path: filePath }
-  }
 
-  const text = await readFile(filePath, "utf8")
-  const lines = text.split(/\r?\n/)
-  const events: AuditEvent[] = []
-  // Read from end so newest events surface first without loading everything twice.
-  for (let i = lines.length - 1; i >= 0 && events.length < limit; i--) {
-    const parsed = parseLine(lines[i])
-    if (parsed) events.push(parsed)
-  }
-
-  if (events.length === 0 && options.allowSampleFallback) {
-    return {
-      events: SAMPLE_AUDIT_EVENTS.slice(0, limit),
-      fromSample: true,
-      path: filePath,
+    return { events: [], fromSample: false, path: dbPath }
+  } catch (err) {
+    console.error("[audit] readAuditEvents failed:", err)
+    if (options.allowSampleFallback) {
+      return {
+        events: SAMPLE_AUDIT_EVENTS.slice(0, limit),
+        fromSample: true,
+        path: dbPath,
+      }
     }
+    return { events: [], fromSample: false, path: dbPath }
   }
-
-  return { events, fromSample: false, path: filePath }
 }
 
 export function getAuditLogPath(): string {
-  return resolveAuditPath()
+  return resolveDatabasePath()
 }

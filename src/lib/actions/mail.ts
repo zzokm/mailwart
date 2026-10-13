@@ -6,6 +6,7 @@ import {
   type AuditAction,
   type AuditEvent,
 } from "@/lib/audit"
+import { queryDeliveryLogs } from "@/lib/db"
 import {
   dataSource as source,
   failResult as fail,
@@ -84,7 +85,6 @@ import {
   createAccount,
   createAppPasswordLive,
   createDomain,
-  deliveryUnavailableNote,
   deriveMailExchanger,
   destroyAccount,
   destroyAppPasswordLive,
@@ -96,7 +96,6 @@ import {
   isExternalEmail,
   loadLiveSpamSettings,
   mailExchangerToAllowRelaying,
-  MOCK_DELIVERY_EVENTS,
   mockHealth,
   normalizeAddressList,
   parseEmailAddress,
@@ -3035,11 +3034,15 @@ export async function getDeliveryLogsAction(): Promise<
   const adminUiUrl = getStalwartAdminUiUrl()
 
   if (src === "mock") {
+    const dbEvents = queryDeliveryLogs({ limit: 250 })
     return ok(
       {
-        events: MOCK_DELIVERY_EVENTS,
-        note: "Sample SMTP transaction rows — connect Stalwart for live Trace history.",
-        usedFallback: true,
+        events: dbEvents,
+        note:
+          dbEvents.length > 0
+            ? "Showing real delivery records from the persistent database."
+            : "Delivery events will be recorded here as emails are sent and received.",
+        usedFallback: false,
         adminUiUrl,
       },
       src
@@ -3048,17 +3051,6 @@ export async function getDeliveryLogsAction(): Promise<
 
   try {
     const { events, note } = await queryDeliveryTracesLive(250)
-    if (events.length === 0) {
-      return ok(
-        {
-          events: MOCK_DELIVERY_EVENTS,
-          note: note ?? deliveryUnavailableNote(adminUiUrl),
-          usedFallback: true,
-          adminUiUrl,
-        },
-        src
-      )
-    }
     return ok(
       {
         events,
@@ -3074,12 +3066,13 @@ export async function getDeliveryLogsAction(): Promise<
         ? err.message
         : err instanceof Error
           ? err.message
-          : "Trace query failed."
+          : "Delivery trace query failed."
+    const localEvents = queryDeliveryLogs({ limit: 250 })
     return ok(
       {
-        events: MOCK_DELIVERY_EVENTS,
-        note: `${deliveryUnavailableNote(adminUiUrl)} (${message})`,
-        usedFallback: true,
+        events: localEvents,
+        note: `Stalwart Community Edition: ${message}. Showing persistent database logs (${localEvents.length} records).`,
+        usedFallback: false,
         adminUiUrl,
       },
       src
@@ -3103,14 +3096,14 @@ export async function getAuditLogsAction(): Promise<
 
   const src = source()
   try {
-    const { events, fromSample, path } = await readAuditEvents({
+    const { events, path } = await readAuditEvents({
       limit: 500,
-      allowSampleFallback: src === "mock",
+      allowSampleFallback: false,
     })
     return ok(
       {
         events,
-        fromSample,
+        fromSample: false,
         pathHint: path,
       },
       src

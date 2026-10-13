@@ -178,9 +178,11 @@ function mapTraceToDelivery(
   }
 }
 
+import { insertDeliveryLog, queryDeliveryLogs } from "@/lib/db"
+
 /**
- * Read recent delivery traces via Stalwart `x:Trace` when available.
- * Throws StalwartError on hard failures so callers can fall back to mock.
+ * Read recent delivery traces via Stalwart `x:Trace` or `x:Log` when available,
+ * and always persist / surface real records from the local SQLite database.
  */
 export async function queryDeliveryTracesLive(limit = 200): Promise<{
   events: DeliveryEvent[]
@@ -188,72 +190,146 @@ export async function queryDeliveryTracesLive(limit = 200): Promise<{
 }> {
   const capped = Math.min(Math.max(limit, 1), 500)
 
-  const query = await jmapCall(
-    [
+  // 1. Try querying Stalwart Enterprise x:Trace if available
+  try {
+    const query = await jmapCall(
       [
-        "x:Trace/query",
-        {
-          filter: null,
-          sort: [{ property: "timestamp", isAscending: false }],
-          limit: capped,
-        },
-        "tr0",
+        [
+          "x:Trace/query",
+          {
+            filter: null,
+            sort: [{ property: "timestamp", isAscending: false }],
+            limit: capped,
+          },
+          "tr0",
+        ],
       ],
-    ],
-    { timeoutMs: 12_000, retry: true }
-  )
+      { timeoutMs: 8_000, retry: false }
+    )
 
-  const qBody = responseById(query, "tr0")
-  const ids = Array.isArray(qBody.ids)
-    ? (qBody.ids as string[]).filter(Boolean)
-    : []
+    const qBody = responseById(query, "tr0")
+    const ids = Array.isArray(qBody.ids)
+      ? (qBody.ids as string[]).filter(Boolean)
+      : []
 
-  if (ids.length === 0) {
-    return {
-      events: [],
-      note: "Trace query succeeded but returned no delivery history.",
+    if (ids.length > 0) {
+      const get = await jmapCall(
+        [
+          [
+            "x:Trace/get",
+            {
+              ids,
+              properties: ["timestamp", "from", "to", "size", "events"],
+            },
+            "tr1",
+          ],
+        ],
+        { timeoutMs: 10_000, retry: false }
+      )
+
+      const gBody = responseById(get, "tr1")
+      const list = Array.isArray(gBody.list)
+        ? (gBody.list as Record<string, unknown>[])
+        : []
+
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i]
+        const id = asString(item.id) ?? ids[i] ?? `trace-${i}`
+        const mapped = mapTraceToDelivery(id, item)
+        try {
+          insertDeliveryLog(mapped)
+        } catch {
+          // ignore duplicate insert
+        }
+      }
+    }
+  } catch {
+    // If x:Trace fails (e.g. Community Edition license notice), try x:Log
+    try {
+      const logQ = await jmapCall(
+        [["x:Log/query", { filter: null, limit: 50 }, "l0"]],
+        { timeoutMs: 5_000, retry: false }
+      )
+      const logIds = (responseById(logQ, "l0").ids as string[]) ?? []
+      if (logIds.length > 0) {
+        const logG = await jmapCall(
+          [
+            [
+              "x:Log/get",
+              {
+                ids: logIds,
+                properties: ["timestamp", "level", "event", "details", "message"],
+              },
+              "l1",
+            ],
+          ],
+          { timeoutMs: 5_000, retry: false }
+        )
+        const logList =
+          (responseById(logG, "l1").list as Array<Record<string, unknown>>) ?? []
+        for (const item of logList) {
+          const ev = String(item.event ?? "").toLowerCase()
+          if (ev.includes("smtp") || ev.includes("mta") || ev.includes("delivery")) {
+            const dt = (item.details as Record<string, unknown>) ?? {}
+            const from = String(dt.from ?? dt.sender ?? "")
+            const to = String(dt.to ?? dt.recipient ?? "")
+            if (from || to) {
+              const status = ev.includes("reject")
+                ? "rejected"
+                : ev.includes("bounce")
+                  ? "bounce"
+                  : ev.includes("defer")
+                    ? "deferred"
+                    : ev.includes("queue")
+                      ? "queued"
+                      : "delivered"
+              try {
+                insertDeliveryLog({
+                  id: String(item.id ?? `log-${Date.now()}`),
+                  timestamp: String(item.timestamp ?? new Date().toISOString()),
+                  sender: from || "mailer-daemon",
+                  recipient: to || "local",
+                  status,
+                  sizeBytes: null,
+                  detail: String(item.message ?? item.event ?? ""),
+                })
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Best-effort
     }
   }
 
-  const get = await jmapCall(
-    [
-      [
-        "x:Trace/get",
-        {
-          ids,
-          properties: ["timestamp", "from", "to", "size", "events"],
-        },
-        "tr1",
-      ],
-    ],
-    { timeoutMs: 15_000, retry: true }
-  )
+  // 2. Query persistent delivery logs from the SQLite database
+  const dbEvents = queryDeliveryLogs({ limit: capped })
 
-  const gBody = responseById(get, "tr1")
-  const list = Array.isArray(gBody.list) ? (gBody.list as Record<string, unknown>[]) : []
+  if (dbEvents.length > 0) {
+    return {
+      events: dbEvents,
+      note: "Showing real delivery records from the persistent database.",
+    }
+  }
 
-  const events = list.map((item, i) => {
-    const id = asString(item.id) ?? ids[i] ?? `trace-${i}`
-    return mapTraceToDelivery(id, item)
-  })
-
-  events.sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-  )
-
-  return { events }
+  return {
+    events: [],
+    note: "Stalwart Community Edition: SMTP delivery transactions are recorded into the database as mail is sent and received. No delivery events recorded yet.",
+  }
 }
 
 export type DeliveryFetchResult = {
   events: DeliveryEvent[]
   source: DataSource
-  /** When live Trace API is unavailable or empty — explain + deep-link hint. */
   note?: string
   usedFallback: boolean
 }
 
-export function deliveryUnavailableNote(adminUiUrl: string): string {
-  return `Delivery history uses Stalwart Trace (x:Trace). Open History in Stalwart Admin if traces are empty or permissions are missing: ${adminUiUrl}`
+export function deliveryUnavailableNote(): string {
+  return `Stalwart Community Edition: SMTP delivery transactions are recorded into the database as mail is sent and received.`
 }
 
 export { StalwartError }
