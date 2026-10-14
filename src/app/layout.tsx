@@ -29,6 +29,13 @@ export const metadata: Metadata = {
   },
   description:
     "Directory operations for Stalwart mail: domains, mailboxes, catch-alls, quotas, DNS health, and webmail hand-off.",
+  icons: {
+    icon: [
+      { url: "/icon.png", type: "image/png" },
+      { url: "/favicon.ico" },
+    ],
+    apple: [{ url: "/apple-icon.png", type: "image/png" }],
+  },
 }
 
 export default function RootLayout({
