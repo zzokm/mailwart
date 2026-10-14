@@ -32,6 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import type {
   CatchAllMode,
@@ -103,79 +104,98 @@ export function RoutingClient({
   }, [accounts, domains])
 
   return (
-    <div className="space-y-10">
-      <CatchAllsSection
-        domains={domains}
-        accounts={accounts}
-        pending={pending}
-        startTransition={startTransition}
-        onDone={() => router.refresh()}
-      />
+    <Tabs defaultValue="catch-alls" className="w-full">
+      <TabsList variant="line" className="mb-6 w-full justify-start gap-8">
+        <TabsTrigger value="catch-alls" className="gap-2">
+          <span>Catch-alls &amp; MX posture</span>
+          <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
+            {domains.length}
+          </Badge>
+        </TabsTrigger>
+        <TabsTrigger value="forwarding" className="gap-2">
+          <span>Forwarding</span>
+          <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
+            {forwards.length}
+          </Badge>
+        </TabsTrigger>
+      </TabsList>
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-sm font-medium">Aliases</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            High-signal alternate addresses across mailboxes. Edit on the
-            mailbox detail page.
-          </p>
-        </div>
-        {aliasRows.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 font-mono text-[12px] text-muted-foreground">
-            No aliases configured.
-          </p>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-border/80">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                    Alias
-                  </TableHead>
-                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                    Delivers to
-                  </TableHead>
-                  <TableHead className="hidden font-mono text-[10px] uppercase tracking-[0.14em] md:table-cell">
-                    Domain
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {aliasRows.map((row) => (
-                  <TableRow key={`${row.accountId}-${row.email}`}>
-                    <TableCell className="font-mono text-[13px]">
-                      {row.email}
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/dashboard/mailboxes/${row.accountId}`}
-                        className="font-mono text-[13px] underline-offset-4 hover:underline"
-                      >
-                        {row.mailbox}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="hidden font-mono text-[12px] text-muted-foreground md:table-cell">
-                      {row.domainName}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+      <TabsContent value="catch-alls" className="space-y-10">
+        <CatchAllsSection
+          domains={domains}
+          accounts={accounts}
+          pending={pending}
+          startTransition={startTransition}
+          onDone={() => router.refresh()}
+        />
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-medium">Aliases</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              High-signal alternate addresses across mailboxes. Edit on the
+              mailbox detail page.
+            </p>
           </div>
-        )}
-      </section>
+          {aliasRows.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 font-mono text-[12px] text-muted-foreground">
+              No aliases configured.
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-border/80">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                      Alias
+                    </TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                      Delivers to
+                    </TableHead>
+                    <TableHead className="hidden font-mono text-[10px] uppercase tracking-[0.14em] md:table-cell">
+                      Domain
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {aliasRows.map((row) => (
+                    <TableRow key={`${row.accountId}-${row.email}`}>
+                      <TableCell className="font-mono text-[13px]">
+                        {row.email}
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          href={`/dashboard/mailboxes/${row.accountId}`}
+                          className="font-mono text-[13px] underline-offset-4 hover:underline"
+                        >
+                          {row.mailbox}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="hidden font-mono text-[12px] text-muted-foreground md:table-cell">
+                        {row.domainName}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </section>
+      </TabsContent>
 
-      <ForwardsSection
-        domains={domains}
-        accounts={accounts}
-        forwards={forwards}
-        source={source}
-        adminUiUrl={adminUiUrl}
-        pending={pending}
-        startTransition={startTransition}
-        onDone={() => router.refresh()}
-      />
-    </div>
+      <TabsContent value="forwarding" className="space-y-6">
+        <ForwardsSection
+          domains={domains}
+          accounts={accounts}
+          forwards={forwards}
+          source={source}
+          adminUiUrl={adminUiUrl}
+          pending={pending}
+          startTransition={startTransition}
+          onDone={() => router.refresh()}
+        />
+      </TabsContent>
+    </Tabs>
   )
 }
 
