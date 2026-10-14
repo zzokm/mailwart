@@ -63,9 +63,24 @@ function mapDomain(item: Record<string, unknown>): StalwartDomain {
     mailExchanger: allowRelaying ? "backup" : "local",
     domainAliases: mapDomainAliases(item.aliases),
     subAddressing: item.subAddressing as StalwartDomain["subAddressing"],
-    dnsManagement: typeof item.dnsManagement === "string" ? item.dnsManagement : undefined,
-    certificateManagement: typeof item.certificateManagement === "string" ? item.certificateManagement : undefined,
-    dkimManagement: typeof item.dkimManagement === "string" ? item.dkimManagement : undefined,
+    dnsManagement:
+      typeof item.dnsManagement === "string"
+        ? item.dnsManagement
+        : typeof (item.dnsManagement as Record<string, unknown> | null)?.["@type"] === "string"
+          ? String((item.dnsManagement as Record<string, unknown>)["@type"])
+          : undefined,
+    certificateManagement:
+      typeof item.certificateManagement === "string"
+        ? item.certificateManagement
+        : typeof (item.certificateManagement as Record<string, unknown> | null)?.["@type"] === "string"
+          ? String((item.certificateManagement as Record<string, unknown>)["@type"])
+          : undefined,
+    dkimManagement:
+      typeof item.dkimManagement === "string"
+        ? item.dkimManagement
+        : typeof (item.dkimManagement as Record<string, unknown> | null)?.["@type"] === "string"
+          ? String((item.dkimManagement as Record<string, unknown>)["@type"])
+          : undefined,
     createdAt: typeof item.createdAt === "string" ? item.createdAt : undefined,
   }
 }
@@ -97,10 +112,10 @@ export async function getDomain(id: string): Promise<StalwartDomain | null> {
 }
 
 const FULL_CREATE_DEFAULTS = {
-  certificateManagement: "Manual",
-  dkimManagement: "Automatic",
-  dnsManagement: "Manual",
-  subAddressing: "Enabled",
+  certificateManagement: { "@type": "Manual" },
+  dkimManagement: { "@type": "Automatic" },
+  dnsManagement: { "@type": "Manual" },
+  subAddressing: { "@type": "Enabled" },
 } as const
 
 export async function createDomain(input: {
@@ -170,14 +185,25 @@ export async function updateDomain(
     isEnabled: boolean
     catchAllAddress: string | null
     allowRelaying: boolean
-    subAddressing: string
-    dnsManagement: "Manual" | "Automatic" | string
-    certificateManagement: "Manual" | "Automatic" | string
-    dkimManagement: "Manual" | "Automatic" | string
+    subAddressing: unknown
+    dnsManagement: "Manual" | "Automatic" | string | Record<string, unknown>
+    certificateManagement: "Manual" | "Automatic" | string | Record<string, unknown>
+    dkimManagement: "Manual" | "Automatic" | string | Record<string, unknown>
   }>
 ): Promise<void> {
+  const transformedPatch: Record<string, unknown> = { ...patch }
+  if (patch.dnsManagement === "Manual") {
+    transformedPatch.dnsManagement = { "@type": "Manual" }
+  }
+  if (patch.certificateManagement === "Manual") {
+    transformedPatch.certificateManagement = { "@type": "Manual" }
+  }
+  if (patch.dkimManagement === "Automatic") {
+    transformedPatch.dkimManagement = { "@type": "Automatic" }
+  }
+
   const r = await jmapCall([
-    ["x:Domain/set", { update: { [id]: patch } }, "d2"],
+    ["x:Domain/set", { update: { [id]: transformedPatch } }, "d2"],
   ])
   const body = responseById(r, "d2")
   const notUpdated = body.notUpdated as

@@ -611,6 +611,7 @@ export async function createDomainAction(input: {
         target: domain.name,
         detail: "Created domain",
       })
+      await ensureCatchAllMailbox(name, session?.userId).catch(() => {})
       return ok(domain, src)
     }
     const domain = await createDomain({
@@ -636,6 +637,19 @@ export async function createDomainAction(input: {
         note = `Domain created in Stalwart, but Cloudflare DNS provisioning failed: ${cfErr instanceof Error ? cfErr.message : String(cfErr)}`
       }
     }
+
+    // Immediately trigger initial DNS validation and catch-all creation if already propagated
+    getDomainDnsHealth(name, {
+      bustCache: true,
+      mailHostHint: configuredMailHost(),
+      mock: false,
+    })
+      .then(async (dns) => {
+        if (dns.worst === "pass") {
+          await ensureCatchAllMailbox(name, session?.userId).catch(() => {})
+        }
+      })
+      .catch(() => {})
 
     return ok(domain, src, note)
   } catch (err) {
