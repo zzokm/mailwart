@@ -30,7 +30,8 @@ export async function resolveAllCloudflareAccounts(options?: {
   let accounts = [...stored.accounts]
 
   const envToken = process.env.CLOUDFLARE_API_TOKEN?.trim()
-  if (envToken && !accounts.some((a) => a.apiToken === envToken)) {
+  const canUseEnv = options?.isAdmin !== false
+  if (canUseEnv && envToken && !accounts.some((a) => a.apiToken === envToken)) {
     accounts.unshift({
       id: "acc_env",
       accountName: process.env.CLOUDFLARE_ACCOUNT_NAME?.trim() || "Environment Account",
@@ -39,8 +40,12 @@ export async function resolveAllCloudflareAccounts(options?: {
     })
   }
 
-  if (options && options.isAdmin === false && options.userId) {
-    accounts = accounts.filter((a) => a.userId === options.userId)
+  if (options && options.isAdmin === false) {
+    if (options.userId) {
+      accounts = accounts.filter((a) => a.userId === options.userId)
+    } else {
+      accounts = []
+    }
   }
 
   return accounts

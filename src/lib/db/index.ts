@@ -7,6 +7,7 @@ import { Pool } from "pg"
 
 import type { AuditEvent, AuditEventInput } from "@/lib/audit/types"
 import type { DeliveryEvent, DeliveryStatus } from "@/lib/stalwart/types"
+import type { CloudflareAccountConfig } from "@/lib/cloudflare/types"
 import { ensureAdminUserInternal } from "./users"
 
 let poolInstance: Pool | null = null
@@ -146,6 +147,21 @@ export async function initDatabase(): Promise<void> {
         ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS owner_id VARCHAR(64);
         CREATE INDEX IF NOT EXISTS idx_domains_owner_id ON domains(owner_id);
         CREATE INDEX IF NOT EXISTS idx_mailboxes_owner_id ON mailboxes(owner_id);
+
+        CREATE TABLE IF NOT EXISTS cloudflare_accounts (
+          id VARCHAR(64) PRIMARY KEY,
+          user_id VARCHAR(64),
+          account_name VARCHAR(255) NOT NULL,
+          account_id VARCHAR(255),
+          api_token TEXT NOT NULL,
+          last_verified_at TIMESTAMPTZ,
+          zones_count INTEGER DEFAULT 0,
+          status VARCHAR(32) NOT NULL DEFAULT 'active',
+          error_message TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_cf_user_id ON cloudflare_accounts(user_id);
       `)
 
       // 2. Seed primary admin account yehia
@@ -831,5 +847,112 @@ export async function insertSystemLog(
     } catch {
       // ignore
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cloudflare Account Operations (PostgreSQL-backed)
+// ---------------------------------------------------------------------------
+
+export async function getDbCloudflareAccounts(
+  userId?: string,
+  isAdmin?: boolean
+): Promise<CloudflareAccountConfig[]> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return []
+  try {
+    let res
+    if (isAdmin || !userId) {
+      res = await pool.query(
+        `SELECT * FROM cloudflare_accounts ORDER BY created_at ASC`
+      )
+    } else {
+      res = await pool.query(
+        `SELECT * FROM cloudflare_accounts WHERE user_id = $1 ORDER BY created_at ASC`,
+        [userId]
+      )
+    }
+    return res.rows.map(
+      (r: {
+        id: string
+        user_id: string | null
+        account_name: string
+        account_id: string | null
+        api_token: string
+        last_verified_at: string | Date | null
+        zones_count: number | string | null
+        status: string
+        error_message: string | null
+      }) => ({
+        id: r.id,
+        userId: r.user_id || undefined,
+        accountName: r.account_name,
+        accountId: r.account_id || undefined,
+        apiToken: r.api_token,
+        lastVerifiedAt: r.last_verified_at
+          ? new Date(r.last_verified_at).toISOString()
+          : undefined,
+        zonesCount: r.zones_count != null ? Number(r.zones_count) : undefined,
+        status: (r.status || "active") as "active" | "error" | "invalid",
+        errorMessage: r.error_message || undefined,
+      })
+    )
+  } catch (err) {
+    console.error("[postgres] getDbCloudflareAccounts error:", err)
+    return []
+  }
+}
+
+export async function upsertDbCloudflareAccount(
+  account: CloudflareAccountConfig
+): Promise<void> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return
+  try {
+    await pool.query(
+      `INSERT INTO cloudflare_accounts (id, user_id, account_name, account_id, api_token, last_verified_at, zones_count, status, error_message, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       ON CONFLICT (id) DO UPDATE
+       SET user_id = COALESCE(EXCLUDED.user_id, cloudflare_accounts.user_id),
+           account_name = EXCLUDED.account_name,
+           account_id = EXCLUDED.account_id,
+           api_token = EXCLUDED.api_token,
+           last_verified_at = EXCLUDED.last_verified_at,
+           zones_count = EXCLUDED.zones_count,
+           status = EXCLUDED.status,
+           error_message = EXCLUDED.error_message,
+           updated_at = NOW()`,
+      [
+        account.id,
+        account.userId || null,
+        account.accountName,
+        account.accountId || null,
+        account.apiToken,
+        account.lastVerifiedAt ? new Date(account.lastVerifiedAt) : null,
+        account.zonesCount ?? 0,
+        account.status || "active",
+        account.errorMessage || null,
+      ]
+    )
+  } catch (err) {
+    console.error("[postgres] upsertDbCloudflareAccount error:", err)
+  }
+}
+
+export async function deleteDbCloudflareAccount(id: string): Promise<boolean> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return false
+  try {
+    const res = await pool.query(
+      `DELETE FROM cloudflare_accounts WHERE id = $1`,
+      [id]
+    )
+    return (res.rowCount ?? 0) > 0
+  } catch (err) {
+    console.error("[postgres] deleteDbCloudflareAccount error:", err)
+    return false
   }
 }

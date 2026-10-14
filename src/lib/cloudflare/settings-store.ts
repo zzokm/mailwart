@@ -3,6 +3,11 @@ import "server-only"
 import { mkdir, readFile, writeFile } from "fs/promises"
 import path from "path"
 
+import {
+  deleteDbCloudflareAccount,
+  getDbCloudflareAccounts,
+  upsertDbCloudflareAccount,
+} from "@/lib/db"
 import type { CloudflareAccountConfig, CloudflareSettings } from "./types"
 
 const DEFAULT_SETTINGS: CloudflareSettings = {
@@ -81,27 +86,46 @@ function sanitizeStored(raw: unknown): CloudflareSettings {
 }
 
 export async function readCloudflareSettings(): Promise<CloudflareSettings> {
+  // 1. Check PostgreSQL first
+  try {
+    const dbAccounts = await getDbCloudflareAccounts()
+    if (dbAccounts.length > 0) {
+      return { accounts: dbAccounts }
+    }
+  } catch (err) {
+    console.warn("[cloudflare] Database query failed, checking file fallback:", err)
+  }
+
+  // 2. Read from filesystem file if exists and backfill into DB
   const filePath = resolveSettingsPath()
   try {
     const text = await readFile(filePath, "utf8")
-    return sanitizeStored(JSON.parse(text) as unknown)
-  } catch {
-    // If no settings file exists yet, check if env token exists and provide as initial account
-    const envToken = process.env.CLOUDFLARE_API_TOKEN?.trim()
-    if (envToken) {
-      return {
-        accounts: [
-          {
-            id: "acc_env",
-            accountName: process.env.CLOUDFLARE_ACCOUNT_NAME?.trim() || "Environment Account",
-            apiToken: envToken,
-            status: "active",
-          },
-        ],
+    const stored = sanitizeStored(JSON.parse(text) as unknown)
+    if (stored.accounts.length > 0) {
+      for (const a of stored.accounts) {
+        upsertDbCloudflareAccount(a).catch(() => {})
       }
+      return stored
     }
-    return { ...DEFAULT_SETTINGS }
+  } catch {
+    // If no settings file exists or permission denied
   }
+
+  // 3. Fallback to env token
+  const envToken = process.env.CLOUDFLARE_API_TOKEN?.trim()
+  if (envToken) {
+    return {
+      accounts: [
+        {
+          id: "acc_env",
+          accountName: process.env.CLOUDFLARE_ACCOUNT_NAME?.trim() || "Environment Account",
+          apiToken: envToken,
+          status: "active",
+        },
+      ],
+    }
+  }
+  return { ...DEFAULT_SETTINGS }
 }
 
 export async function writeCloudflareSettings(
@@ -112,22 +136,47 @@ export async function writeCloudflareSettings(
     ...current,
     ...next,
   }
-  const filePath = resolveSettingsPath()
-  await ensureParent(filePath)
-  await writeFile(filePath, JSON.stringify(merged, null, 2), "utf8")
+
+  // 1. Write to PostgreSQL
+  if (merged.accounts) {
+    for (const a of merged.accounts) {
+      await upsertDbCloudflareAccount(a).catch((err) => {
+        console.warn("[cloudflare] DB upsert failed:", err)
+      })
+    }
+  }
+
+  // 2. Safe best-effort write to filesystem (never throw EACCES)
+  try {
+    const filePath = resolveSettingsPath()
+    await ensureParent(filePath)
+    await writeFile(filePath, JSON.stringify(merged, null, 2), "utf8")
+  } catch (err) {
+    console.warn(
+      "[cloudflare] Filesystem settings write skipped (using PostgreSQL):",
+      err instanceof Error ? err.message : err
+    )
+  }
+
   return merged
 }
 
 export async function saveCloudflareAccount(
   account: Omit<CloudflareAccountConfig, "id"> & { id?: string }
 ): Promise<CloudflareAccountConfig> {
-  const settings = await readCloudflareSettings()
   const id = account.id || `acc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
   const newAccount: CloudflareAccountConfig = {
     ...account,
     id,
   }
 
+  // 1. Upsert directly to PostgreSQL
+  await upsertDbCloudflareAccount(newAccount).catch((err) => {
+    console.warn("[cloudflare] DB upsert failed:", err)
+  })
+
+  // 2. Update memory/cache and attempt safe file write
+  const settings = await readCloudflareSettings()
   const existingIdx = settings.accounts.findIndex((a) => a.id === id)
   let updatedAccounts: CloudflareAccountConfig[]
   if (existingIdx >= 0) {
@@ -137,22 +186,51 @@ export async function saveCloudflareAccount(
     updatedAccounts = [...settings.accounts, newAccount]
   }
 
-  await writeCloudflareSettings({ accounts: updatedAccounts })
+  try {
+    const filePath = resolveSettingsPath()
+    await ensureParent(filePath)
+    await writeFile(filePath, JSON.stringify({ accounts: updatedAccounts }, null, 2), "utf8")
+  } catch (err) {
+    console.warn(
+      "[cloudflare] Filesystem cache write skipped (using PostgreSQL):",
+      err instanceof Error ? err.message : err
+    )
+  }
+
   return newAccount
 }
 
 export async function removeCloudflareAccount(id: string): Promise<boolean> {
-  const settings = await readCloudflareSettings()
-  const filtered = settings.accounts.filter((a) => a.id !== id)
-  if (filtered.length === settings.accounts.length) {
-    return false
+  // 1. Delete from PostgreSQL
+  await deleteDbCloudflareAccount(id).catch(() => {})
+
+  // 2. Safe file update
+  try {
+    const settings = await readCloudflareSettings()
+    const filtered = settings.accounts.filter((a) => a.id !== id)
+    const filePath = resolveSettingsPath()
+    await ensureParent(filePath)
+    await writeFile(filePath, JSON.stringify({ accounts: filtered }, null, 2), "utf8")
+  } catch (err) {
+    console.warn(
+      "[cloudflare] Filesystem remove cache write skipped:",
+      err instanceof Error ? err.message : err
+    )
   }
-  await writeCloudflareSettings({ accounts: filtered })
+
   return true
 }
 
 export async function clearCloudflareSettings(): Promise<void> {
-  const filePath = resolveSettingsPath()
-  await ensureParent(filePath)
-  await writeFile(filePath, JSON.stringify(DEFAULT_SETTINGS, null, 2), "utf8")
+  try {
+    const accounts = await getDbCloudflareAccounts()
+    for (const a of accounts) {
+      await deleteDbCloudflareAccount(a.id).catch(() => {})
+    }
+  } catch {}
+  try {
+    const filePath = resolveSettingsPath()
+    await ensureParent(filePath)
+    await writeFile(filePath, JSON.stringify(DEFAULT_SETTINGS, null, 2), "utf8")
+  } catch {}
 }
