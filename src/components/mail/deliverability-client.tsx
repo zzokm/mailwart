@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import {
   Activity,
   AlertTriangle,
@@ -18,50 +18,59 @@ import {
   RefreshCw,
   Search,
   Send,
+  ShieldAlert,
   ShieldCheck,
-  Sparkles,
   XCircle,
 } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { runDeliverabilityCheckupAction } from "@/lib/actions/deliverability"
 import type {
   CheckStatus,
   DeliverabilitySuiteReport,
 } from "@/lib/deliverability/types"
 
-function statusColor(status: CheckStatus) {
+function StatusIndicator({ status }: { status: CheckStatus }) {
   switch (status) {
     case "pass":
-      return "text-emerald-500 bg-emerald-500/10 border-emerald-500/30"
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 className="size-3.5 shrink-0" />
+          <span>Pass</span>
+        </span>
+      )
     case "warn":
-      return "text-amber-500 bg-amber-500/10 border-amber-500/30"
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="size-3.5 shrink-0" />
+          <span>Warning</span>
+        </span>
+      )
     case "fail":
-      return "text-rose-500 bg-rose-500/10 border-rose-500/30"
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400">
+          <XCircle className="size-3.5 shrink-0" />
+          <span>Failed</span>
+        </span>
+      )
     default:
-      return "text-muted-foreground bg-muted/40 border-border/40"
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Clock className="size-3.5 shrink-0" />
+          <span>Skipped</span>
+        </span>
+      )
   }
-}
-
-function StatusIcon({ status }: { status: CheckStatus }) {
-  switch (status) {
-    case "pass":
-      return <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
-    case "warn":
-      return <AlertTriangle className="size-4 text-amber-500 shrink-0" />
-    case "fail":
-      return <XCircle className="size-4 text-rose-500 shrink-0" />
-    default:
-      return <Clock className="size-4 text-muted-foreground shrink-0" />
-  }
-}
-
-function gradeColor(grade: string) {
-  if (grade.startsWith("A")) return "text-emerald-500 bg-emerald-500/10 border-emerald-500/30"
-  if (grade.startsWith("B")) return "text-blue-500 bg-blue-500/10 border-blue-500/30"
-  if (grade.startsWith("C")) return "text-amber-500 bg-amber-500/10 border-amber-500/30"
-  return "text-rose-500 bg-rose-500/10 border-rose-500/30"
 }
 
 export function DeliverabilityClient({
@@ -115,21 +124,36 @@ export function DeliverabilityClient({
     }
   }
 
-  const filteredDomainReports = (report?.domainReports ?? []).filter((d) =>
-    d.domain.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredDomainReports = useMemo(() => {
+    if (!report) return []
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return report.domainReports
+    return report.domainReports.filter((d) => d.domain.toLowerCase().includes(q))
+  }, [report, searchQuery])
+
+  const avgImapLatency = useMemo(() => {
+    if (!report || report.domainReports.length === 0) return 0
+    const total = report.domainReports.reduce((acc, d) => acc + d.inbound.latencyMs, 0)
+    return Math.round(total / report.domainReports.length)
+  }, [report])
+
+  const outboundPassedCount = useMemo(() => {
+    if (!report) return 0
+    return report.domainReports.filter((d) => d.outbound.status === "pass").length
+  }, [report])
 
   return (
-    <div className="space-y-6">
+    <div className="w-full space-y-6">
       {/* Test Controls Bar */}
-      <div className="rounded-xl border border-border/80 bg-card/60 p-4 sm:p-5">
+      <div className="rounded-xl border border-border/80 bg-card/40 p-4 sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:max-w-3xl">
+          <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:max-w-2xl">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">
+              <label htmlFor="deliverability-domain-scope" className="text-xs font-medium text-muted-foreground">
                 Domain Scope
               </label>
               <select
+                id="deliverability-domain-scope"
                 value={selectedDomain}
                 onChange={(e) => setSelectedDomain(e.target.value)}
                 disabled={isRunning}
@@ -146,22 +170,23 @@ export function DeliverabilityClient({
 
             <div>
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-muted-foreground">
-                  Optional External Mail-Tester Address
+                <label htmlFor="deliverability-mail-tester-address" className="text-xs font-medium text-muted-foreground">
+                  Optional Mail-Tester Address
                 </label>
                 <a
                   href="https://www.mail-tester.com/"
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Get address
                   <ExternalLink className="size-3" />
                 </a>
               </div>
               <Input
+                id="deliverability-mail-tester-address"
                 type="email"
-                placeholder="e.g. test-xxxx@srv1.mail-tester.com"
+                placeholder="test-xxxx@srv1.mail-tester.com"
                 value={externalRecipient}
                 onChange={(e) => setExternalRecipient(e.target.value)}
                 disabled={isRunning}
@@ -174,17 +199,17 @@ export function DeliverabilityClient({
             <Button
               onClick={handleRunCheckup}
               disabled={isRunning}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto gap-2"
             >
               {isRunning ? (
                 <>
-                  <RefreshCw className="size-4 animate-spin" data-icon="inline-start" />
-                  Running System Checkup…
+                  <RefreshCw className="size-4 animate-spin" />
+                  Running Diagnostics…
                 </>
               ) : (
                 <>
-                  <Play className="size-4" data-icon="inline-start" />
-                  Run Deliverability Checkup
+                  <Play className="size-4" />
+                  Run Diagnostics
                 </>
               )}
             </Button>
@@ -192,132 +217,110 @@ export function DeliverabilityClient({
         </div>
 
         {runError && (
-          <div className="mt-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+          <div className="mt-4 flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
             <XCircle className="size-4 shrink-0" />
             <span>{runError}</span>
           </div>
         )}
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground border-t border-border/40 pt-3">
-          <span className="flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
-            Temporary random mailboxes are created and automatically purged.
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-sky-500" />
-            Action events are permanently indexed in the PostgreSQL Audit Log.
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-purple-500" />
-            Live SMTP STARTTLS handshake + IMAP 993 latency are measured.
-          </span>
+        <div className="mt-3 border-t border-border/40 pt-2.5">
+          <p className="text-[11px] text-muted-foreground">
+            Runs automated inbound and outbound delivery probes with temporary inboxes, evaluates port latency, and verifies DNS security (MX, SPF, DKIM, DMARC, PTR).
+          </p>
         </div>
       </div>
 
-      {/* Overview KPI Cards */}
+      {/* Scoreboard Overview */}
       {report && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {/* Overall Score */}
-          <div className="rounded-xl border border-border/80 bg-card/60 p-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Deliverability Health */}
+          <div className="rounded-xl border border-border/80 bg-card/40 p-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-muted-foreground">Deliverability Score</span>
-              <span
-                className={`inline-flex items-center rounded-md border px-2 py-0.5 font-mono text-xs font-bold ${gradeColor(
-                  report.overallGrade
-                )}`}
-              >
-                {report.overallGrade}
-              </span>
+              <Badge variant="secondary" className="font-mono text-xs font-semibold">
+                Grade {report.overallGrade}
+              </Badge>
             </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="font-mono text-3xl font-bold tracking-tight">
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-2xl font-bold tracking-tight">
                 {report.overallScore}
               </span>
-              <span className="text-sm text-muted-foreground font-mono">/ 10</span>
+              <span className="font-mono text-xs text-muted-foreground">/ 10</span>
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              {report.passedDomains} of {report.totalDomains} domains passing optimal deliverability rubrics.
+              {report.passedDomains} of {report.totalDomains} domains passing optimal rubrics
             </p>
           </div>
 
-          {/* Outbound Delivery */}
-          <div className="rounded-xl border border-border/80 bg-card/60 p-4">
+          {/* Outbound SMTP */}
+          <div className="rounded-xl border border-border/80 bg-card/40 p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Outbound Delivery</span>
-              <Send className="size-4 text-sky-500" />
+              <span className="text-xs font-medium text-muted-foreground">Outbound SMTP</span>
+              <Send className="size-3.5 text-muted-foreground" />
             </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="font-mono text-xl font-semibold">
-                {report.domainReports.filter((d) => d.outbound.status === "pass").length} /{" "}
-                {report.totalDomains}
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-2xl font-bold tracking-tight">
+                {outboundPassedCount} <span className="text-xs font-normal text-muted-foreground">/ {report.totalDomains}</span>
               </span>
-              <span className="text-xs text-emerald-500 font-medium">100% STARTTLS</span>
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              SMTP port 587 authentication & TLS cipher handshake validated.
+              Port 587 STARTTLS handshake &amp; submission OK
             </p>
           </div>
 
           {/* Inbound & IMAP */}
-          <div className="rounded-xl border border-border/80 bg-card/60 p-4">
+          <div className="rounded-xl border border-border/80 bg-card/40 p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Inbound & Storage</span>
-              <Inbox className="size-4 text-emerald-500" />
+              <span className="text-xs font-medium text-muted-foreground">Inbound &amp; IMAP</span>
+              <Inbox className="size-3.5 text-muted-foreground" />
             </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="font-mono text-xl font-semibold">
-                {report.domainReports.filter((d) => d.inbound.status === "pass").length} /{" "}
-                {report.totalDomains}
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-2xl font-bold tracking-tight">
+                {avgImapLatency}
               </span>
-              <span className="text-xs text-muted-foreground font-mono">
-                {Math.round(
-                  report.domainReports.reduce((a, b) => a + b.inbound.latencyMs, 0) /
-                    Math.max(1, report.domainReports.length)
-                )}
-                ms avg
-              </span>
+              <span className="font-mono text-xs text-muted-foreground">ms avg</span>
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Secure IMAP port 993 handshake & inbox access verified.
+              Port 993 SSL/TLS storage &amp; mailbox access verified
             </p>
           </div>
 
           {/* DNS & Blacklists */}
-          <div className="rounded-xl border border-border/80 bg-card/60 p-4">
+          <div className="rounded-xl border border-border/80 bg-card/40 p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">DNS & Reputation</span>
-              <ShieldCheck className="size-4 text-emerald-500" />
+              <span className="text-xs font-medium text-muted-foreground">DNS &amp; Reputation</span>
+              <ShieldCheck className="size-3.5 text-muted-foreground" />
             </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="font-mono text-xl font-semibold">
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-2xl font-bold tracking-tight">
                 {report.failuresCount === 0 ? "Clean" : `${report.failuresCount} Issues`}
               </span>
               {report.warningsCount > 0 && (
-                <span className="text-xs text-amber-500 font-mono">
-                  {report.warningsCount} warnings
+                <span className="text-xs font-mono text-muted-foreground">
+                  ({report.warningsCount} warnings)
                 </span>
               )}
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              0 DNSBL blacklists. SPF, DKIM, DMARC alignment checked.
+              Zero DNSBL listings · SPF, DKIM, DMARC alignment
             </p>
           </div>
         </div>
       )}
 
-      {/* Global Recommendations / Warnings Banner */}
+      {/* System Recommendations (if any) */}
       {report && report.recommendations.length > 0 && (
-        <div className="rounded-xl border border-border/80 bg-muted/30 p-4">
+        <div className="rounded-xl border border-border/80 bg-muted/20 p-4">
           <div className="flex items-center gap-2">
-            <Sparkles className="size-4 text-primary" />
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              System Health & Recommendation Summary
+            <ShieldAlert className="size-4 text-muted-foreground" />
+            <h3 className="text-xs font-medium uppercase tracking-wider text-foreground">
+              Deliverability Recommendations ({report.recommendations.length})
             </h3>
           </div>
-          <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
             {report.recommendations.map((rec, i) => (
               <li key={i} className="flex items-start gap-2">
-                <span className="mt-1 size-1.5 rounded-full bg-primary shrink-0" />
+                <span className="mt-1.5 size-1 rounded-full bg-muted-foreground shrink-0" />
                 <span>{rec}</span>
               </li>
             ))}
@@ -325,14 +328,14 @@ export function DeliverabilityClient({
         </div>
       )}
 
-      {/* Domain Results Section */}
+      {/* Domain Breakdown */}
       {report && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">Domain Deliverability Results</h2>
+              <h2 className="text-sm font-medium">Domain Health Breakdown</h2>
               <p className="text-xs text-muted-foreground">
-                Drill down into individual domain DNS records, connection traces, and recommendations.
+                Inspect per-domain DNS records, ports, and delivery traces.
               </p>
             </div>
 
@@ -347,19 +350,20 @@ export function DeliverabilityClient({
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2">
             {filteredDomainReports.map((domainReport) => {
               const isExpanded = expandedDomain === domainReport.domain
+              const hasIssues = domainReport.issues.length > 0
 
               return (
                 <div
                   key={domainReport.domain}
-                  className="overflow-hidden rounded-xl border border-border/80 bg-card/60 transition-colors"
+                  className="overflow-hidden rounded-xl border border-border/80 bg-card/40 transition-colors"
                 >
                   {/* Domain Header Row */}
                   <div
                     onClick={() => setExpandedDomain(isExpanded ? null : domainReport.domain)}
-                    className="flex cursor-pointer flex-wrap items-center justify-between gap-3 p-4 hover:bg-muted/30"
+                    className="flex cursor-pointer flex-wrap items-center justify-between gap-3 p-4 hover:bg-muted/20 select-none"
                   >
                     <div className="flex items-center gap-3">
                       <button
@@ -374,8 +378,8 @@ export function DeliverabilityClient({
                         )}
                       </button>
 
-                      <div className="size-8 rounded-lg border border-border/60 bg-muted/40 flex items-center justify-center font-bold font-mono text-xs">
-                        <Globe className="size-4 text-muted-foreground" />
+                      <div className="size-7 rounded-lg border border-border/60 bg-muted/30 flex items-center justify-center">
+                        <Globe className="size-3.5 text-muted-foreground" />
                       </div>
 
                       <div>
@@ -383,92 +387,78 @@ export function DeliverabilityClient({
                           <span className="font-medium text-sm text-foreground">
                             {domainReport.domain}
                           </span>
-                          <span
-                            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-bold ${gradeColor(
-                              domainReport.grade
-                            )}`}
-                          >
-                            {domainReport.score} / 10 ({domainReport.grade})
-                          </span>
+                          <Badge variant="outline" className="font-mono text-[10px]">
+                            {domainReport.score} / 10 · {domainReport.grade}
+                          </Badge>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono mt-0.5">
-                          <span>Temp probe: {domainReport.tempMailbox.email}</span>
-                          <span>•</span>
-                          <span className="text-emerald-500">
-                            {domainReport.tempMailbox.cleaned ? "Purged" : "Active"}
-                          </span>
+                        <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                          temp probe: {domainReport.tempMailbox.email}
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      {/* Status Pills */}
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusColor(
-                          domainReport.outbound.status
-                        )}`}
-                      >
+                    <div className="flex flex-wrap items-center gap-3 text-xs">
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
                         <Send className="size-3" />
-                        Outbound: {domainReport.outbound.status}
-                      </span>
+                        <span>SMTP:</span>
+                        <StatusIndicator status={domainReport.outbound.status} />
+                      </div>
 
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusColor(
-                          domainReport.inbound.status
-                        )}`}
-                      >
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
                         <Inbox className="size-3" />
-                        Inbound: {domainReport.inbound.status}
-                      </span>
+                        <span>IMAP:</span>
+                        <StatusIndicator status={domainReport.inbound.status} />
+                      </div>
 
-                      {domainReport.issues.length > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-500">
-                          <AlertTriangle className="size-3" />
-                          {domainReport.issues.length} Issues
-                        </span>
+                      {hasIssues ? (
+                        <Badge variant="destructive" className="font-mono text-[10px]">
+                          {domainReport.issues.length} {domainReport.issues.length === 1 ? "issue" : "issues"}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400">
+                          DNS 7/7 OK
+                        </Badge>
                       )}
                     </div>
                   </div>
 
                   {/* Expanded Diagnostics Area */}
                   {isExpanded && (
-                    <div className="border-t border-border/60 bg-background/40 p-4 sm:p-5 space-y-6">
-                      {/* Actionable Recommendations (What went wrong & where) */}
-                      {domainReport.issues.length > 0 ? (
-                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
-                          <h4 className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                            <AlertTriangle className="size-4" />
-                            Diagnostics & Actionable Recommendations ({domainReport.issues.length})
+                    <div className="border-t border-border/60 bg-background/50 p-4 sm:p-5 space-y-5">
+                      {/* Recommendations for this domain */}
+                      {hasIssues && (
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-medium text-foreground">
+                            Actionable Recommendations
                           </h4>
-                          <div className="mt-3 space-y-3">
+                          <div className="grid gap-2">
                             {domainReport.issues.map((issue, idx) => (
                               <div
                                 key={idx}
-                                className="rounded-md border border-border/60 bg-background/60 p-3 text-xs"
+                                className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs"
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div>
                                     <div className="font-medium text-foreground">{issue.title}</div>
-                                    <p className="mt-1 text-muted-foreground">{issue.message}</p>
+                                    <p className="mt-0.5 text-muted-foreground">{issue.message}</p>
                                   </div>
-                                  <span
-                                    className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase font-bold ${
-                                      issue.severity === "critical"
-                                        ? "bg-rose-500/20 text-rose-500"
-                                        : "bg-amber-500/20 text-amber-500"
-                                    }`}
+                                  <Badge
+                                    variant={issue.severity === "critical" ? "destructive" : "outline"}
+                                    className="font-mono text-[10px] uppercase"
                                   >
                                     {issue.severity}
-                                  </span>
+                                  </Badge>
                                 </div>
 
-                                <div className="mt-2.5 rounded bg-muted/50 p-2 font-mono text-[11px] text-foreground flex items-center justify-between gap-2">
-                                  <span>{issue.recommendation}</span>
-                                  {issue.suggestedRecord && (
+                                {issue.suggestedRecord && (
+                                  <div className="mt-2.5 flex items-center justify-between gap-2 rounded bg-background p-2 font-mono text-[11px] border border-border/60">
+                                    <span className="truncate">
+                                      {issue.suggestedRecord.type} {issue.suggestedRecord.name} {issue.suggestedRecord.content}
+                                    </span>
                                     <Button
                                       size="sm"
                                       variant="ghost"
-                                      className="h-6 px-2 text-[10px]"
+                                      className="h-6 px-2 text-[10px] shrink-0"
                                       onClick={() =>
                                         copyToClipboard(
                                           `rec-${domainReport.domain}-${idx}`,
@@ -483,77 +473,56 @@ export function DeliverabilityClient({
                                       )}
                                       Copy Record
                                     </Button>
-                                  )}
-                                </div>
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
                         </div>
-                      ) : (
-                        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
-                          <CheckCircle2 className="size-4 shrink-0" />
-                          <span>
-                            Zero configuration issues detected! MX, SPF, DKIM, DMARC, and PTR alignment are all passing.
-                          </span>
-                        </div>
                       )}
 
-                      {/* DNS Matrix */}
+                      {/* Complete DNS Matrix Table */}
                       <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-                          <Globe className="size-3.5 text-primary" />
-                          Complete DNS & Security Verification Matrix
-                        </h4>
-                        <div className="overflow-x-auto rounded-lg border border-border/60">
-                          <table className="w-full text-left text-xs">
-                            <thead className="bg-muted/40 font-mono text-[11px] text-muted-foreground uppercase border-b border-border/60">
-                              <tr>
-                                <th className="py-2 px-3">Type</th>
-                                <th className="py-2 px-3">Hostname / Query</th>
-                                <th className="py-2 px-3">Status</th>
-                                <th className="py-2 px-3">Observed DNS Value</th>
-                                <th className="py-2 px-3">Expected Configuration</th>
-                                <th className="py-2 px-3 text-right">Action</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border/40 font-sans">
+                        <div className="mb-2">
+                          <h4 className="text-xs font-medium text-foreground">
+                            DNS &amp; Security Matrix
+                          </h4>
+                        </div>
+                        <div className="overflow-hidden rounded-lg border border-border/80">
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="hover:bg-transparent">
+                                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">Type</TableHead>
+                                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">Hostname</TableHead>
+                                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">Status</TableHead>
+                                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">Observed Value</TableHead>
+                                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">Expected</TableHead>
+                                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-right">Copy</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
                               {domainReport.dnsChecks.map((check, idx) => (
-                                <tr key={idx} className="hover:bg-muted/20">
-                                  <td className="py-2 px-3 font-mono font-bold text-foreground">
+                                <TableRow key={idx}>
+                                  <TableCell className="font-mono text-[11px] font-bold">
                                     {check.type}
-                                  </td>
-                                  <td className="py-2 px-3 font-mono text-muted-foreground">
+                                  </TableCell>
+                                  <TableCell className="font-mono text-[11px] text-muted-foreground">
                                     {check.name}
-                                  </td>
-                                  <td className="py-2 px-3">
-                                    <div className="flex items-center gap-1.5">
-                                      <StatusIcon status={check.status} />
-                                      <span
-                                        className={`font-mono text-[11px] uppercase font-semibold ${
-                                          check.status === "pass"
-                                            ? "text-emerald-500"
-                                            : check.status === "warn"
-                                            ? "text-amber-500"
-                                            : "text-rose-500"
-                                        }`}
-                                      >
-                                        {check.status}
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td className="py-2 px-3 font-mono text-[11px] max-w-xs truncate text-foreground">
-                                    {check.observed || (
-                                      <span className="text-muted-foreground italic">None</span>
-                                    )}
-                                  </td>
-                                  <td className="py-2 px-3 font-mono text-[11px] max-w-xs truncate text-muted-foreground">
+                                  </TableCell>
+                                  <TableCell>
+                                    <StatusIndicator status={check.status} />
+                                  </TableCell>
+                                  <TableCell className="font-mono text-[11px] max-w-xs truncate text-foreground">
+                                    {check.observed || <span className="text-muted-foreground italic">None</span>}
+                                  </TableCell>
+                                  <TableCell className="font-mono text-[11px] max-w-xs truncate text-muted-foreground">
                                     {check.expected}
-                                  </td>
-                                  <td className="py-2 px-3 text-right">
+                                  </TableCell>
+                                  <TableCell className="text-right">
                                     <Button
                                       size="sm"
                                       variant="ghost"
-                                      className="h-6 px-2 text-[10px]"
+                                      className="h-6 px-1.5 text-[10px]"
                                       onClick={() =>
                                         copyToClipboard(
                                           `dns-${domainReport.domain}-${idx}`,
@@ -566,84 +535,66 @@ export function DeliverabilityClient({
                                       ) : (
                                         <Copy className="size-3" />
                                       )}
-                                      Copy
                                     </Button>
-                                  </td>
-                                </tr>
+                                  </TableCell>
+                                </TableRow>
                               ))}
-                            </tbody>
-                          </table>
+                            </TableBody>
+                          </Table>
                         </div>
                       </div>
 
-                      {/* Ports & Connectivity */}
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        {domainReport.portChecks.map((portCheck) => (
-                          <div
-                            key={portCheck.port}
-                            className="rounded-lg border border-border/60 bg-card/60 p-3 text-xs"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-mono font-semibold text-foreground">
-                                Port {portCheck.port}
-                              </span>
-                              <StatusIcon status={portCheck.status} />
+                      {/* Ports & Protocol Latency Strip */}
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {/* Live Traces */}
+                        <div className="rounded-lg border border-border/70 bg-card/30 p-3 text-xs space-y-2">
+                          <span className="font-medium text-foreground">Protocol Handshake</span>
+                          <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
+                            <div>
+                              <span className="text-muted-foreground">IMAP: </span>
+                              <span className="text-foreground">{domainReport.inbound.latencyMs}ms</span>
                             </div>
-                            <div className="mt-1 font-medium text-muted-foreground">
-                              {portCheck.service}
+                            <div>
+                              <span className="text-muted-foreground">SMTP: </span>
+                              <span className="text-foreground">{domainReport.outbound.latencyMs}ms</span>
                             </div>
-                            <div className="mt-2 text-[11px] text-muted-foreground leading-normal">
-                              {portCheck.note}
+                            <div>
+                              <span className="text-muted-foreground">TLS: </span>
+                              <span className="text-foreground">{domainReport.outbound.tlsVersion || "STARTTLS (TLSv1.3)"}</span>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Outbound SMTP Handshake Details */}
-                      <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-foreground flex items-center gap-1.5">
-                            <Send className="size-3.5 text-sky-500" />
-                            Outbound SMTP Submission Trace (Port 587)
-                          </span>
-                          <span className="font-mono text-[11px] text-muted-foreground">
-                            {domainReport.outbound.latencyMs}ms latency
-                          </span>
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-2 font-mono text-[11px]">
-                          <div>
-                            <span className="text-muted-foreground">Encryption: </span>
-                            <span className="text-foreground">
-                              {domainReport.outbound.tlsVersion || "STARTTLS (TLSv1.3)"}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Queue ID: </span>
-                            <span className="text-foreground">
-                              {domainReport.outbound.queueId || "Accepted"}
-                            </span>
+                            <div>
+                              <span className="text-muted-foreground">Queue ID: </span>
+                              <span className="text-foreground">{domainReport.outbound.queueId || "Accepted"}</span>
+                            </div>
                           </div>
                         </div>
-                        {domainReport.outbound.queueResponse && (
-                          <div className="font-mono text-[11px] text-muted-foreground bg-background/60 p-2 rounded border border-border/40">
-                            {domainReport.outbound.queueResponse}
+
+                        {/* Ports status */}
+                        <div className="rounded-lg border border-border/70 bg-card/30 p-3 text-xs space-y-2">
+                          <span className="font-medium text-foreground">Listening Mail Ports</span>
+                          <div className="flex flex-wrap gap-2 pt-0.5">
+                            {domainReport.portChecks.map((portCheck) => (
+                              <div
+                                key={portCheck.port}
+                                className="flex items-center gap-1.5 rounded border border-border/60 bg-background px-2 py-1 font-mono text-[11px]"
+                              >
+                                <span className={portCheck.status === "pass" ? "size-1.5 rounded-full bg-emerald-500" : "size-1.5 rounded-full bg-rose-500"} />
+                                <span>Port {portCheck.port}</span>
+                              </div>
+                            ))}
                           </div>
-                        )}
+                        </div>
                       </div>
 
-                      {/* External Mail-Tester Report (if sent) */}
+                      {/* Mail-Tester external result */}
                       {domainReport.external?.enabled && (
-                        <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 text-xs flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 text-xs">
                           <div>
-                            <div className="font-semibold text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
-                              <ExternalLink className="size-3.5" />
-                              Mail-Tester Verification Sent
-                            </div>
-                            <p className="mt-0.5 text-muted-foreground font-mono text-[11px]">
-                              Recipient: {domainReport.external.recipient}
+                            <span className="font-medium text-foreground">Mail-Tester Probe Sent</span>
+                            <p className="text-[11px] font-mono text-muted-foreground">
+                              {domainReport.external.recipient}
                             </p>
                           </div>
-
                           {domainReport.external.reportUrl && (
                             <Button
                               size="sm"
@@ -680,22 +631,22 @@ export function DeliverabilityClient({
       {/* Blank Slate before First Run */}
       {!report && (
         <div className="rounded-xl border border-dashed border-border/80 p-12 text-center">
-          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Activity className="size-6" />
+          <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Activity className="size-5" />
           </div>
-          <h3 className="mt-4 text-sm font-semibold">Deliverability Checkup Ready</h3>
+          <h3 className="mt-3 text-sm font-medium">Deliverability &amp; System Checkup</h3>
           <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
-            Execute a full system checkup across all your Stalwart domains to evaluate MX, SPF, DKIM, DMARC, port connectivity, and outbound TLS delivery with automated temporary mailboxes.
+            Execute automated inbound and outbound delivery probes across your Stalwart domains to evaluate MX, SPF, DKIM, DMARC, port connectivity, and TLS ciphers.
           </p>
-          <Button onClick={handleRunCheckup} disabled={isRunning} className="mt-5">
+          <Button onClick={handleRunCheckup} disabled={isRunning} className="mt-4 gap-2">
             {isRunning ? (
               <>
-                <RefreshCw className="size-4 animate-spin" data-icon="inline-start" />
+                <RefreshCw className="size-4 animate-spin" />
                 Running Diagnostics…
               </>
             ) : (
               <>
-                <Play className="size-4" data-icon="inline-start" />
+                <Play className="size-4" />
                 Start Full Checkup
               </>
             )}
