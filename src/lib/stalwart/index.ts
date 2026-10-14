@@ -10,6 +10,7 @@ export {
   createDomain,
   updateDomain,
   destroyDomain,
+  migrateAllDomainsToManual,
 } from "./domains"
 export {
   queryAccounts,

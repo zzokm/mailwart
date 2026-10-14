@@ -91,6 +91,7 @@ import {
   generateSpfRecord,
 } from "@/lib/dns"
 import { provisionDomainDns } from "@/lib/cloudflare"
+import { ensureCatchAllMailbox } from "@/lib/stalwart/catchall"
 import {
   bulkCreateAccounts,
   createAccount,
@@ -461,10 +462,47 @@ export async function refreshDomainDnsAction(
       mailHostHint: configuredMailHost(),
       mock: src === "mock",
     })
+
+    if (dns.worst === "pass") {
+      const session = await getSession().catch(() => null)
+      await ensureCatchAllMailbox(name, session?.userId).catch(() => {})
+    }
+
     return ok(dns, src)
   } catch (err) {
     return fail(err, src)
   }
+}
+
+export async function pollDomainsDnsAction(
+  domainNames: string[]
+): Promise<ActionResult<Record<string, DnsHealthSummary>>> {
+  const denied = await denyUnlessAuthed<Record<string, DnsHealthSummary>>()
+  if (denied) return denied
+
+  const src = source()
+  const session = await getSession().catch(() => null)
+  const results: Record<string, DnsHealthSummary> = {}
+
+  await Promise.all(
+    domainNames.map(async (name) => {
+      try {
+        const dns = await getDomainDnsHealth(name, {
+          bustCache: true,
+          mailHostHint: configuredMailHost(),
+          mock: src === "mock",
+        })
+        results[name] = dns
+        if (dns.worst === "pass") {
+          await ensureCatchAllMailbox(name, session?.userId).catch(() => {})
+        }
+      } catch {
+        // Skip failed individual check
+      }
+    })
+  )
+
+  return ok(results, src)
 }
 
 export async function generateDkimAction(input: {

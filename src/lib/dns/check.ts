@@ -1,10 +1,12 @@
 import "server-only"
 
-import { promises as dns } from "node:dns"
+import * as dns from "node:dns/promises"
+import { Resolver } from "node:dns/promises"
 
 import { getDnsExpectations } from "@/lib/env"
 import { findZoneForDomain, listZoneDnsRecords } from "@/lib/cloudflare/client"
 import { getStalwartDkimSignaturesForDomain } from "@/lib/stalwart/dkim"
+import { ensureCatchAllMailbox } from "@/lib/stalwart/catchall"
 import type {
   DnsCheckItem,
   DnsCheckStatus,
@@ -12,7 +14,17 @@ import type {
 } from "@/lib/stalwart/types"
 import type { CloudflareDnsRecord } from "@/lib/cloudflare/types"
 
-const CACHE_TTL_MS = 5 * 60 * 1000
+// Dedicated public recursive resolver querying Cloudflare (1.1.1.1) and Google (8.8.8.8)
+// directly to bypass Docker's 127.0.0.11 caching proxy and observe propagation in real time.
+const publicResolver = new Resolver({ timeout: 3500, tries: 2 })
+try {
+  publicResolver.setServers(["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"])
+} catch {
+  // fallback if setServers fails
+}
+
+const CACHE_TTL_MS = 60 * 1000 // 60s for pass
+const PROPAGATING_CACHE_TTL_MS = 8 * 1000 // 8s while propagating for snappy live feedback
 
 type CacheEntry = {
   expiresAt: number
@@ -25,27 +37,67 @@ function stripDot(host: string): string {
   return host.replace(/\.$/, "").toLowerCase()
 }
 
-function worstStatus(statuses: DnsCheckStatus[]): DnsCheckStatus {
-  if (statuses.includes("fail")) return "fail"
-  if (statuses.includes("propagating")) return "propagating"
-  if (statuses.includes("warn")) return "warn"
-  if (statuses.includes("unknown")) return "unknown"
-  if (statuses.every((s) => s === "pass")) return "pass"
-  return "unknown"
+export function computeDnsSummary(
+  checks: DnsCheckItem[],
+  checkedAt = new Date().toISOString(),
+  fromCache = false
+): DnsHealthSummary {
+  const totalCount = checks.length
+  const passedCount = checks.filter((c) => c.status === "pass").length
+  const failedCount = checks.filter((c) => c.status === "fail").length
+  const propagatingCount = checks.filter((c) => c.status === "propagating").length
+
+  let worst: DnsCheckStatus = "unknown"
+  if (failedCount > 0) {
+    worst = "fail"
+  } else if (passedCount === totalCount && totalCount > 0) {
+    worst = "pass"
+  } else if (propagatingCount > 0) {
+    worst = "propagating"
+  } else if (checks.some((c) => c.status === "warn")) {
+    worst = "warn"
+  }
+
+  return {
+    worst,
+    checks,
+    checkedAt,
+    fromCache,
+    passedCount,
+    totalCount,
+    propagatingCount,
+    failedCount,
+  }
 }
 
-async function resolveMx(domain: string) {
+type MxRecord = { exchange: string; priority: number }
+
+async function resolveMx(domain: string): Promise<MxRecord[]> {
+  try {
+    const records = await publicResolver.resolveMx(domain)
+    if (records && records.length > 0) return records
+  } catch {
+    // fallback to default dns
+  }
   try {
     return await dns.resolveMx(domain)
   } catch {
-    return [] as Awaited<ReturnType<typeof dns.resolveMx>>
+    return []
   }
 }
 
 async function resolveTxt(name: string): Promise<string[]> {
   try {
+    const records = await publicResolver.resolveTxt(name)
+    if (records && records.length > 0) {
+      return records.map((chunks: string[]) => chunks.join(""))
+    }
+  } catch {
+    // fallback to default dns
+  }
+  try {
     const records = await dns.resolveTxt(name)
-    return records.map((chunks) => chunks.join(""))
+    return records.map((chunks: string[]) => chunks.join(""))
   } catch {
     return []
   }
@@ -53,7 +105,7 @@ async function resolveTxt(name: string): Promise<string[]> {
 
 function checkMx(
   domain: string,
-  mx: Awaited<ReturnType<typeof dns.resolveMx>>,
+  mx: MxRecord[],
   expectedMx?: string,
   mailHostHint?: string,
   cfPresent?: boolean
@@ -334,12 +386,7 @@ export function mockDnsHealth(domain: string): DnsHealthSummary {
       observed: enabled ? `v=DMARC1; p=quarantine` : undefined,
     },
   ]
-  return {
-    worst: worstStatus(checks.map((c) => c.status)),
-    checks,
-    checkedAt: new Date().toISOString(),
-    fromCache: false,
-  }
+  return computeDnsSummary(checks, new Date().toISOString(), false)
 }
 
 export async function checkDomainDns(
@@ -358,6 +405,10 @@ export async function checkDomainDns(
       checks: [],
       checkedAt: new Date().toISOString(),
       fromCache: false,
+      passedCount: 0,
+      totalCount: 0,
+      propagatingCount: 0,
+      failedCount: 0,
     }
   }
 
@@ -428,17 +479,18 @@ export async function checkDomainDns(
   const dmarcCheck = checkDmarc(d, dmarcTxt, cfDmarcPresent)
 
   const checks = [mxCheck, txtCheck, spfCheck, dkimCheck, dmarcCheck]
-  const summary: DnsHealthSummary = {
-    worst: worstStatus(checks.map((c) => c.status)),
-    checks,
-    checkedAt: new Date().toISOString(),
-    fromCache: false,
-  }
+  const summary = computeDnsSummary(checks, new Date().toISOString(), false)
 
+  const ttl = summary.worst === "propagating" ? PROPAGATING_CACHE_TTL_MS : CACHE_TTL_MS
   cache.set(cacheKey, {
-    expiresAt: Date.now() + CACHE_TTL_MS,
+    expiresAt: Date.now() + ttl,
     summary: { ...summary, fromCache: false },
   })
+
+  // When propagation completes with all checks passing, automatically ensure catch-all mailbox catch@domain.tld
+  if (summary.worst === "pass") {
+    ensureCatchAllMailbox(d).catch(() => {})
+  }
 
   return summary
 }

@@ -84,12 +84,15 @@ export function DnsHealthPanel({
             <h2 className="font-mono text-[11px] tracking-wide text-muted-foreground">
               DNS health
             </h2>
-            <DnsHealthBadge status={dns.worst} />
+            <DnsHealthBadge
+              status={dns.worst}
+              passedCount={dns.passedCount}
+              totalCount={dns.totalCount}
+            />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Checks use this server&apos;s resolver view
-            {dns.fromCache ? " (cached)" : ""}. Public checkers may differ under
-            split-horizon DNS.
+            Checks use recursive public resolvers (1.1.1.1, 8.8.8.8)
+            {dns.fromCache ? " (cached)" : ""}.
           </p>
         </div>
         <Button
@@ -111,7 +114,7 @@ export function DnsHealthPanel({
         <div className="flex items-center gap-2.5 bg-sky-500/10 border-b border-sky-500/20 px-4 py-2.5 text-xs text-sky-400">
           <RefreshCw className="size-3.5 animate-spin shrink-0" />
           <span>
-            Records provisioned in Cloudflare. Auto-rechecking in background every 5s until public DNS propagation completes...
+            Records provisioned in Cloudflare. Propagating ({dns.passedCount ?? 0}/{dns.totalCount ?? 5} verified). Auto-validating in background every 4s...
           </span>
         </div>
       )}

@@ -46,6 +46,9 @@ export type StalwartDomain = {
   /** Domain name aliases (other names treated as this domain). */
   domainAliases?: string[]
   subAddressing?: string | { "@type"?: string } | null
+  dnsManagement?: "Manual" | "Automatic" | string
+  certificateManagement?: "Manual" | "Automatic" | string
+  dkimManagement?: "Manual" | "Automatic" | string
   createdAt?: string
 }
 
@@ -262,6 +265,10 @@ export type DnsHealthSummary = {
   checks: DnsCheckItem[]
   checkedAt: string
   fromCache: boolean
+  passedCount?: number
+  totalCount?: number
+  propagatingCount?: number
+  failedCount?: number
 }
 
 export type DkimGeneratedRecord = {

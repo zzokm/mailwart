@@ -49,6 +49,88 @@ export async function GET(req: Request) {
 
   const action = url.searchParams.get("action")
 
+  // Action: Inspect Stalwart session, domains, and settings
+  if (action === "stalwart-inspect" || action === "stalwart-session") {
+    try {
+      const conf = getStalwartConfig()
+      let session: unknown = null
+      if (conf) {
+        try {
+          const sRes = await fetch(conf.jmapUrl, {
+            method: "GET",
+            headers: {
+              Authorization: `Basic ${Buffer.from(`${conf.adminUser}:${conf.adminPassword}`).toString("base64")}`,
+              Accept: "application/json",
+            },
+          })
+          session = await sRes.json()
+        } catch (e) {
+          session = { error: String(e) }
+        }
+      }
+
+      const q = await jmapCall([["x:Domain/query", { filter: null }, "d0"]], { timeoutMs: 5000 })
+      const ids = (responseById(q, "d0").ids as string[]) || []
+      const g = await jmapCall([["x:Domain/get", { ids, properties: null }, "d1"]], { timeoutMs: 5000 })
+      const domains = responseById(g, "d1").list || []
+
+      // Try querying directory / providers / settings
+      const probeTypes = ["Directory", "Setting", "DnsProvider", "Provider", "Dns", "Certificate", "Acme", "Resolver"]
+      const probeResults: Record<string, unknown> = {}
+      for (const t of probeTypes) {
+        try {
+          const pCall = await jmapCall([[`x:${t}/query`, { filter: null }, "p0"]], { timeoutMs: 3000 })
+          probeResults[t] = responseById(pCall, "p0")
+        } catch (e) {
+          probeResults[t] = { error: String(e) }
+        }
+      }
+
+      return NextResponse.json({
+        action: "stalwart-inspect",
+        session,
+        ids,
+        domains,
+        probeResults,
+      })
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
+  // Action: Set all domains to Manual DNS and Manual SSL provisioning on Stalwart
+  if (action === "stalwart-migrate-manual") {
+    try {
+      const q = await jmapCall([["x:Domain/query", { filter: null }, "d0"]], { timeoutMs: 5000 })
+      const ids = (responseById(q, "d0").ids as string[]) || []
+      const results: Record<string, unknown> = {}
+      for (const id of ids) {
+        try {
+          const upd = await jmapCall([
+            [
+              "x:Domain/set",
+              {
+                update: {
+                  [id]: {
+                    dnsManagement: "Manual",
+                    certificateManagement: "Manual",
+                  },
+                },
+              },
+              "u0",
+            ],
+          ], { timeoutMs: 5000 })
+          results[id] = responseById(upd, "u0")
+        } catch (e) {
+          results[id] = { error: String(e) }
+        }
+      }
+      return NextResponse.json({ action: "stalwart-migrate-manual", count: ids.length, results })
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
   // Action: Auto-provision all domains in Cloudflare
   if (action === "provision-all") {
     try {

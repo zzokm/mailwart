@@ -29,11 +29,33 @@ export function DnsHealthBadge({
   status,
   className,
   compact,
+  passedCount,
+  totalCount,
 }: {
   status: DnsCheckStatus
   className?: string
   compact?: boolean
+  passedCount?: number
+  totalCount?: number
 }) {
+  const hasProgress =
+    status === "propagating" &&
+    typeof passedCount === "number" &&
+    typeof totalCount === "number" &&
+    totalCount > 0
+
+  const displayText = hasProgress
+    ? compact
+      ? `${passedCount}/${totalCount}`
+      : `propagating ${passedCount}/${totalCount}`
+    : compact
+      ? LABEL[status]
+      : `dns ${LABEL[status]}`
+
+  const titleText = hasProgress
+    ? `DNS health: propagating (${passedCount}/${totalCount} verified)`
+    : `DNS health: ${LABEL[status]}`
+
   return (
     <span
       className={cn(
@@ -41,7 +63,7 @@ export function DnsHealthBadge({
         dnsStatusClass(status),
         className
       )}
-      title={`DNS health: ${LABEL[status]}`}
+      title={titleText}
     >
       {status === "propagating" ? (
         <RefreshCw className="size-2.5 animate-spin text-sky-400" aria-hidden />
@@ -57,7 +79,7 @@ export function DnsHealthBadge({
           aria-hidden
         />
       )}
-      {compact ? LABEL[status] : `dns ${LABEL[status]}`}
+      {displayText}
     </span>
   )
 }

@@ -139,6 +139,7 @@ services:
       - traefik.http.routers.webmail-direct-https.rule=HostRegexp(`^webmail\..+$$`) || Host(`mail.zokm.me`)
       - traefik.http.routers.webmail-direct-https.entrypoints=websecure
       - traefik.http.routers.webmail-direct-https.tls=true
+      - traefik.http.routers.webmail-direct-https.tls.certresolver=letsencrypt
       - traefik.http.routers.webmail-direct-https.priority=100
       - traefik.http.routers.webmail-direct-https.service=email-manager-webmail
       # Service definition

@@ -571,6 +571,21 @@ export async function isDomainOwnedByUser(domainNameOrId: string, userId: string
   }
 }
 
+export async function getDomainOwner(domainNameOrId: string): Promise<string | null> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool || !domainNameOrId) return null
+  try {
+    const res = await pool.query(
+      `SELECT owner_id FROM domains WHERE id = $1 OR LOWER(name) = LOWER($1) LIMIT 1`,
+      [domainNameOrId]
+    )
+    return res.rows[0]?.owner_id || null
+  } catch {
+    return null
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Audit Log Operations
 // ---------------------------------------------------------------------------

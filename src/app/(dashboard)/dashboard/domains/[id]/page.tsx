@@ -81,7 +81,11 @@ export default async function DomainDetailPage({
             >
               {suspended ? "suspended" : "active"}
             </Badge>
-            <DnsHealthBadge status={dns.worst} />
+            <DnsHealthBadge
+              status={dns.worst}
+              passedCount={dns.passedCount}
+              totalCount={dns.totalCount}
+            />
             <Button
               variant="outline"
               size="sm"

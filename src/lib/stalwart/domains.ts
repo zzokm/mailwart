@@ -13,6 +13,9 @@ const DOMAIN_PROPS = [
   "allowRelaying",
   "aliases",
   "subAddressing",
+  "dnsManagement",
+  "certificateManagement",
+  "dkimManagement",
   "createdAt",
 ] as const
 
@@ -60,6 +63,9 @@ function mapDomain(item: Record<string, unknown>): StalwartDomain {
     mailExchanger: allowRelaying ? "backup" : "local",
     domainAliases: mapDomainAliases(item.aliases),
     subAddressing: item.subAddressing as StalwartDomain["subAddressing"],
+    dnsManagement: typeof item.dnsManagement === "string" ? item.dnsManagement : undefined,
+    certificateManagement: typeof item.certificateManagement === "string" ? item.certificateManagement : undefined,
+    dkimManagement: typeof item.dkimManagement === "string" ? item.dkimManagement : undefined,
     createdAt: typeof item.createdAt === "string" ? item.createdAt : undefined,
   }
 }
@@ -105,24 +111,7 @@ export async function createDomain(input: {
   const description = (input.description ?? name).trim()
   const createKey = "new"
 
-  const minimal = await jmapCall([
-    [
-      "x:Domain/set",
-      { create: { [createKey]: { name, description } } },
-      "d2",
-    ],
-  ])
-  const body = responseById(minimal, "d2")
-  const created = body.created as Record<string, Record<string, unknown>> | undefined
-  const notCreated = body.notCreated as
-    | Record<string, { type?: string; description?: string }>
-    | undefined
-
-  if (created?.[createKey]) {
-    return mapDomain({ ...created[createKey], name, description })
-  }
-
-  // Retry with full defaults if Stalwart cites missing fields
+  // Primary attempt: explicitly request Manual DNS & Manual Certificate provision
   const full = await jmapCall([
     [
       "x:Domain/set",
@@ -135,15 +124,33 @@ export async function createDomain(input: {
           },
         },
       },
-      "d3",
+      "d2",
     ],
   ])
-  const fullBody = responseById(full, "d3")
+  const fullBody = responseById(full, "d2")
   const fullCreated = fullBody.created as
     | Record<string, Record<string, unknown>>
     | undefined
   if (fullCreated?.[createKey]) {
     return mapDomain({ ...fullCreated[createKey], name, description })
+  }
+
+  // Fallback to minimal create if Stalwart rejects additional fields
+  const minimal = await jmapCall([
+    [
+      "x:Domain/set",
+      { create: { [createKey]: { name, description } } },
+      "d3",
+    ],
+  ])
+  const body = responseById(minimal, "d3")
+  const created = body.created as Record<string, Record<string, unknown>> | undefined
+  const notCreated = body.notCreated as
+    | Record<string, { type?: string; description?: string }>
+    | undefined
+
+  if (created?.[createKey]) {
+    return mapDomain({ ...created[createKey], name, description })
   }
 
   throw new StalwartError(
@@ -164,6 +171,9 @@ export async function updateDomain(
     catchAllAddress: string | null
     allowRelaying: boolean
     subAddressing: string
+    dnsManagement: "Manual" | "Automatic" | string
+    certificateManagement: "Manual" | "Automatic" | string
+    dkimManagement: "Manual" | "Automatic" | string
   }>
 ): Promise<void> {
   const r = await jmapCall([
@@ -176,6 +186,32 @@ export async function updateDomain(
   if (notUpdated?.[id]) {
     throw new StalwartError(formatSetFailure(notUpdated, id), "jmap", notUpdated)
   }
+}
+
+/**
+ * Iterate over all domains in Stalwart and enforce Manual DNS & Manual SSL provisioning.
+ */
+export async function migrateAllDomainsToManual(): Promise<{
+  updated: string[]
+  failed: Record<string, string>
+}> {
+  const domains = await queryDomains()
+  const updated: string[] = []
+  const failed: Record<string, string> = {}
+
+  for (const domain of domains) {
+    try {
+      await updateDomain(domain.id, {
+        dnsManagement: "Manual",
+        certificateManagement: "Manual",
+      })
+      updated.push(domain.name)
+    } catch (err) {
+      failed[domain.name] = err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  return { updated, failed }
 }
 
 export async function cleanupDomainDependencies(
