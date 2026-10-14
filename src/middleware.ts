@@ -8,23 +8,6 @@ import {
 } from "@/lib/auth/session-options"
 
 export async function middleware(request: NextRequest) {
-  const host = (
-    request.headers.get("x-forwarded-host") ||
-    request.headers.get("host") ||
-    request.nextUrl.hostname ||
-    ""
-  ).toLowerCase()
-
-  // Auto-redirect webmail.<any-domain> to the single interconnected global webmail instance
-  if (host.startsWith("webmail.")) {
-    const targetBase = process.env.ROUNDCUBE_URL || "https://email.yehia.dev/webmail/"
-    const targetUrl = new URL(targetBase)
-    if (request.nextUrl.search) {
-      targetUrl.search = request.nextUrl.search
-    }
-    return NextResponse.redirect(targetUrl, 302)
-  }
-
   const { pathname } = request.nextUrl
   const response = NextResponse.next()
   const session = await getIronSession<SessionData>(

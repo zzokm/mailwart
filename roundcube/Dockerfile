@@ -4,5 +4,7 @@
 # directory, so SSO silently stops working). Shipping them in the image avoids that.
 FROM roundcube/roundcubemail:1.6.11-apache
 
+RUN ln -s /var/www/html /var/www/html/webmail
+
 COPY config/integration.inc.php /var/roundcube/config/integration.inc.php
 COPY plugins/em_sso /var/www/html/plugins/em_sso
