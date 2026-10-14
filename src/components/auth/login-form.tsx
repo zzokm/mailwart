@@ -35,7 +35,23 @@ export function LoginForm() {
 
   async function onSubmit(values: LoginValues) {
     setPending(true)
-    const result = await loginAction(values)
+    let result: Awaited<ReturnType<typeof loginAction>>
+    try {
+      result = await loginAction(values)
+    } catch {
+      // Fallback to direct HTTP endpoint if server action ID is mismatched across deploys
+      try {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(values),
+        })
+        result = (await res.json()) as Awaited<ReturnType<typeof loginAction>>
+      } catch (err) {
+        result = { ok: false, error: err instanceof Error ? err.message : "Sign in failed." }
+      }
+    }
+
     if (!toastActionResult(result, { success: "Signed in." })) {
       setPending(false)
       return

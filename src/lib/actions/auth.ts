@@ -99,12 +99,22 @@ export async function loginAction(input: {
       verifyAppAdminCredentials(username, password)
     ) {
       // Re-seed admin user and authenticate
-      const admin = await ensureAdminUser()
+      const admin = await ensureAdminUser().catch((err) => {
+        console.error("[auth] ensureAdminUser failed:", err)
+        return null
+      })
       if (admin) {
         sessionUser = {
           id: admin.id,
           username: admin.username,
           email: admin.email,
+          role: "admin",
+        }
+      } else {
+        sessionUser = {
+          id: "admin-fallback",
+          username: adminUser,
+          email: `${adminUser}@yehia.dev`,
           role: "admin",
         }
       }
