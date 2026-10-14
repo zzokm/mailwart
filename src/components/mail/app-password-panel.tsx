@@ -50,20 +50,21 @@ export function AppPasswordPanel({
             did not confirm an account-scoped list. Manage credentials in
             Stalwart Admin, or retry after the association probe lands.
           </p>
-          {/* TODO: Confirm accountId filter on x:AppPassword/query against staging. */}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            nativeButton={false}
-            render={
-              <a href={adminUiUrl} target="_blank" rel="noreferrer" />
-            }
-          >
-            <ExternalLink data-icon="inline-start" />
-            Open Stalwart Admin
-          </Button>
+          {adminUiUrl ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              nativeButton={false}
+              render={
+                <a href={adminUiUrl} target="_blank" rel="noreferrer" />
+              }
+            >
+              <ExternalLink data-icon="inline-start" />
+              Open Stalwart Admin
+            </Button>
+          ) : null}
         </div>
       ) : null}
 

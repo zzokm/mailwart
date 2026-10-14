@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   UserPlus,
   Trash2,
@@ -10,6 +11,7 @@ import {
   Eye,
   EyeOff,
   UserCheck,
+  LogIn,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -35,6 +37,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import type { SafeUser } from "@/lib/db/users"
+import { impersonateUserAction } from "@/lib/actions/users"
 
 interface UserManagementClientProps {
   initialUsers: SafeUser[]
@@ -49,10 +52,17 @@ export function UserManagementClient({
   currentUsername,
   currentUserRole,
 }: UserManagementClientProps) {
+  const router = useRouter()
   const [users, setUsers] = useState<SafeUser[]>(initialUsers)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null)
+
+  // Delete confirmation modal states
+  const [userToDelete, setUserToDelete] = useState<SafeUser | null>(null)
+  const [confirmEmailInput, setConfirmEmailInput] = useState("")
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
 
   // Form states
   const [username, setUsername] = useState("")
@@ -121,17 +131,46 @@ export function UserManagementClient({
     }
   }
 
-  async function handleDeleteUser(user: SafeUser) {
-    if (!confirm(`Are you sure you want to delete user account '${user.username}'?`)) {
+  async function handleImpersonate(user: SafeUser) {
+    setImpersonatingId(user.id)
+    try {
+      const res = await impersonateUserAction(user.id)
+      if (!res.ok) {
+        toast.error(res.error || "Failed to switch account.")
+        setImpersonatingId(null)
+        return
+      }
+      toast.success(`Switched session to ${user.username}.`)
+      router.push("/dashboard")
+      router.refresh()
+    } catch {
+      toast.error("An unexpected error occurred while switching account.")
+      setImpersonatingId(null)
+    }
+  }
+
+  function openDeleteModal(user: SafeUser) {
+    setUserToDelete(user)
+    setConfirmEmailInput("")
+    setIsDeleteModalOpen(true)
+  }
+
+  async function handleConfirmDelete() {
+    if (!userToDelete) return
+    if (
+      confirmEmailInput.trim().toLowerCase() !==
+      userToDelete.email.trim().toLowerCase()
+    ) {
+      toast.error("The entered email address does not match.")
       return
     }
 
-    setDeletingId(user.id)
+    setDeletingId(userToDelete.id)
     try {
       const res = await fetch("/api/users", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({ userId: userToDelete.id }),
       })
 
       const data = await res.json().catch(() => null)
@@ -141,8 +180,11 @@ export function UserManagementClient({
         return
       }
 
-      toast.success(`User '${user.username}' has been removed.`)
-      setUsers((prev) => prev.filter((u) => u.id !== user.id))
+      toast.success(`User '${userToDelete.username}' has been removed.`)
+      setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id))
+      setIsDeleteModalOpen(false)
+      setUserToDelete(null)
+      setConfirmEmailInput("")
     } catch {
       toast.error("An unexpected error occurred while deleting user.")
     } finally {
@@ -337,7 +379,7 @@ export function UserManagementClient({
               <TableHead>Email</TableHead>
               <TableHead className="w-[100px]">Role</TableHead>
               <TableHead className="w-[150px]">Created</TableHead>
-              <TableHead className="w-[70px] text-right">Action</TableHead>
+              <TableHead className="w-[150px] text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -404,26 +446,45 @@ export function UserManagementClient({
                         : "Initial Seed"}
                     </TableCell>
                     <TableCell className="text-right">
-                      {canDelete ? (
-                        <Button
-                          size="icon-xs"
-                          variant="ghost"
-                          title={`Delete account ${u.username}`}
-                          disabled={deletingId === u.id}
-                          onClick={() => handleDeleteUser(u)}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          {deletingId === u.id ? (
-                            <Loader2 className="size-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="size-3.5" />
-                          )}
-                        </Button>
-                      ) : (
-                        <span className="text-[11px] text-muted-foreground/40">
-                          —
-                        </span>
-                      )}
+                      <div className="flex items-center justify-end gap-1.5">
+                        {isAdmin && !isSelf && (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            title={`Log in as ${u.username}`}
+                            disabled={impersonatingId === u.id}
+                            onClick={() => handleImpersonate(u)}
+                            className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground hover:border-primary/50"
+                          >
+                            {impersonatingId === u.id ? (
+                              <Loader2 className="size-3 animate-spin" />
+                            ) : (
+                              <LogIn className="size-3" />
+                            )}
+                            <span>Log in</span>
+                          </Button>
+                        )}
+                        {canDelete ? (
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            title={`Delete account ${u.username}`}
+                            disabled={deletingId === u.id}
+                            onClick={() => openDeleteModal(u)}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            {deletingId === u.id ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="size-3.5" />
+                            )}
+                          </Button>
+                        ) : !isAdmin || isSelf ? (
+                          <span className="text-[11px] text-muted-foreground/40 px-1">
+                            —
+                          </span>
+                        ) : null}
+                      </div>
                     </TableCell>
                   </TableRow>
                 )
@@ -432,6 +493,80 @@ export function UserManagementClient({
           </TableBody>
         </Table>
       </div>
+
+      {/* Delete User Confirmation Modal */}
+      <Dialog
+        open={isDeleteModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsDeleteModalOpen(false)
+            setUserToDelete(null)
+            setConfirmEmailInput("")
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <ShieldAlert className="size-4" />
+              Confirm User Account Deletion
+            </DialogTitle>
+            <DialogDescription>
+              This action is permanent and cannot be undone. All access, domains, and mailboxes associated with this user will be removed.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-3 space-y-3 text-xs">
+            <p className="text-muted-foreground">
+              To permanently delete user account <strong className="font-mono text-foreground font-semibold">{userToDelete?.username}</strong>, please enter their exact email address below:
+            </p>
+            <div className="rounded-md border border-border/80 bg-muted/40 p-2 font-mono text-center text-xs select-all text-foreground">
+              {userToDelete?.email}
+            </div>
+            <div className="space-y-1.5 pt-1">
+              <Label htmlFor="confirm-user-email">Enter email address to confirm</Label>
+              <Input
+                id="confirm-user-email"
+                type="email"
+                placeholder={userToDelete?.email}
+                value={confirmEmailInput}
+                onChange={(e) => setConfirmEmailInput(e.target.value)}
+                disabled={Boolean(deletingId)}
+                autoComplete="off"
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={Boolean(deletingId)}
+              onClick={() => setIsDeleteModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={
+                Boolean(deletingId) ||
+                !userToDelete ||
+                confirmEmailInput.trim().toLowerCase() !==
+                  userToDelete.email.trim().toLowerCase()
+              }
+              onClick={handleConfirmDelete}
+            >
+              {deletingId ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Delete Account"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

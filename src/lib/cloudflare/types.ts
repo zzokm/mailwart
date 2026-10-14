@@ -81,6 +81,7 @@ export type CloudflareAccountConfig = {
   zonesCount?: number
   status?: "active" | "error" | "invalid"
   errorMessage?: string
+  userId?: string
 }
 
 export type CloudflareAccountSummary = {
@@ -93,6 +94,7 @@ export type CloudflareAccountSummary = {
   status: "active" | "error" | "invalid"
   errorMessage?: string
   isEnv?: boolean
+  userId?: string
 }
 
 export type CloudflareStatus = {

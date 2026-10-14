@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 
 import { recordAudit } from "@/lib/audit"
 import {
+  getSession,
   requireAdminSession,
   requireSession,
   sessionActor,
@@ -129,6 +130,11 @@ export async function getCurrentUserAction(): Promise<ActionResult<{
   username?: string
   email?: string
   role?: string
+  impersonatingFrom?: {
+    userId: string
+    username: string
+    role: "admin"
+  }
 }>> {
   try {
     const session = await requireSession()
@@ -139,9 +145,87 @@ export async function getCurrentUserAction(): Promise<ActionResult<{
         username: session.username,
         email: session.email,
         role: session.role,
+        impersonatingFrom: session.impersonatingFrom,
       },
     }
   } catch {
     return { ok: false, error: "Unauthenticated" }
+  }
+}
+
+export async function impersonateUserAction(
+  targetUserId: string
+): Promise<ActionResult<SafeUser>> {
+  try {
+    const session = await getSession()
+    const isAdmin =
+      session.role === "admin" || session.impersonatingFrom?.role === "admin"
+    if (!isAdmin) {
+      return { ok: false, error: "Only administrators can impersonate users." }
+    }
+
+    await initDatabase()
+    const targetUser = await findUserById(targetUserId)
+    if (!targetUser) {
+      return { ok: false, error: "Target user not found." }
+    }
+
+    const originalAdmin = session.impersonatingFrom || {
+      userId: session.userId || "",
+      username: session.username || "yehia",
+      role: "admin" as const,
+    }
+
+    session.impersonatingFrom = originalAdmin
+    session.userId = targetUser.id
+    session.username = targetUser.username
+    session.email = targetUser.email
+    session.role = targetUser.role
+    await session.save()
+
+    const actor = originalAdmin.username
+    await recordAudit({
+      actor,
+      action: "user.impersonate",
+      detail: `Admin ${actor} switched to user ${targetUser.username} (${targetUser.email})`,
+    })
+
+    revalidatePath("/", "layout")
+    return { ok: true, data: targetUser }
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Failed to switch to user."
+    return { ok: false, error: message }
+  }
+}
+
+export async function stopImpersonatingAction(): Promise<ActionResult> {
+  try {
+    const session = await getSession()
+    if (!session.impersonatingFrom) {
+      return { ok: false, error: "Not currently impersonating any user." }
+    }
+
+    const originalAdmin = session.impersonatingFrom
+    const impersonatedUser = session.username
+
+    session.userId = originalAdmin.userId
+    session.username = originalAdmin.username
+    session.role = originalAdmin.role
+    delete session.impersonatingFrom
+    await session.save()
+
+    await recordAudit({
+      actor: originalAdmin.username,
+      action: "user.stop_impersonate",
+      detail: `Admin ${originalAdmin.username} exited impersonation of ${impersonatedUser}`,
+    })
+
+    revalidatePath("/", "layout")
+    return { ok: true }
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Failed to exit impersonation."
+    return { ok: false, error: message }
   }
 }

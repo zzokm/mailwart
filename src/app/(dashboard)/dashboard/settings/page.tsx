@@ -11,6 +11,7 @@ import { getCloudflareStatusAction } from "@/lib/actions/cloudflare"
 import { getLatestDeliverabilityReportAction } from "@/lib/actions/deliverability"
 import { listUsersAction } from "@/lib/actions/users"
 import { getSession } from "@/lib/auth/session"
+import { getUserOwnedDomainNames } from "@/lib/db"
 import { queryDomains } from "@/lib/stalwart/domains"
 
 export const metadata: Metadata = { title: "Settings" }
@@ -54,7 +55,10 @@ export default async function SettingsPage({
     )
   }
 
-  const availableDomains = domains.map((d: { name: string }) => d.name.toLowerCase())
+  const isAdmin = session.role === "admin"
+  const availableDomains = isAdmin
+    ? domains.map((d: { name: string }) => d.name.toLowerCase())
+    : await getUserOwnedDomainNames(session.userId || "")
 
   return (
     <div className="w-full space-y-6">

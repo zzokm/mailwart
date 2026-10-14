@@ -18,6 +18,11 @@ export type SessionData = {
   username?: string
   email?: string
   exp?: number
+  impersonatingFrom?: {
+    userId: string
+    username: string
+    role: "admin"
+  }
 }
 
 export function getSessionPassword(): string {

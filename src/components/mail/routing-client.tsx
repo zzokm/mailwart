@@ -598,7 +598,7 @@ function ForwardsSection({
             <Plus data-icon="inline-start" />
             Add forward
           </Button>
-          {source === "live" ? (
+          {source === "live" && adminUiUrl ? (
             <Button
               type="button"
               size="sm"

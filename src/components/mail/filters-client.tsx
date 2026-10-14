@@ -127,19 +127,21 @@ export function FiltersClient({
             </Badge>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            nativeButton={false}
-            render={
-              <a href={adminUiUrl} target="_blank" rel="noreferrer" />
-            }
-          >
-            Stalwart Admin
-            <ExternalLink data-icon="inline-end" className="size-3.5" />
-          </Button>
-        </div>
+        {adminUiUrl ? (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={
+                <a href={adminUiUrl} target="_blank" rel="noreferrer" />
+              }
+            >
+              Stalwart Admin
+              <ExternalLink data-icon="inline-end" className="size-3.5" />
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <Tabs defaultValue="autoresponders" className="w-full">
@@ -950,7 +952,7 @@ function SpamSection({
           >
             Save spam settings
           </Button>
-          {spam.backend === "unavailable" ? (
+          {spam.backend === "unavailable" && adminUiUrl ? (
             <Button
               variant="outline"
               size="sm"

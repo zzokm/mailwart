@@ -49,6 +49,8 @@ import {
 import { cn } from "@/lib/utils"
 import type { HealthStatus } from "@/lib/stalwart/types"
 
+import { ExitImpersonationButton } from "@/components/layout/exit-impersonation-button"
+
 const NAV: Array<{
   href: string
   label: string
@@ -69,10 +71,18 @@ export function AppShell({
   children,
   health,
   adminUiUrl,
+  userRole = "admin",
+  impersonatingFrom,
 }: {
   children: React.ReactNode
   health: HealthStatus
   adminUiUrl: string
+  userRole?: string
+  impersonatingFrom?: {
+    userId: string
+    username: string
+    role: "admin"
+  }
 }) {
   const pathname = usePathname()
 
@@ -163,17 +173,19 @@ export function AppShell({
             </div>
 
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  tooltip="Stalwart Admin"
-                  render={
-                    <a href={adminUiUrl} target="_blank" rel="noreferrer" />
-                  }
-                >
-                  <ExternalLink />
-                  <span>Stalwart Admin</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {userRole === "admin" && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip="Stalwart Admin"
+                    render={
+                      <a href={adminUiUrl} target="_blank" rel="noreferrer" />
+                    }
+                  >
+                    <ExternalLink />
+                    <span>Stalwart Admin</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
               <SidebarMenuItem>
                 <LogoutButton />
               </SidebarMenuItem>
@@ -191,6 +203,9 @@ export function AppShell({
                   <HeaderBreadcrumbs className="hidden sm:flex" />
                 </div>
                 <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+                  {impersonatingFrom && (
+                    <ExitImpersonationButton adminUsername={impersonatingFrom.username} />
+                  )}
                   <HealthPill health={health} />
                   <CopilotToggleButton />
                   <ThemeToggle />

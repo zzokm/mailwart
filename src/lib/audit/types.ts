@@ -37,6 +37,8 @@ export type AuditAction =
   | "user.create"
   | "user.update"
   | "user.destroy"
+  | "user.impersonate"
+  | "user.stop_impersonate"
 
 export type AuditEvent = {
   id: string

@@ -7,7 +7,8 @@ import {
   failResult as fail,
   okResult as ok,
 } from "@/lib/actions/result"
-import { AuthError, requireSession, sessionActor } from "@/lib/auth/session"
+import { AuthError, getSession, requireSession, sessionActor } from "@/lib/auth/session"
+import { getUserOwnedDomainNames } from "@/lib/db"
 import { recordAudit } from "@/lib/audit"
 import {
   auditTokenZonesForMail,
@@ -56,9 +57,12 @@ export async function getCloudflareStatusAction(): Promise<ActionResult<Cloudfla
   const denied = await denyUnlessAuthed<CloudflareStatus>()
   if (denied) return denied
   const src = source()
+  const session = await getSession().catch(() => null)
+  const isAdmin = session?.role === "admin"
+  const userId = session?.userId
 
   try {
-    const status = await getCloudflareStatus()
+    const status = await getCloudflareStatus({ userId, isAdmin })
     return ok(status, src)
   } catch (err) {
     return fail(err, src)
@@ -144,6 +148,7 @@ export async function addCloudflareAccountAction(input: {
     }
 
     const resolvedName = parsed.data.accountName?.trim() || audit.accountName || "Cloudflare Account"
+    const session = await getSession().catch(() => null)
 
     // 2. Persist account
     await saveCloudflareAccount({
@@ -153,6 +158,7 @@ export async function addCloudflareAccountAction(input: {
       lastVerifiedAt: new Date().toISOString(),
       zonesCount: audit.totalZonesCount,
       status: "active",
+      userId: session?.userId,
     })
 
     const overwrittenDomains: string[] = []
@@ -187,7 +193,10 @@ export async function addCloudflareAccountAction(input: {
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/domains")
 
-    const updatedStatus = await getCloudflareStatus()
+    const updatedStatus = await getCloudflareStatus({
+      userId: session?.userId,
+      isAdmin: session?.role === "admin",
+    })
     return ok(
       {
         status: updatedStatus,
@@ -216,6 +225,17 @@ export async function removeCloudflareAccountAction(input: {
   }
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    const accounts = await resolveAllCloudflareAccounts()
+    const target = accounts.find((a) => a.id === parsed.data.accountId)
+    if (!target) {
+      return fail(new Error("Account not found"), src)
+    }
+    if (!isAdmin && target.userId !== session?.userId) {
+      return fail(new Error("Unauthorized to remove this Cloudflare account."), src)
+    }
+
     const removed = await removeCloudflareAccount(parsed.data.accountId)
     if (!removed) {
       return fail(new Error("Account not found"), src)
@@ -231,7 +251,10 @@ export async function removeCloudflareAccountAction(input: {
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/domains")
 
-    const updatedStatus = await getCloudflareStatus()
+    const updatedStatus = await getCloudflareStatus({
+      userId: session?.userId,
+      isAdmin,
+    })
     return ok(updatedStatus, src)
   } catch (err) {
     return fail(err, src)
@@ -260,12 +283,17 @@ export async function testCloudflareAccountAction(input: {
   }>()
   if (denied) return denied
   const src = source()
+  const session = await getSession().catch(() => null)
+  const isAdmin = session?.role === "admin"
 
   try {
     const accounts = await resolveAllCloudflareAccounts()
     const target = accounts.find((a) => a.id === input.accountId)
     if (!target) {
       return fail(new Error("Account not found"), src)
+    }
+    if (!isAdmin && target.userId !== session?.userId) {
+      return fail(new Error("Unauthorized to access this Cloudflare account."), src)
     }
 
     const verified = await verifyCloudflareToken(target.apiToken)
@@ -286,7 +314,10 @@ export async function testCloudflareAccountAction(input: {
     await saveCloudflareAccount(target)
     revalidatePath("/dashboard/settings")
 
-    const updatedStatus = await getCloudflareStatus()
+    const updatedStatus = await getCloudflareStatus({
+      userId: session?.userId,
+      isAdmin,
+    })
     return ok(
       {
         ok: true,
@@ -422,9 +453,12 @@ export async function getAvailableCloudflareDomainsAction(): Promise<
   }>()
   if (denied) return denied
   const src = source()
+  const session = await getSession().catch(() => null)
+  const isAdmin = session?.role === "admin"
+  const userId = session?.userId
 
   try {
-    const status = await getCloudflareStatus()
+    const status = await getCloudflareStatus({ userId, isAdmin })
     if (!status.configured) {
       return ok(
         {
@@ -436,12 +470,16 @@ export async function getAvailableCloudflareDomainsAction(): Promise<
       )
     }
 
-    const [zones, stalwartDomains] = await Promise.all([
-      listCloudflareZones(),
-      queryDomains().catch(() => []),
+    const [zones, addedDomains] = await Promise.all([
+      listCloudflareZones({ userId, isAdmin }),
+      isAdmin
+        ? queryDomains()
+            .then((ds) => ds.map((d) => d.name.toLowerCase()))
+            .catch(() => [])
+        : getUserOwnedDomainNames(userId || ""),
     ])
 
-    const alreadyAdded = (stalwartDomains || []).map((d) => d.name.toLowerCase())
+    const alreadyAdded = (addedDomains || []).map((d) => d.toLowerCase())
 
     return ok(
       {

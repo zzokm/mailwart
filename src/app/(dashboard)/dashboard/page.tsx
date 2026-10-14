@@ -96,15 +96,17 @@ export default async function OverviewPage() {
         actions={
           <>
             <OverviewRefresh />
-            <Button
-              variant="outline"
-              size="sm"
-              nativeButton={false}
-              render={<a href={adminUiUrl} target="_blank" rel="noreferrer" />}
-            >
-              <ExternalLink data-icon="inline-start" />
-              Stalwart Admin
-            </Button>
+            {adminUiUrl ? (
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<a href={adminUiUrl} target="_blank" rel="noreferrer" />}
+              >
+                <ExternalLink data-icon="inline-start" />
+                Stalwart Admin
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               size="sm"

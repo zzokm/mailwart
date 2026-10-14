@@ -136,14 +136,31 @@ export async function initDatabase(): Promise<void> {
           id VARCHAR(128) PRIMARY KEY,
           name VARCHAR(255) UNIQUE NOT NULL,
           description TEXT,
+          owner_id VARCHAR(64),
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_domains_name ON domains(LOWER(name));
+
+        ALTER TABLE domains ADD COLUMN IF NOT EXISTS owner_id VARCHAR(64);
+        ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS owner_id VARCHAR(64);
+        CREATE INDEX IF NOT EXISTS idx_domains_owner_id ON domains(owner_id);
+        CREATE INDEX IF NOT EXISTS idx_mailboxes_owner_id ON mailboxes(owner_id);
       `)
 
       // 2. Seed primary admin account yehia
       await ensureAdminUserInternal(pool)
+
+      // Backfill pre-existing domains and mailboxes to the primary admin account if owner is unset
+      await pool.query(`
+        UPDATE domains 
+        SET owner_id = (SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1) 
+        WHERE owner_id IS NULL;
+
+        UPDATE mailboxes 
+        SET owner_id = (SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1) 
+        WHERE owner_id IS NULL;
+      `).catch(() => {})
 
       // 3. Migrate from SQLite if existing database file is found
       await migrateFromSqlite(pool)
@@ -395,6 +412,104 @@ export async function syncDomainsToDb(
     }
   } catch (err) {
     console.error("[postgres] syncDomainsToDb error:", err)
+  }
+}
+
+export async function assignDomainOwner(
+  domainId: string,
+  domainName: string,
+  ownerId: string
+): Promise<void> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return
+  try {
+    await pool.query(
+      `INSERT INTO domains (id, name, owner_id, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (id) DO UPDATE
+       SET owner_id = EXCLUDED.owner_id, name = EXCLUDED.name, updated_at = NOW()`,
+      [domainId, domainName.toLowerCase(), ownerId]
+    )
+  } catch (err) {
+    console.error("[postgres] assignDomainOwner error:", err)
+  }
+}
+
+export async function removeDomainRecord(domainIdOrName: string): Promise<void> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return
+  try {
+    await pool.query(
+      `DELETE FROM domains WHERE id = $1 OR LOWER(name) = LOWER($1)`,
+      [domainIdOrName]
+    )
+  } catch (err) {
+    console.error("[postgres] removeDomainRecord error:", err)
+  }
+}
+
+export async function assignMailboxOwner(
+  mailboxId: string,
+  email: string,
+  ownerId: string
+): Promise<void> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return
+  try {
+    await pool.query(
+      `UPDATE mailboxes SET owner_id = $1 WHERE id = $2 OR LOWER(email) = LOWER($3)`,
+      [ownerId, mailboxId, email]
+    )
+  } catch (err) {
+    console.error("[postgres] assignMailboxOwner error:", err)
+  }
+}
+
+export async function getUserOwnedDomainNames(userId: string): Promise<string[]> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool || !userId) return []
+  try {
+    const res = await pool.query(
+      `SELECT LOWER(name) as name FROM domains WHERE owner_id = $1`,
+      [userId]
+    )
+    return res.rows.map((r: { name: string }) => r.name)
+  } catch {
+    return []
+  }
+}
+
+export async function getUserOwnedDomainIds(userId: string): Promise<string[]> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool || !userId) return []
+  try {
+    const res = await pool.query(
+      `SELECT id FROM domains WHERE owner_id = $1`,
+      [userId]
+    )
+    return res.rows.map((r: { id: string }) => r.id)
+  } catch {
+    return []
+  }
+}
+
+export async function isDomainOwnedByUser(domainNameOrId: string, userId: string): Promise<boolean> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool || !userId) return false
+  try {
+    const res = await pool.query(
+      `SELECT 1 FROM domains WHERE (id = $1 OR LOWER(name) = LOWER($1)) AND owner_id = $2 LIMIT 1`,
+      [domainNameOrId, userId]
+    )
+    return (res.rowCount ?? 0) > 0
+  } catch {
+    return false
   }
 }
 

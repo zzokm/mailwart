@@ -22,9 +22,12 @@ import type {
 
 const CF_API_BASE = "https://api.cloudflare.com/client/v4"
 
-export async function resolveAllCloudflareAccounts(): Promise<CloudflareAccountConfig[]> {
+export async function resolveAllCloudflareAccounts(options?: {
+  userId?: string
+  isAdmin?: boolean
+}): Promise<CloudflareAccountConfig[]> {
   const stored = await readCloudflareSettings()
-  const accounts = [...stored.accounts]
+  let accounts = [...stored.accounts]
 
   const envToken = process.env.CLOUDFLARE_API_TOKEN?.trim()
   if (envToken && !accounts.some((a) => a.apiToken === envToken)) {
@@ -36,14 +39,21 @@ export async function resolveAllCloudflareAccounts(): Promise<CloudflareAccountC
     })
   }
 
+  if (options && options.isAdmin === false && options.userId) {
+    accounts = accounts.filter((a) => a.userId === options.userId)
+  }
+
   return accounts
 }
 
-export async function resolveCloudflareApiToken(): Promise<{
+export async function resolveCloudflareApiToken(options?: {
+  userId?: string
+  isAdmin?: boolean
+}): Promise<{
   token?: string
   source: "env" | "settings" | "none"
 }> {
-  const accounts = await resolveAllCloudflareAccounts()
+  const accounts = await resolveAllCloudflareAccounts(options)
   if (accounts.length > 0) {
     const first = accounts[0]
     return {
@@ -60,8 +70,12 @@ function maskToken(token: string): string {
   return `${clean.slice(0, 4)}••••${clean.slice(-4)}`
 }
 
-export async function getCloudflareStatus(options?: { refreshZones?: boolean }): Promise<CloudflareStatus> {
-  const accounts = await resolveAllCloudflareAccounts()
+export async function getCloudflareStatus(options?: {
+  refreshZones?: boolean
+  userId?: string
+  isAdmin?: boolean
+}): Promise<CloudflareStatus> {
+  const accounts = await resolveAllCloudflareAccounts(options)
   if (accounts.length === 0) {
     return {
       configured: false,
@@ -106,6 +120,7 @@ export async function getCloudflareStatus(options?: { refreshZones?: boolean }):
     status: a.status ?? "active",
     errorMessage: a.errorMessage,
     isEnv: a.id === "acc_env",
+    userId: a.userId,
   }))
 
   const totalZones = accounts.reduce((acc, curr) => acc + (curr.zonesCount ?? 0), 0)
@@ -286,8 +301,11 @@ export async function auditTokenZonesForMail(token: string): Promise<{
 /**
  * Pools all zones across all registered Cloudflare accounts.
  */
-export async function listCloudflareZones(): Promise<CloudflareZone[]> {
-  const accounts = await resolveAllCloudflareAccounts()
+export async function listCloudflareZones(options?: {
+  userId?: string
+  isAdmin?: boolean
+}): Promise<CloudflareZone[]> {
+  const accounts = await resolveAllCloudflareAccounts(options)
   if (accounts.length === 0) {
     return []
   }
@@ -336,13 +354,16 @@ export async function listCloudflareZones(): Promise<CloudflareZone[]> {
 /**
  * Finds the zone for a domain across all pooled accounts and returns the zone plus the owning account.
  */
-export async function findZoneForDomain(domainName: string): Promise<{
+export async function findZoneForDomain(
+  domainName: string,
+  options?: { userId?: string; isAdmin?: boolean }
+): Promise<{
   zone: CloudflareZone
   account: CloudflareAccountConfig
 } | null> {
   const norm = domainName.trim().toLowerCase()
-  const zones = await listCloudflareZones()
-  const accounts = await resolveAllCloudflareAccounts()
+  const zones = await listCloudflareZones(options)
+  const accounts = await resolveAllCloudflareAccounts(options)
 
   // 1. Exact match
   let matchedZone = zones.find((z) => z.name.toLowerCase() === norm)

@@ -10,6 +10,12 @@ import {
   queryDeliveryLogs,
   syncDomainsToDb,
   syncMailboxesToDb,
+  assignDomainOwner,
+  removeDomainRecord,
+  assignMailboxOwner,
+  getUserOwnedDomainNames,
+  getUserOwnedDomainIds,
+  isDomainOwnedByUser,
 } from "@/lib/db"
 import {
   dataSource as source,
@@ -19,6 +25,7 @@ import {
 } from "@/lib/actions/result"
 import {
   AuthError,
+  getSession,
   requireSession,
   sessionActor,
 } from "@/lib/auth/session"
@@ -192,6 +199,35 @@ function loadMockDirectory(): {
   return { domains: store.domains, accounts: store.accounts }
 }
 
+async function loadScopedDirectory(): Promise<{
+  domains: StalwartDomain[]
+  accounts: StalwartAccount[]
+}> {
+  const session = await getSession().catch(() => null)
+  const { domains: allDomains, accounts: allAccounts } =
+    source() === "live" ? await loadLiveDirectory() : loadMockDirectory()
+
+  if (!session || session.role === "admin") {
+    return { domains: allDomains, accounts: allAccounts }
+  }
+
+  const userId = session.userId || ""
+  const ownedNames = await getUserOwnedDomainNames(userId)
+  const ownedIds = await getUserOwnedDomainIds(userId)
+  const ownedNamesSet = new Set(ownedNames.map((n) => n.toLowerCase()))
+  const ownedIdsSet = new Set(ownedIds)
+
+  const filteredDomains = allDomains.filter(
+    (d) => ownedNamesSet.has(d.name.toLowerCase()) || ownedIdsSet.has(d.id)
+  )
+  const filteredDomainIds = new Set(filteredDomains.map((d) => d.id))
+  const filteredAccounts = allAccounts.filter((a) =>
+    Boolean(a.domainId && filteredDomainIds.has(a.domainId))
+  )
+
+  return { domains: filteredDomains, accounts: filteredAccounts }
+}
+
 async function probeRoundcube(): Promise<HealthStatus["roundcube"]> {
   try {
     const res = await fetch(getRoundcubeUrl(), {
@@ -249,9 +285,10 @@ export async function getOverview(): Promise<
 > {
   const src = source()
   const health = await getHealth()
+  const session = await getSession().catch(() => null)
+  const isAdmin = session?.role === "admin"
   try {
-    const { domains, accounts } =
-      src === "live" ? await loadLiveDirectory() : loadMockDirectory()
+    const { domains, accounts } = await loadScopedDirectory()
 
     const list: DomainListItem[] = domains.map((d) => ({
       ...d,
@@ -293,7 +330,7 @@ export async function getOverview(): Promise<
         },
         health,
         domains: list,
-        adminUiUrl: getStalwartAdminUiUrl(),
+        adminUiUrl: isAdmin ? getStalwartAdminUiUrl() : "",
         roundcubeUrl: buildRoundcubeUrl(),
       },
       src
@@ -309,8 +346,7 @@ export async function listDomainsAction(): Promise<
   const src = source()
   const mailHost = configuredMailHost()
   try {
-    const { domains, accounts } =
-      src === "live" ? await loadLiveDirectory() : loadMockDirectory()
+    const { domains, accounts } = await loadScopedDirectory()
 
     const list = await Promise.all(
       domains.map(async (d) => {
@@ -357,7 +393,16 @@ export async function getDomainDetailAction(id: string): Promise<
 > {
   const src = source()
   const mailHost = configuredMailHost()
+  const session = await getSession().catch(() => null)
+  const isAdmin = session?.role === "admin"
   try {
+    if (session && !isAdmin) {
+      const isOwned = await isDomainOwnedByUser(id, session.userId || "")
+      if (!isOwned) {
+        return fail(new StalwartError("Domain not found.", "not_found"), src)
+      }
+    }
+
     if (src === "mock") {
       const store = getMockStore()
       const domain = store.domains.find((d) => d.id === id)
@@ -520,6 +565,10 @@ export async function createDomainAction(input: {
         domainAliases: [],
       }
       store.setDomains([...store.domains, domain])
+      const session = await getSession().catch(() => null)
+      if (session?.userId) {
+        await assignDomainOwner(domain.id, domain.name, session.userId)
+      }
       await audit("domain.create", {
         target: domain.name,
         detail: "Created domain",
@@ -530,6 +579,10 @@ export async function createDomainAction(input: {
       name,
       description: parsed.data.description,
     })
+    const session = await getSession().catch(() => null)
+    if (session?.userId) {
+      await assignDomainOwner(domain.id, domain.name, session.userId)
+    }
     await audit("domain.create", {
       target: domain.name,
       detail: "Created domain",
@@ -571,6 +624,15 @@ export async function updateDomainAction(
   if (!parsed.ok) return parsed.result
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin) {
+      const isOwned = await isDomainOwnedByUser(id, session.userId || "")
+      if (!isOwned) {
+        return fail(new StalwartError("Domain not found.", "not_found"), src)
+      }
+    }
+
     const mode = patch.catchAllMode
     let catchAllAddress = patch.catchAllAddress
     if (mode === "bounce" || mode === "blackhole") {
@@ -733,6 +795,15 @@ export async function destroyDomainAction(
   if (!parsed.ok) return parsed.result
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin) {
+      const isOwned = await isDomainOwnedByUser(id, session.userId || "")
+      if (!isOwned) {
+        return fail(new StalwartError("Domain not found.", "not_found"), src)
+      }
+    }
+
     if (src === "mock") {
       const store = getMockStore()
       const domain = store.domains.find((d) => d.id === id)
@@ -759,6 +830,7 @@ export async function destroyDomainAction(
       if (force) {
         store.setAccounts(store.accounts.filter((a) => a.domainId !== id))
       }
+      await removeDomainRecord(id)
       await audit("domain.destroy", {
         target: domain.name,
         detail: force ? "Force-destroyed domain" : "Destroyed domain",
@@ -813,6 +885,7 @@ export async function destroyDomainAction(
     }
 
     await destroyDomain(id, domain.name)
+    await removeDomainRecord(id)
     await audit("domain.destroy", {
       target: domain.name,
       detail: force ? "Force-destroyed domain" : "Destroyed domain",
@@ -831,8 +904,7 @@ export async function listMailboxesAction(domainId?: string): Promise<
 > {
   const src = source()
   try {
-    const { domains, accounts } =
-      src === "live" ? await loadLiveDirectory() : loadMockDirectory()
+    const { domains, accounts } = await loadScopedDirectory()
     return ok(
       {
         domains,
@@ -861,13 +933,23 @@ export async function getMailboxDetailAction(id: string): Promise<
   }>
 > {
   const src = source()
-  const adminUiUrl = getStalwartAdminUiUrl()
+  const session = await getSession().catch(() => null)
+  const isAdmin = session?.role === "admin"
+  const adminUiUrl = isAdmin ? getStalwartAdminUiUrl() : ""
   try {
     if (src === "mock") {
       const store = getMockStore()
       const account = store.accounts.find((a) => a.id === id)
       if (!account) {
         return fail(new StalwartError("Mailbox not found.", "not_found"), src)
+      }
+      if (session && !isAdmin) {
+        const isOwned = account.domainId
+          ? await isDomainOwnedByUser(account.domainId, session.userId || "")
+          : false
+        if (!isOwned) {
+          return fail(new StalwartError("Mailbox not found.", "not_found"), src)
+        }
       }
       return ok(
         {
@@ -889,10 +971,18 @@ export async function getMailboxDetailAction(id: string): Promise<
       )
     }
 
-    const domains = await queryDomains()
+    const { domains, accounts } = await loadScopedDirectory()
     const account = await getAccount(id, domains)
     if (!account) {
       return fail(new StalwartError("Mailbox not found.", "not_found"), src)
+    }
+    if (session && !isAdmin) {
+      const isOwned = account.domainId
+        ? await isDomainOwnedByUser(account.domainId, session.userId || "")
+        : false
+      if (!isOwned) {
+        return fail(new StalwartError("Mailbox not found.", "not_found"), src)
+      }
     }
 
     const liveList = await queryAppPasswordsLive(id)
@@ -906,7 +996,6 @@ export async function getMailboxDetailAction(id: string): Promise<
       } satisfies TwoFactorStatus)
 
     // EmailAlias map shape is documented; editor always available.
-    const accounts = await queryAccounts(domains)
     const forwards = buildLiveForwardHints(domains, accounts).filter(
       (f) =>
         f.sourceAccountId === id ||
@@ -948,6 +1037,15 @@ export async function createMailboxAction(input: {
   const local = parsed.data.local
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin) {
+      const isOwned = await isDomainOwnedByUser(parsed.data.domainId, session.userId || "")
+      if (!isOwned) {
+        return fail(new StalwartError("Unauthorized to create mailboxes on this domain.", "auth"), src)
+      }
+    }
+
     if (src === "mock") {
       const store = getMockStore()
       const domain = store.domains.find((d) => d.id === parsed.data.domainId)
@@ -978,6 +1076,9 @@ export async function createMailboxAction(input: {
         twoFactor: { state: "disabled" },
       }
       store.setAccounts([...store.accounts, account])
+      if (session?.userId) {
+        await assignMailboxOwner(account.id, account.email, session.userId)
+      }
       await audit("mailbox.create", {
         target: email,
         detail: "Created mailbox",
@@ -1001,6 +1102,9 @@ export async function createMailboxAction(input: {
           ? { diskQuota: parsed.data.diskQuotaBytes }
           : {},
     })
+    if (session?.userId) {
+      await assignMailboxOwner(account.id, account.email, session.userId)
+    }
     await audit("mailbox.create", {
       target: email,
       detail: "Created mailbox",
@@ -1027,6 +1131,22 @@ export async function updateMailboxAction(
   if (!parsed.ok) return parsed.result
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin) {
+      const targetAcc =
+        src === "mock"
+          ? getMockStore().accounts.find((a) => a.id === id)
+          : await getAccount(id)
+      if (
+        !targetAcc ||
+        !targetAcc.domainId ||
+        !(await isDomainOwnedByUser(targetAcc.domainId, session.userId || ""))
+      ) {
+        return fail(new StalwartError("Unauthorized to modify this mailbox.", "auth"), src)
+      }
+    }
+
     const quotas =
       patch.diskQuotaBytes === undefined
         ? undefined
@@ -1108,6 +1228,22 @@ export async function createAppPasswordAction(
   const label = parsed.data.description
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin) {
+      const targetAcc =
+        src === "mock"
+          ? getMockStore().accounts.find((a) => a.id === accountId)
+          : await getAccount(accountId)
+      if (
+        !targetAcc ||
+        !targetAcc.domainId ||
+        !(await isDomainOwnedByUser(targetAcc.domainId, session.userId || ""))
+      ) {
+        return fail(new StalwartError("Unauthorized to modify this mailbox.", "auth"), src)
+      }
+    }
+
     if (src === "mock") {
       const store = getMockStore()
       const account = store.accounts.find((a) => a.id === accountId)
@@ -1175,6 +1311,22 @@ export async function revokeAppPasswordAction(
   if (!parsed.ok) return parsed.result
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin) {
+      const targetAcc =
+        src === "mock"
+          ? getMockStore().accounts.find((a) => a.id === accountId)
+          : await getAccount(accountId)
+      if (
+        !targetAcc ||
+        !targetAcc.domainId ||
+        !(await isDomainOwnedByUser(targetAcc.domainId, session.userId || ""))
+      ) {
+        return fail(new StalwartError("Unauthorized to modify this mailbox.", "auth"), src)
+      }
+    }
+
     if (src === "mock") {
       const store = getMockStore()
       const account = store.accounts.find((a) => a.id === accountId)
@@ -1224,6 +1376,22 @@ export async function resetMailboxPasswordAction(
   if (!parsed.ok) return parsed.result
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin) {
+      const targetAcc =
+        src === "mock"
+          ? getMockStore().accounts.find((a) => a.id === id)
+          : await getAccount(id)
+      if (
+        !targetAcc ||
+        !targetAcc.domainId ||
+        !(await isDomainOwnedByUser(targetAcc.domainId, session.userId || ""))
+      ) {
+        return fail(new StalwartError("Unauthorized to modify this mailbox.", "auth"), src)
+      }
+    }
+
     if (src === "mock") {
       const store = getMockStore()
       const account = store.accounts.find((a) => a.id === id)
@@ -1268,6 +1436,22 @@ export async function destroyMailboxAction(
   if (!parsed.ok) return parsed.result
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin) {
+      const targetAcc =
+        src === "mock"
+          ? getMockStore().accounts.find((a) => a.id === id)
+          : await getAccount(id)
+      if (
+        !targetAcc ||
+        !targetAcc.domainId ||
+        !(await isDomainOwnedByUser(targetAcc.domainId, session.userId || ""))
+      ) {
+        return fail(new StalwartError("Unauthorized to delete this mailbox.", "auth"), src)
+      }
+    }
+
     if (src === "mock") {
       const store = getMockStore()
       const account = store.accounts.find((a) => a.id === id)
@@ -1916,14 +2100,16 @@ export async function getSettingsAction(): Promise<
 > {
   const src = source()
   const config = getStalwartConfig()
+  const session = await getSession().catch(() => null)
+  const isAdmin = session?.role === "admin"
   return ok(
     {
       roundcubeUrl: getRoundcubeUrl(),
       roundcubeHost: hostFromUrl(getRoundcubeUrl()),
       jmapConfigured: !!config,
       jmapHost: config ? hostFromUrl(config.jmapUrl) : null,
-      adminUiUrl: getStalwartAdminUiUrl(),
-      stalwartUser: config?.adminUser ?? null,
+      adminUiUrl: isAdmin ? getStalwartAdminUiUrl() : "",
+      stalwartUser: isAdmin ? (config?.adminUser ?? null) : null,
     },
     src
   )
@@ -1943,27 +2129,16 @@ export async function getRoutingOverviewAction(): Promise<
 > {
   const src = source()
   try {
-    if (src === "mock") {
-      const store = getMockStore()
-      return ok(
-        {
-          domains: store.domains,
-          accounts: store.accounts,
-          forwards: store.forwards,
-          adminUiUrl: getStalwartAdminUiUrl(),
-        },
-        src
-      )
-    }
-
-    const { domains, accounts } = await loadLiveDirectory()
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    const { domains, accounts } = await loadScopedDirectory()
     const forwards = buildLiveForwardHints(domains, accounts)
     return ok(
       {
         domains,
         accounts,
         forwards,
-        adminUiUrl: getStalwartAdminUiUrl(),
+        adminUiUrl: isAdmin ? getStalwartAdminUiUrl() : "",
       },
       src
     )
@@ -2041,6 +2216,12 @@ export async function upsertForwardingRuleAction(input: {
   if (!validated.ok) return validated.result
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin && !(await isDomainOwnedByUser(input.domainId, session.userId || ""))) {
+      return fail(new StalwartError("Unauthorized to manage routing for this domain.", "auth"), src)
+    }
+
     const targets = validated.data.targets
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean)
@@ -2315,6 +2496,32 @@ export async function destroyForwardingRuleAction(
   if (!parsed.ok) return parsed.result
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin) {
+      if (id.startsWith("catchall-")) {
+        const domainId = id.slice("catchall-".length)
+        if (!(await isDomainOwnedByUser(domainId, session.userId || ""))) {
+          return fail(new StalwartError("Unauthorized to delete this forwarding rule.", "auth"), src)
+        }
+      } else if (id.startsWith("alias-")) {
+        const rest = id.slice("alias-".length)
+        const dash = rest.indexOf("-")
+        const accountId = dash > 0 ? rest.slice(0, dash) : ""
+        const targetAcc =
+          src === "mock"
+            ? getMockStore().accounts.find((a) => a.id === accountId)
+            : await getAccount(accountId)
+        if (
+          !targetAcc ||
+          !targetAcc.domainId ||
+          !(await isDomainOwnedByUser(targetAcc.domainId, session.userId || ""))
+        ) {
+          return fail(new StalwartError("Unauthorized to delete this forwarding rule.", "auth"), src)
+        }
+      }
+    }
+
     if (src === "mock") {
       const store = getMockStore()
       if (!store.forwards.some((f) => f.id === id)) {
@@ -2402,6 +2609,12 @@ export async function updateMailExchangerAction(
   if (!validated.ok) return validated.result
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin && !(await isDomainOwnedByUser(domainId, session.userId || ""))) {
+      return fail(new StalwartError("Unauthorized to modify MX posture for this domain.", "auth"), src)
+    }
+
     const allowRelaying = mailExchangerToAllowRelaying(mode)
     const note =
       mode === "local"
@@ -2464,6 +2677,21 @@ export async function updateMailboxAliasesAction(
   if (!validated.ok) return validated.result
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin) {
+      const targetAcc =
+        src === "mock"
+          ? getMockStore().accounts.find((a) => a.id === accountId)
+          : await getAccount(accountId)
+      if (
+        !targetAcc ||
+        !targetAcc.domainId ||
+        !(await isDomainOwnedByUser(targetAcc.domainId, session.userId || ""))
+      ) {
+        return fail(new StalwartError("Unauthorized to modify this mailbox.", "auth"), src)
+      }
+    }
     const domains =
       src === "mock" ? getMockStore().domains : await queryDomains()
     const domainsById = new Map(domains.map((d) => [d.id, d]))
@@ -2633,27 +2861,34 @@ export async function getFiltersOverviewAction(): Promise<
 > {
   const src = source()
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    const { domains, accounts } = await loadScopedDirectory()
+    const domainIds = new Set(domains.map((d) => d.id))
+    const accountIds = new Set(accounts.map((a) => a.id))
+
     if (src === "mock") {
       const store = getMockStore()
       return ok(
         {
-          accounts: store.accounts,
-          domains: store.domains,
-          autoresponders: store.autoresponders,
-          filterRules: [...store.filterRules].sort(
-            (a, b) => a.priority - b.priority
+          accounts,
+          domains,
+          autoresponders: store.autoresponders.filter(
+            (a) => domainIds.has(a.domainId) || accountIds.has(a.accountId)
           ),
+          filterRules: store.filterRules
+            .filter((r) => !r.accountId || accountIds.has(r.accountId))
+            .sort((a, b) => a.priority - b.priority),
           spam: store.spamSettings,
           sieveAvailable: true,
           sieveNote: "Mock mode — rules stored in-memory and rendered as Sieve.",
-          adminUiUrl: getStalwartAdminUiUrl(),
+          adminUiUrl: isAdmin ? getStalwartAdminUiUrl() : "",
           roundcubeUrl: getRoundcubeUrl(),
         },
         src
       )
     }
 
-    const { domains, accounts } = await loadLiveDirectory()
     const sieve = await probeSieveJmapSupport()
     const spam = await loadLiveSpamSettings()
     return ok(
@@ -2665,7 +2900,7 @@ export async function getFiltersOverviewAction(): Promise<
         spam,
         sieveAvailable: sieve.available,
         sieveNote: sieve.note,
-        adminUiUrl: getStalwartAdminUiUrl(),
+        adminUiUrl: isAdmin ? getStalwartAdminUiUrl() : "",
         roundcubeUrl: getRoundcubeUrl(),
       },
       src
@@ -3047,15 +3282,28 @@ export async function getDeliveryLogsAction(): Promise<
   if (denied) return denied
 
   const src = source()
-  const adminUiUrl = getStalwartAdminUiUrl()
+  const session = await getSession().catch(() => null)
+  const isAdmin = session?.role === "admin"
+  const adminUiUrl = isAdmin ? getStalwartAdminUiUrl() : ""
+
+  const filterForUser = async (rawEvents: DeliveryEvent[]): Promise<DeliveryEvent[]> => {
+    if (isAdmin) return rawEvents
+    const userDomains = new Set(await getUserOwnedDomainNames(session?.userId || ""))
+    return rawEvents.filter((e) => {
+      const senderDomain = e.sender.includes("@") ? e.sender.split("@").pop()?.toLowerCase() : ""
+      const recipientDomain = e.recipient.includes("@") ? e.recipient.split("@").pop()?.toLowerCase() : ""
+      return (senderDomain && userDomains.has(senderDomain)) || (recipientDomain && userDomains.has(recipientDomain))
+    })
+  }
 
   if (src === "mock") {
     const dbEvents = await queryDeliveryLogs({ limit: 250 })
+    const scopedEvents = await filterForUser(dbEvents)
     return ok(
       {
-        events: dbEvents,
+        events: scopedEvents,
         note:
-          dbEvents.length > 0
+          scopedEvents.length > 0
             ? "Showing real delivery records from the persistent database."
             : "Delivery events will be recorded here as emails are sent and received.",
         usedFallback: false,
@@ -3067,9 +3315,10 @@ export async function getDeliveryLogsAction(): Promise<
 
   try {
     const { events, note } = await queryDeliveryTracesLive(250)
+    const scopedEvents = await filterForUser(events)
     return ok(
       {
-        events,
+        events: scopedEvents,
         note,
         usedFallback: false,
         adminUiUrl,
@@ -3084,10 +3333,11 @@ export async function getDeliveryLogsAction(): Promise<
           ? err.message
           : "Delivery trace query failed."
     const localEvents = await queryDeliveryLogs({ limit: 250 })
+    const scopedEvents = await filterForUser(localEvents)
     return ok(
       {
-        events: localEvents,
-        note: `Stalwart Community Edition: ${message}. Showing persistent database logs (${localEvents.length} records).`,
+        events: scopedEvents,
+        note: `Stalwart Community Edition: ${message}. Showing persistent database logs (${scopedEvents.length} records).`,
         usedFallback: false,
         adminUiUrl,
       },
@@ -3112,13 +3362,40 @@ export async function getAuditLogsAction(): Promise<
 
   const src = source()
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
     const { events, path } = await readAuditEvents({
       limit: 500,
       allowSampleFallback: false,
     })
+
+    if (isAdmin) {
+      return ok(
+        {
+          events,
+          fromSample: false,
+          pathHint: path,
+        },
+        src
+      )
+    }
+
+    const userDomains = new Set(await getUserOwnedDomainNames(session?.userId || ""))
+    const username = session?.username?.toLowerCase() || ""
+    const scopedEvents = events.filter((e) => {
+      if (e.actor && e.actor.toLowerCase() === username) return true
+      if (e.target) {
+        const targetLower = e.target.toLowerCase()
+        if (userDomains.has(targetLower)) return true
+        const domain = targetLower.includes("@") ? targetLower.split("@").pop() : ""
+        if (domain && userDomains.has(domain)) return true
+      }
+      return false
+    })
+
     return ok(
       {
-        events,
+        events: scopedEvents,
         fromSample: false,
         pathHint: path,
       },

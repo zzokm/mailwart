@@ -45,6 +45,7 @@ function sanitizeAccount(raw: unknown): CloudflareAccountConfig | null {
     zonesCount: typeof obj.zonesCount === "number" ? obj.zonesCount : undefined,
     status: obj.status === "error" || obj.status === "invalid" ? obj.status : "active",
     errorMessage: typeof obj.errorMessage === "string" ? obj.errorMessage : undefined,
+    userId: typeof obj.userId === "string" && obj.userId.trim() ? obj.userId.trim() : undefined,
   }
 }
 

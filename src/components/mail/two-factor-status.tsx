@@ -57,19 +57,21 @@ export function TwoFactorStatusPanel({
             {status.note ??
               "TODO: Confirm live Account credentials OtpAuth shape before enabling manage actions."}
           </p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            nativeButton={false}
-            render={
-              <a href={adminUiUrl} target="_blank" rel="noreferrer" />
-            }
-          >
-            <ExternalLink data-icon="inline-start" />
-            Open Stalwart Admin
-          </Button>
+          {adminUiUrl ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              nativeButton={false}
+              render={
+                <a href={adminUiUrl} target="_blank" rel="noreferrer" />
+              }
+            >
+              <ExternalLink data-icon="inline-start" />
+              Open Stalwart Admin
+            </Button>
+          ) : null}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
