@@ -123,4 +123,34 @@ describe("User & RBAC Security Layer", () => {
     }
     expect(isSessionValid(invalidRoleSession)).toBe(false)
   })
+
+  it("strictly validates primary admin status and case-insensitivity", async () => {
+    const { isPrimaryAdmin } = await import("./users")
+    expect(isPrimaryAdmin("yehia")).toBe(true)
+    expect(isPrimaryAdmin("YEHIA")).toBe(true)
+    expect(isPrimaryAdmin({ username: "yehia" })).toBe(true)
+    expect(isPrimaryAdmin("operator")).toBe(false)
+    expect(isPrimaryAdmin("admin")).toBe(false)
+    expect(isPrimaryAdmin(null)).toBe(false)
+  })
+
+  it("validates strong password requirements correctly", async () => {
+    const { checkPasswordStrength } = await import("../validations/auth")
+    // Weak: short
+    expect(checkPasswordStrength("Ab1!").valid).toBe(false)
+    // Weak: no uppercase
+    expect(checkPasswordStrength("secretpassword1!").valid).toBe(false)
+    // Weak: no lowercase
+    expect(checkPasswordStrength("SECRETPASSWORD1!").valid).toBe(false)
+    // Weak: no number/special
+    expect(checkPasswordStrength("SecretPassword").valid).toBe(false)
+    // Strong
+    const strong = checkPasswordStrength("StrongPassword123!")
+    expect(strong.valid).toBe(true)
+    expect(strong.hasMinLength).toBe(true)
+    expect(strong.hasUpper).toBe(true)
+    expect(strong.hasLower).toBe(true)
+    expect(strong.hasNumberOrSpecial).toBe(true)
+  })
 })
+

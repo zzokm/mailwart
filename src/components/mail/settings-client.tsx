@@ -10,15 +10,18 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
+import { AccountPasswordCard } from "@/components/mail/account-password-card"
 import { CloudflareSettingsClient } from "@/components/mail/cloudflare-settings-client"
 import { CopilotSettingsClient } from "@/components/mail/copilot-settings-client"
 import { DeliverabilityClient } from "@/components/mail/deliverability-client"
+import { SystemOutboundSettingsClient } from "@/components/mail/system-outbound-settings-client"
 import { UserManagementClient } from "@/components/mail/user-management-client"
 import { logoutAction } from "@/lib/actions/auth"
 import type { CloudflareStatus } from "@/lib/cloudflare/types"
 import type { CopilotPublicStatus } from "@/lib/copilot/types"
 import type { SafeUser } from "@/lib/db/users"
 import type { DeliverabilitySuiteReport } from "@/lib/deliverability/types"
+import type { SystemEmailSenderConfig } from "@/lib/db/system-settings"
 
 export type SettingsClientProps = {
   settings: {
@@ -35,11 +38,15 @@ export type SettingsClientProps = {
   cloudflareError: string | null
   deliverabilityReport: DeliverabilitySuiteReport | null
   availableDomains: string[]
+  availableMailboxes?: string[]
+  outboundEmailConfig?: SystemEmailSenderConfig | null
   users: SafeUser[]
   session: {
     userId?: string
     username?: string
     role?: string
+    email?: string
+    isPrimary?: boolean
   }
   initialTab?: string
 }
@@ -52,14 +59,18 @@ export function SettingsClient({
   cloudflareError,
   deliverabilityReport,
   availableDomains,
+  availableMailboxes,
+  outboundEmailConfig,
   users,
   session,
   initialTab,
 }: SettingsClientProps) {
   const isAdmin = session.role === "admin"
+  const isPrimary = Boolean(session.isPrimary || session.username === "yehia")
   const allowedTabs = isAdmin
-    ? ["deliverability", "cloudflare", "copilot", "users", "system"]
+    ? ["deliverability", "cloudflare", "copilot", "users", "system", "account"]
     : ["deliverability", "cloudflare", "account"]
+
 
   const defaultTab =
     initialTab && allowedTabs.includes(initialTab)
@@ -118,12 +129,11 @@ export function SettingsClient({
             </TabsTrigger>
           )}
 
-          {!isAdmin && (
-            <TabsTrigger value="account" className="gap-2">
-              <span>Account</span>
-            </TabsTrigger>
-          )}
+          <TabsTrigger value="account" className="gap-2">
+            <span>Account</span>
+          </TabsTrigger>
         </TabsList>
+
 
         {/* Deliverability Suite Tab */}
         <TabsContent value="deliverability" className="w-full space-y-6">
@@ -257,6 +267,14 @@ export function SettingsClient({
               </div>
             </div>
 
+            {/* System Outbound Mailer */}
+            <SystemOutboundSettingsClient
+              initialConfig={outboundEmailConfig ?? null}
+              availableDomains={availableDomains}
+              availableMailboxes={availableMailboxes ?? []}
+              isPrimaryAdmin={isPrimary}
+            />
+
             {/* Active Session Card */}
             <div className="rounded-xl border border-border/80 bg-card/40 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
@@ -294,30 +312,47 @@ export function SettingsClient({
           </TabsContent>
         )}
 
-        {/* Account Tab for non-admin users */}
-        {!isAdmin && (
-          <TabsContent value="account" className="w-full space-y-6">
-            <div className="rounded-xl border border-border/80 bg-card/40 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <UserCheck className="size-4 text-muted-foreground" />
-                  <h2 className="text-sm font-medium">Session</h2>
-                  <Badge variant="secondary" className="text-[10px]">
-                    {session.role || "user"}
+        {/* Account Tab for all users (Primary Admin, Secondary Admins, Regular Users) */}
+        <TabsContent value="account" className="w-full space-y-6">
+          <div className="rounded-xl border border-border/80 bg-card/40 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <UserCheck className="size-4 text-muted-foreground" />
+                <h2 className="text-sm font-medium">Profile</h2>
+                <Badge
+                  variant={isAdmin ? "outline" : "secondary"}
+                  className="text-[10px]"
+                >
+                  {session.role || "user"}
+                </Badge>
+                {isPrimary && (
+                  <Badge
+                    variant="outline"
+                    className="border-primary/40 bg-primary/10 text-primary text-[10px] font-semibold"
+                  >
+                    Primary Administrator
                   </Badge>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground font-mono">
-                  Signed in as {session.username || "user"}
-                </p>
+                )}
               </div>
-              <form action={logoutAction}>
-                <Button type="submit" size="sm" variant="outline" className="text-xs">
-                  Sign out
-                </Button>
-              </form>
+              <p className="mt-1 text-xs text-muted-foreground font-mono">
+                {session.username || "user"} &bull; {session.email || "No email assigned"}
+              </p>
             </div>
-          </TabsContent>
-        )}
+            <form action={logoutAction}>
+              <Button type="submit" size="sm" variant="outline" className="text-xs">
+                Sign out
+              </Button>
+            </form>
+          </div>
+
+          {/* In-Account Password Change */}
+          <AccountPasswordCard
+            isPrimaryAdmin={isPrimary}
+            userEmail={session.email || ""}
+          />
+
+        </TabsContent>
+
       </Tabs>
     </div>
   )

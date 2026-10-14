@@ -1,5 +1,6 @@
 "use server"
 
+import crypto from "node:crypto"
 import { revalidatePath } from "next/cache"
 
 import { recordAudit } from "@/lib/audit"
@@ -13,10 +14,33 @@ import {
   createUser,
   deleteUser,
   findUserById,
+  findUserByEmail,
   listUsers,
+  isPrimaryAdmin,
+  updateUserPassword,
+  updateUserEmail,
   type SafeUser,
 } from "@/lib/db/users"
 import { initDatabase } from "@/lib/db"
+import {
+  getOutboundEmailConfig,
+  saveOutboundEmailConfig,
+  type SystemEmailSenderConfig,
+} from "@/lib/db/system-settings"
+import {
+  createAccount,
+  updateAccountPassword,
+  queryAccounts,
+} from "@/lib/stalwart/accounts"
+
+
+import { queryDomains } from "@/lib/stalwart/domains"
+import {
+  requestPasswordResetOtp,
+  verifyPasswordResetOtp,
+  completePasswordReset,
+  validateStrongPassword,
+} from "@/lib/auth/password-reset"
 import { zodIssuesMessage } from "@/lib/validations/common"
 import {
   createUserSchema,
@@ -212,6 +236,7 @@ export async function stopImpersonatingAction(): Promise<ActionResult> {
     session.userId = originalAdmin.userId
     session.username = originalAdmin.username
     session.role = originalAdmin.role
+    session.isPrimary = isPrimaryAdmin(originalAdmin.username)
     delete session.impersonatingFrom
     await session.save()
 
@@ -227,5 +252,341 @@ export async function stopImpersonatingAction(): Promise<ActionResult> {
     const message =
       err instanceof Error ? err.message : "Failed to exit impersonation."
     return { ok: false, error: message }
+  }
+}
+
+/**
+ * Primary admin can directly update any user's password (or their own) to any password.
+ */
+export async function adminUpdateUserPasswordAction(
+  targetUserId: string,
+  newPassword: string
+): Promise<ActionResult<SafeUser>> {
+  try {
+    const session = await requireSession()
+    if (!isPrimaryAdmin(session.username)) {
+      return {
+        ok: false,
+        error: "Forbidden: Only the primary administrator can directly modify passwords.",
+      }
+    }
+
+    if (!newPassword) {
+      return { ok: false, error: "Password cannot be empty." }
+    }
+
+    const targetUser = await findUserById(targetUserId)
+    if (!targetUser) {
+      return { ok: false, error: "Target user not found." }
+    }
+
+    const updated = await updateUserPassword(targetUserId, newPassword)
+
+    const actor = session.username || "yehia"
+    await recordAudit({
+      actor,
+      action: "user.password_change",
+      detail: `Primary admin ${actor} directly set password for user '${targetUser.username}' (${targetUser.email})`,
+    })
+
+    revalidatePath("/dashboard/settings")
+    return { ok: true, data: updated }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to update password."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Primary admin can change their own email and anyone else's email.
+ */
+export async function adminUpdateUserEmailAction(
+  targetUserId: string,
+  newEmail: string
+): Promise<ActionResult<SafeUser>> {
+  try {
+    const session = await requireSession()
+    if (!isPrimaryAdmin(session.username)) {
+      return {
+        ok: false,
+        error: "Forbidden: Only the primary administrator can modify user email addresses.",
+      }
+    }
+
+    const cleanEmail = newEmail.trim().toLowerCase()
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      return { ok: false, error: "Please enter a valid email address." }
+    }
+
+    const targetUser = await findUserById(targetUserId)
+    if (!targetUser) {
+      return { ok: false, error: "Target user not found." }
+    }
+
+    const existing = await findUserByEmail(cleanEmail)
+    if (existing && existing.id !== targetUserId) {
+      return { ok: false, error: "Email address is already in use by another user." }
+    }
+
+    const updated = await updateUserEmail(targetUserId, cleanEmail)
+
+    if (targetUserId === session.userId) {
+      session.email = cleanEmail
+      await session.save()
+    }
+
+    const actor = session.username || "yehia"
+    await recordAudit({
+      actor,
+      action: "user.email_change",
+      detail: `Primary admin ${actor} updated email for user '${targetUser.username}' from ${targetUser.email} to ${cleanEmail}`,
+    })
+
+    revalidatePath("/dashboard/settings")
+    return { ok: true, data: updated }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to update email address."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Primary admin self-updates password from account settings without OTP.
+ */
+export async function primaryAdminSelfUpdatePasswordAction(
+  newPassword: string
+): Promise<ActionResult<SafeUser>> {
+  try {
+    const session = await requireSession()
+    if (!isPrimaryAdmin(session.username)) {
+      return {
+        ok: false,
+        error: "Forbidden: Only the primary administrator can update password directly.",
+      }
+    }
+
+    if (!newPassword || newPassword.length < 4) {
+      return { ok: false, error: "Password must be at least 4 characters long." }
+    }
+
+    const updated = await updateUserPassword(session.userId!, newPassword)
+    await recordAudit({
+      actor: session.username || "yehia",
+      action: "user.password_change",
+      detail: `Primary admin ${session.username} updated their own password`,
+    })
+
+    return { ok: true, data: updated }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to update password."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Setup a dedicated noreply mailbox on the selected domain in 1-click and configure it as the system email sender.
+ */
+export async function setupNoreplyEmailAction(
+  domainName: string
+): Promise<ActionResult<SystemEmailSenderConfig>> {
+  try {
+    const session = await requireSession()
+    if (!isPrimaryAdmin(session.username)) {
+      return {
+        ok: false,
+        error: "Forbidden: Only the primary administrator can configure the system sender mailbox.",
+      }
+    }
+
+    const cleanDomain = domainName.trim().toLowerCase()
+    const domains = await queryDomains()
+    const domain = domains.find((d) => d.name.toLowerCase() === cleanDomain)
+    if (!domain) {
+      return { ok: false, error: `Domain '${cleanDomain}' not found in Stalwart.` }
+    }
+
+    const targetEmail = `noreply@${cleanDomain}`
+    const generatedPassword = crypto.randomBytes(18).toString("base64") + "!Aa1"
+
+    const accounts = await queryAccounts(domains)
+    let account = accounts.find((a) => a.email.toLowerCase() === targetEmail)
+
+    if (!account) {
+      account = await createAccount({
+        local: "noreply",
+        email: targetEmail,
+        domainId: domain.id,
+        password: generatedPassword,
+        description: "Automated System Mailer",
+      })
+    } else {
+      await updateAccountPassword(account.id, generatedPassword)
+    }
+
+
+    const host = `mail.${cleanDomain}`
+    const config: SystemEmailSenderConfig = {
+      mailboxEmail: targetEmail,
+      domain: cleanDomain,
+      password: generatedPassword,
+      host,
+      port: 587,
+      secure: false,
+      fromName: "mailwart",
+      isNoreply: true,
+      configuredAt: new Date().toISOString(),
+    }
+
+    await saveOutboundEmailConfig(config)
+
+    await recordAudit({
+      actor: session.username || "yehia",
+      action: "system.setup_noreply",
+      detail: `Configured system sender mailbox to ${targetEmail} on ${cleanDomain}`,
+    })
+
+    revalidatePath("/dashboard/settings")
+    return { ok: true, data: config }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to setup noreply mailbox."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Configure any existing mailbox as the system sender for password reset and OTP emails.
+ */
+export async function saveSystemEmailSenderAction(
+  input: SystemEmailSenderConfig
+): Promise<ActionResult<void>> {
+  try {
+    const session = await requireSession()
+    if (!isPrimaryAdmin(session.username)) {
+      return {
+        ok: false,
+        error: "Forbidden: Only the primary administrator can configure system outbound email.",
+      }
+    }
+
+    if (!input.mailboxEmail || !input.host) {
+      return { ok: false, error: "Mailbox email and SMTP host are required." }
+    }
+
+    await saveOutboundEmailConfig(input)
+
+    await recordAudit({
+      actor: session.username || "yehia",
+      action: "system.outbound_email_config",
+      detail: `Updated system outbound mail sender to ${input.mailboxEmail} (${input.host}:${input.port})`,
+    })
+
+    revalidatePath("/dashboard/settings")
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to save outbound email config."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Retrieve current system outbound email settings.
+ */
+export async function getSystemEmailSenderAction(): Promise<
+  ActionResult<SystemEmailSenderConfig | null>
+> {
+  try {
+    await requireAdminSession()
+    const config = await getOutboundEmailConfig()
+    return { ok: true, data: config }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to load outbound email config."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Request OTP for in-account password change (used by regular users and secondary admins).
+ */
+export async function requestInAccountPasswordChangeOtpAction(): Promise<
+  ActionResult<{ maskedEmail: string; cooldownSeconds: number }>
+> {
+  try {
+    const session = await requireSession()
+    const user = await findUserById(session.userId!)
+    if (!user) {
+      return { ok: false, error: "User session not found in database." }
+    }
+
+    const res = await requestPasswordResetOtp(user.email)
+    if (!res.success) {
+      return { ok: false, error: res.error || "Failed to dispatch verification code." }
+    }
+
+    return {
+      ok: true,
+      data: {
+        maskedEmail: res.maskedEmail,
+        cooldownSeconds: res.cooldownSeconds,
+      },
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to request password reset code."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Verify OTP for in-account password change.
+ */
+export async function verifyInAccountPasswordChangeOtpAction(
+  code: string
+): Promise<ActionResult<{ resetToken: string }>> {
+  try {
+    const session = await requireSession()
+    const user = await findUserById(session.userId!)
+    if (!user) {
+      return { ok: false, error: "User session not found in database." }
+    }
+
+    const res = await verifyPasswordResetOtp(user.email, code)
+    if (!res.success || !res.resetToken) {
+      return { ok: false, error: res.error || "Invalid verification code." }
+    }
+
+    return { ok: true, data: { resetToken: res.resetToken } }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to verify code."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Complete in-account password change.
+ */
+export async function completeInAccountPasswordChangeAction(
+  resetToken: string,
+  newPassword: string,
+  confirmPassword: string
+): Promise<ActionResult> {
+  try {
+    await requireSession()
+    if (newPassword !== confirmPassword) {
+      return { ok: false, error: "Passwords do not match." }
+    }
+
+    const check = validateStrongPassword(newPassword)
+    if (!check.valid) {
+      return { ok: false, error: check.errors[0] }
+    }
+
+    const res = await completePasswordReset(resetToken, newPassword)
+    if (!res.success) {
+      return { ok: false, error: res.error || "Failed to update password." }
+    }
+
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to reset password."
+    return { ok: false, error: msg }
   }
 }

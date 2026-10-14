@@ -39,6 +39,13 @@ export type AuditAction =
   | "user.destroy"
   | "user.impersonate"
   | "user.stop_impersonate"
+  | "user.password_change"
+  | "user.password_reset"
+  | "user.email_change"
+  | "system.setup_noreply"
+  | "system.outbound_email_config"
+  | "system.email_sent"
+  | "system.email_failed"
 
 export type AuditEvent = {
   id: string

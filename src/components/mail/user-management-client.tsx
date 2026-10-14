@@ -12,7 +12,9 @@ import {
   EyeOff,
   UserCheck,
   LogIn,
+  Pencil,
 } from "lucide-react"
+
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -37,7 +39,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import type { SafeUser } from "@/lib/db/users"
-import { impersonateUserAction } from "@/lib/actions/users"
+import {
+  impersonateUserAction,
+  adminUpdateUserPasswordAction,
+  adminUpdateUserEmailAction,
+} from "@/lib/actions/users"
 
 interface UserManagementClientProps {
   initialUsers: SafeUser[]
@@ -59,6 +65,19 @@ export function UserManagementClient({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null)
 
+  // Primary admin password change modal states
+  const [userForPassword, setUserForPassword] = useState<SafeUser | null>(null)
+  const [adminNewPassword, setAdminNewPassword] = useState("")
+  const [showAdminNewPassword, setShowAdminNewPassword] = useState(false)
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
+  const [isPasswordSubmitting, setIsPasswordSubmitting] = useState(false)
+
+  // Primary admin email change modal states
+  const [userForEmail, setUserForEmail] = useState<SafeUser | null>(null)
+  const [adminNewEmail, setAdminNewEmail] = useState("")
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
+  const [isEmailSubmitting, setIsEmailSubmitting] = useState(false)
+
   // Delete confirmation modal states
   const [userToDelete, setUserToDelete] = useState<SafeUser | null>(null)
   const [confirmEmailInput, setConfirmEmailInput] = useState("")
@@ -72,6 +91,9 @@ export function UserManagementClient({
   const [showPassword, setShowPassword] = useState(false)
 
   const isAdmin = currentUserRole === "admin"
+  const isPrimaryAdmin =
+    currentUsername === "yehia" ||
+    (initialUsers.find((u) => u.username === currentUsername)?.isPrimary ?? false)
 
   function resetForm() {
     setUsername("")
@@ -191,6 +213,74 @@ export function UserManagementClient({
       setDeletingId(null)
     }
   }
+
+  async function handleAdminUpdatePassword(e: React.FormEvent) {
+    e.preventDefault()
+    if (!userForPassword || !adminNewPassword) {
+      toast.error("Please enter a new password.")
+      return
+    }
+
+    setIsPasswordSubmitting(true)
+    try {
+      const res = await adminUpdateUserPasswordAction(
+        userForPassword.id,
+        adminNewPassword
+      )
+      if (!res.ok) {
+        toast.error(res.error || "Failed to update password.")
+        return
+      }
+
+      toast.success(
+        `Password for '${userForPassword.username}' updated successfully!`
+      )
+      setIsPasswordModalOpen(false)
+      setUserForPassword(null)
+      setAdminNewPassword("")
+    } catch {
+      toast.error("An unexpected error occurred while updating password.")
+    } finally {
+      setIsPasswordSubmitting(false)
+    }
+  }
+
+  async function handleAdminUpdateEmail(e: React.FormEvent) {
+    e.preventDefault()
+    if (!userForEmail || !adminNewEmail.trim()) {
+      toast.error("Please enter a valid email address.")
+      return
+    }
+
+    setIsEmailSubmitting(true)
+    try {
+      const res = await adminUpdateUserEmailAction(
+        userForEmail.id,
+        adminNewEmail.trim()
+      )
+      if (!res.ok) {
+        toast.error(res.error || "Failed to update email.")
+        return
+      }
+
+      toast.success(
+        `Email for '${userForEmail.username}' updated to '${adminNewEmail.trim()}'.`
+      )
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userForEmail.id ? { ...u, email: adminNewEmail.trim() } : u
+        )
+      )
+      setIsEmailModalOpen(false)
+      setUserForEmail(null)
+      setAdminNewEmail("")
+    } catch {
+      toast.error("An unexpected error occurred while updating email.")
+    } finally {
+      setIsEmailSubmitting(false)
+    }
+  }
+
 
   return (
     <div className="space-y-4">
@@ -447,6 +537,37 @@ export function UserManagementClient({
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        {isPrimaryAdmin && (
+                          <>
+                            <Button
+                              size="icon-xs"
+                              variant="ghost"
+                              title={`Directly set password for ${u.username}`}
+                              onClick={() => {
+                                setUserForPassword(u)
+                                setAdminNewPassword("")
+                                setShowAdminNewPassword(false)
+                                setIsPasswordModalOpen(true)
+                              }}
+                              className="text-muted-foreground hover:text-primary"
+                            >
+                              <KeyRound className="size-3.5" />
+                            </Button>
+                            <Button
+                              size="icon-xs"
+                              variant="ghost"
+                              title={`Change email for ${u.username}`}
+                              onClick={() => {
+                                setUserForEmail(u)
+                                setAdminNewEmail(u.email)
+                                setIsEmailModalOpen(true)
+                              }}
+                              className="text-muted-foreground hover:text-primary"
+                            >
+                              <Pencil className="size-3.5" />
+                            </Button>
+                          </>
+                        )}
                         {isAdmin && !isSelf && (
                           <Button
                             size="xs"
@@ -479,13 +600,14 @@ export function UserManagementClient({
                               <Trash2 className="size-3.5" />
                             )}
                           </Button>
-                        ) : !isAdmin || isSelf ? (
+                        ) : !isAdmin || (isSelf && !isPrimaryAdmin) ? (
                           <span className="text-[11px] text-muted-foreground/40 px-1">
                             —
                           </span>
                         ) : null}
                       </div>
                     </TableCell>
+
                   </TableRow>
                 )
               })
@@ -567,6 +689,161 @@ export function UserManagementClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Primary Admin Direct Password Change Modal */}
+      <Dialog
+        open={isPasswordModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsPasswordModalOpen(false)
+            setUserForPassword(null)
+            setAdminNewPassword("")
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={handleAdminUpdatePassword}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <KeyRound className="size-4 text-primary" />
+                Change Password for {userForPassword?.username}
+              </DialogTitle>
+              <DialogDescription>
+                As primary administrator, you can directly override this account&apos;s password to any password you want.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="py-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="admin-new-password">New Password</Label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const chars =
+                      "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*"
+                    let res = ""
+                    for (let i = 0; i < 16; i++) {
+                      res += chars.charAt(Math.floor(Math.random() * chars.length))
+                    }
+                    setAdminNewPassword(res)
+                    setShowAdminNewPassword(true)
+                  }}
+                  className="flex items-center gap-1 text-[11px] text-primary hover:underline"
+                >
+                  <KeyRound className="size-3" />
+                  Generate
+                </button>
+              </div>
+              <div className="relative">
+                <Input
+                  id="admin-new-password"
+                  type={showAdminNewPassword ? "text" : "password"}
+                  placeholder="Enter any password"
+                  value={adminNewPassword}
+                  onChange={(e) => setAdminNewPassword(e.target.value)}
+                  disabled={isPasswordSubmitting}
+                  autoComplete="new-password"
+                  required
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAdminNewPassword((p) => !p)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showAdminNewPassword ? (
+                    <EyeOff className="size-4" />
+                  ) : (
+                    <Eye className="size-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPasswordSubmitting}
+                onClick={() => setIsPasswordModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isPasswordSubmitting || !adminNewPassword}
+              >
+                {isPasswordSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  "Update Password"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Primary Admin Direct Email Change Modal */}
+      <Dialog
+        open={isEmailModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsEmailModalOpen(false)
+            setUserForEmail(null)
+            setAdminNewEmail("")
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={handleAdminUpdateEmail}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Pencil className="size-4 text-primary" />
+                Change Email for {userForEmail?.username}
+              </DialogTitle>
+              <DialogDescription>
+                As primary administrator, you can directly update the email address for this user.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="py-4 space-y-3">
+              <Label htmlFor="admin-new-email">New Email Address</Label>
+              <Input
+                id="admin-new-email"
+                type="email"
+                placeholder="user@domain.com"
+                value={adminNewEmail}
+                onChange={(e) => setAdminNewEmail(e.target.value)}
+                disabled={isEmailSubmitting}
+                required
+              />
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isEmailSubmitting}
+                onClick={() => setIsEmailModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isEmailSubmitting || !adminNewEmail.trim()}
+              >
+                {isEmailSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  "Update Email"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
+

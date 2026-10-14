@@ -25,6 +25,20 @@ export type SafeUser = {
   role: UserRole
   createdAt: string
   updatedAt: string
+  isPrimary?: boolean
+}
+
+export function getPrimaryAdminUsername(): string {
+  return process.env.APP_ADMIN_USER?.trim().toLowerCase() || "yehia"
+}
+
+export function isPrimaryAdmin(usernameOrUser?: string | { username?: string } | null): boolean {
+  if (!usernameOrUser) return false
+  const username = typeof usernameOrUser === "string" ? usernameOrUser : usernameOrUser.username
+  if (!username) return false
+  const primary = getPrimaryAdminUsername()
+  const lower = username.toLowerCase()
+  return lower === primary || lower === "yehia"
 }
 
 export function generateSalt(): string {
@@ -102,6 +116,7 @@ export function toSafeUser(user: DbUser): SafeUser {
     role: user.role,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
+    isPrimary: isPrimaryAdmin(user.username),
   }
 }
 
@@ -142,6 +157,25 @@ export async function findUserById(id: string): Promise<SafeUser | null> {
   if (res.rows.length === 0) return null
   return toSafeUser(mapUserRow(res.rows[0]))
 }
+
+export async function findUserByEmail(email: string): Promise<SafeUser | null> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return null
+
+  const clean = email.trim().toLowerCase()
+  const res = await pool.query(
+    `SELECT id, username, email, password_hash, salt, role, created_at, updated_at
+     FROM users
+     WHERE LOWER(email) = $1
+     LIMIT 1`,
+    [clean]
+  )
+
+  if (res.rows.length === 0) return null
+  return toSafeUser(mapUserRow(res.rows[0]))
+}
+
 
 export async function listAllUsers(): Promise<SafeUser[]> {
   await initDatabase().catch(() => {})
@@ -257,9 +291,9 @@ export async function deleteUser(id: string): Promise<boolean> {
   const user = await findUserById(id)
   if (!user) return false
 
-  // Protect the primary seeded admin account yehia
-  if (user.username === "yehia") {
-    throw new Error("Primary admin account 'yehia' cannot be deleted.")
+  // Protect the primary seeded admin account
+  if (isPrimaryAdmin(user.username)) {
+    throw new Error(`Primary admin account '${user.username}' cannot be deleted.`)
   }
 
   const res = await pool.query("DELETE FROM users WHERE id = $1", [id])
@@ -274,15 +308,15 @@ export async function ensureAdminUserInternal(pool: Pool): Promise<SafeUser | nu
     const adminUser = process.env.APP_ADMIN_USER?.trim() || "yehia"
     const defaultPassword = process.env.APP_ADMIN_PASSWORD?.trim() || "admin"
     const defaultEmail = process.env.APP_ADMIN_EMAIL?.trim() || "yehia@yehia.dev"
+    const forceReseed =
+      process.env.FORCE_RESEED_ADMIN_PASSWORD?.trim().toLowerCase() === "true" ||
+      process.env.FORCE_RESEED_ADMIN_PASSWORD?.trim() === "1"
 
-    // 1. Check if user 'yehia' already exists
-    const yehiaUser = await findUserByUsernameOrEmailDirect(pool, adminUser)
-    if (yehiaUser) {
-      // Check on each deploy: if APP_ADMIN_PASSWORD was changed in env, update the hash!
-      if (
-        defaultPassword &&
-        !verifyPassword(defaultPassword, yehiaUser.passwordHash, yehiaUser.salt)
-      ) {
+    // 1. Check if user matching adminUser already exists in DB
+    const existingAdmin = await findUserByUsernameOrEmailDirect(pool, adminUser)
+    if (existingAdmin) {
+      // ONLY reseed/overwrite password if FORCE_RESEED_ADMIN_PASSWORD is explicitly true
+      if (forceReseed && defaultPassword) {
         const newSalt = generateSalt()
         const newHash = hashPassword(defaultPassword, newSalt)
         const updated = await pool.query(
@@ -290,16 +324,17 @@ export async function ensureAdminUserInternal(pool: Pool): Promise<SafeUser | nu
            SET password_hash = $1, salt = $2, updated_at = NOW()
            WHERE id = $3
            RETURNING id, username, email, password_hash, salt, role, created_at, updated_at`,
-          [newHash, newSalt, yehiaUser.id]
+          [newHash, newSalt, existingAdmin.id]
         )
         if (updated.rows.length > 0) {
           return toSafeUser(mapUserRow(updated.rows[0]))
         }
       }
-      return toSafeUser(yehiaUser)
+      // Do NOT overwrite existing admin password on normal deploy / restart!
+      return toSafeUser(existingAdmin)
     }
 
-    // 2. Check if legacy 'admin' exists — migrate to 'yehia'
+    // 2. Check if legacy 'admin' exists — migrate to adminUser
     const legacyAdmin = await findUserByUsernameOrEmailDirect(pool, "admin")
     if (legacyAdmin) {
       const newSalt = generateSalt()
@@ -314,10 +349,10 @@ export async function ensureAdminUserInternal(pool: Pool): Promise<SafeUser | nu
       return toSafeUser(mapUserRow(res.rows[0]))
     }
 
-    // 3. Otherwise seed new admin user 'yehia'
+    // 3. Otherwise seed new admin user
     const salt = generateSalt()
     const passwordHash = hashPassword(defaultPassword, salt)
-    const id = `usr-yehia-root`
+    const id = `usr-${adminUser}-root`
 
     const res = await pool.query(
       `INSERT INTO users (id, username, email, password_hash, salt, role, created_at, updated_at)
@@ -334,9 +369,59 @@ export async function ensureAdminUserInternal(pool: Pool): Promise<SafeUser | nu
     const created = await findUserByUsernameOrEmailDirect(pool, adminUser)
     return created ? toSafeUser(created) : null
   } catch (err) {
-    console.error("Failed to seed admin user 'yehia':", err)
+    console.error("Failed to seed admin user:", err)
     return null
   }
+}
+
+/**
+ * Directly update a user's password.
+ */
+export async function updateUserPassword(id: string, newPassword: string): Promise<SafeUser> {
+  await initDatabase()
+  const pool = getPool()
+  if (!pool) throw new Error("Database unavailable")
+
+  const salt = generateSalt()
+  const passwordHash = hashPassword(newPassword, salt)
+
+  const res = await pool.query(
+    `UPDATE users
+     SET password_hash = $1, salt = $2, updated_at = NOW()
+     WHERE id = $3
+     RETURNING id, username, email, password_hash, salt, role, created_at, updated_at`,
+    [passwordHash, salt, id]
+  )
+
+  if (res.rows.length === 0) {
+    throw new Error("User not found.")
+  }
+
+  return toSafeUser(mapUserRow(res.rows[0]))
+}
+
+/**
+ * Directly update a user's email address.
+ */
+export async function updateUserEmail(id: string, newEmail: string): Promise<SafeUser> {
+  await initDatabase()
+  const pool = getPool()
+  if (!pool) throw new Error("Database unavailable")
+
+  const cleanEmail = newEmail.trim().toLowerCase()
+  const res = await pool.query(
+    `UPDATE users
+     SET email = $1, updated_at = NOW()
+     WHERE id = $2
+     RETURNING id, username, email, password_hash, salt, role, created_at, updated_at`,
+    [cleanEmail, id]
+  )
+
+  if (res.rows.length === 0) {
+    throw new Error("User not found.")
+  }
+
+  return toSafeUser(mapUserRow(res.rows[0]))
 }
 
 /**

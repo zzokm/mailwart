@@ -18,6 +18,7 @@ export type SessionData = {
   username?: string
   email?: string
   exp?: number
+  isPrimary?: boolean
   impersonatingFrom?: {
     userId: string
     username: string

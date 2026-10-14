@@ -200,6 +200,28 @@ export async function initDatabase(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS idx_deliv_reports_user_id ON deliverability_reports(user_id);
         CREATE INDEX IF NOT EXISTS idx_deliv_reports_created_at ON deliverability_reports(created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS password_reset_otps (
+          id VARCHAR(64) PRIMARY KEY,
+          user_id VARCHAR(64) NOT NULL,
+          email VARCHAR(255) NOT NULL,
+          code_hash TEXT NOT NULL,
+          salt TEXT NOT NULL,
+          reset_token VARCHAR(128),
+          verified_at TIMESTAMPTZ,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          expires_at TIMESTAMPTZ NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_pw_reset_email ON password_reset_otps(LOWER(email));
+        CREATE INDEX IF NOT EXISTS idx_pw_reset_token ON password_reset_otps(reset_token);
+        CREATE INDEX IF NOT EXISTS idx_pw_reset_expires ON password_reset_otps(expires_at);
+
+        CREATE TABLE IF NOT EXISTS system_settings (
+          key VARCHAR(64) PRIMARY KEY,
+          value JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
       `)
 
       // 2. Seed primary admin account yehia

@@ -9,6 +9,7 @@ import {
   SESSION_TTL_SECONDS,
   type SessionData,
 } from "@/lib/auth/session-options"
+import { isPrimaryAdmin } from "@/lib/db/users"
 
 export type { SessionData }
 
@@ -39,6 +40,15 @@ export async function requireAdminSession(): Promise<IronSession<SessionData>> {
   return session
 }
 
+/** Throws if the current session is not the primary administrator. */
+export async function requirePrimaryAdminSession(): Promise<IronSession<SessionData>> {
+  const session = await requireSession()
+  if (!isPrimaryAdmin(session.username)) {
+    throw new AuthError("Forbidden: Only the primary administrator can perform this action.")
+  }
+  return session
+}
+
 export class AuthError extends Error {
   constructor(message = "Unauthorized") {
     super(message)
@@ -57,6 +67,7 @@ export async function createUserSession(user: {
   session.username = user.username
   session.email = user.email
   session.role = user.role
+  session.isPrimary = isPrimaryAdmin(user.username)
   session.exp = Date.now() + SESSION_TTL_SECONDS * 1000
   await session.save()
 }
@@ -65,6 +76,7 @@ export async function createAdminSession(username?: string): Promise<void> {
   const session = await getSession()
   session.role = "admin"
   if (username?.trim()) session.username = username.trim()
+  session.isPrimary = isPrimaryAdmin(session.username)
   session.exp = Date.now() + SESSION_TTL_SECONDS * 1000
   await session.save()
 }

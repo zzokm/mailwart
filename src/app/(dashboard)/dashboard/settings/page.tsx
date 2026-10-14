@@ -14,6 +14,10 @@ import { getSession } from "@/lib/auth/session"
 import { getUserOwnedDomainNames } from "@/lib/db"
 import { queryDomains } from "@/lib/stalwart/domains"
 
+import { getOutboundEmailConfig } from "@/lib/db/system-settings"
+import { isPrimaryAdmin } from "@/lib/db/users"
+import { queryAccounts } from "@/lib/stalwart/accounts"
+
 export const metadata: Metadata = { title: "Settings" }
 export const runtime = "nodejs"
 
@@ -33,6 +37,7 @@ export default async function SettingsPage({
     usersResult,
     session,
     domains,
+    outboundConfig,
   ] = await Promise.all([
     getSettingsAction(),
     getCopilotSettingsAction(),
@@ -41,6 +46,7 @@ export default async function SettingsPage({
     listUsersAction(),
     getSession(),
     queryDomains().catch(() => []),
+    getOutboundEmailConfig().catch(() => null),
   ])
 
   if (!result.ok) {
@@ -60,6 +66,9 @@ export default async function SettingsPage({
     ? domains.map((d: { name: string }) => d.name.toLowerCase())
     : await getUserOwnedDomainNames(session.userId || "")
 
+  const accounts = isAdmin ? await queryAccounts(domains).catch(() => []) : []
+  const availableMailboxes = accounts.map((a) => a.email)
+
   return (
     <div className="w-full space-y-6">
       <PageHeader
@@ -77,10 +86,16 @@ export default async function SettingsPage({
         cloudflareError={cfResult.ok ? null : cfResult.error}
         deliverabilityReport={deliverabilityResult.ok ? deliverabilityResult.data : null}
         availableDomains={availableDomains}
+        availableMailboxes={availableMailboxes}
+        outboundEmailConfig={outboundConfig}
         users={usersResult.ok && usersResult.data ? usersResult.data : []}
-        session={session}
+        session={{
+          ...session,
+          isPrimary: isPrimaryAdmin(session.username),
+        }}
         initialTab={initialTab}
       />
     </div>
   )
 }
+
