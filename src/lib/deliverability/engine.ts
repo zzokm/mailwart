@@ -16,6 +16,8 @@ import type {
   DeliverabilitySuiteReport,
   DnsRecordCheck,
   DomainDeliverabilityReport,
+  EgressProbeResult,
+  EgressTarget,
   ExternalTesterResult,
   InboundProbeResult,
   OutboundProbeResult,
@@ -52,6 +54,7 @@ async function probePort(options: {
   return new Promise((resolve) => {
     let socket: net.Socket | tls.TLSSocket | null = null
     let finished = false
+    let isConnected = false
     let banner = ""
 
     const finish = (result: { ok: boolean; latencyMs: number; banner?: string; error?: string }) => {
@@ -74,6 +77,18 @@ async function probePort(options: {
       })
     }, timeoutMs)
 
+    const onConnected = () => {
+      isConnected = true
+      // If no initial banner is expected, resolve immediately upon successful TCP/TLS handshake
+      if (!expectedBannerPrefix) {
+        finish({
+          ok: true,
+          latencyMs: Date.now() - start,
+          banner: useTls ? "TLS Handshake OK" : "TCP Connected",
+        })
+      }
+    }
+
     if (useTls) {
       socket = tls.connect(
         {
@@ -81,14 +96,10 @@ async function probePort(options: {
           port,
           rejectUnauthorized: false,
         },
-        () => {
-          // Connected
-        }
+        onConnected
       )
     } else {
-      socket = net.createConnection({ host, port }, () => {
-        // Connected
-      })
+      socket = net.createConnection({ host, port }, onConnected)
     }
 
     socket.on("data", (chunk) => {
@@ -111,16 +122,18 @@ async function probePort(options: {
       })
     })
 
-    // If no data is expected on connect (e.g. raw port open test), resolve on connect if 1.5s pass with no banner
+    // If expectedBannerPrefix was specified, wait for the banner up to 2500ms after connection
     setTimeout(() => {
-      if (!finished && socket && !socket.destroyed) {
-        finish({
-          ok: true,
-          latencyMs: Date.now() - start,
-          banner: banner ? banner.trim() : "Connected (no initial banner)",
-        })
+      if (!finished && isConnected && expectedBannerPrefix) {
+        if (!banner) {
+          finish({
+            ok: false,
+            latencyMs: Date.now() - start,
+            error: `Connected but expected banner '${expectedBannerPrefix}' not received`,
+          })
+        }
       }
-    }, 1500)
+    }, 2500)
   })
 }
 
@@ -600,8 +613,100 @@ async function evaluateDomainDns(
   return { checks, issues }
 }
 
+/**
+ * Probes whether the server has outbound internet connectivity to deliver email.
+ * Tests direct connection to external internet MX hosts on Port 25, or an active external relay.
+ */
+export async function probeInternetEgress(): Promise<EgressProbeResult> {
+  const targets = [
+    { target: "gmail-smtp-in.l.google.com", port: 25 },
+    { target: "reception.mail-tester.com", port: 25 },
+  ]
+
+  const probedTargets: EgressTarget[] = []
+  let anyPort25Ok = false
+
+  for (const t of targets) {
+    let resolvedIp = t.target
+    try {
+      const ips = await dns.resolve4(t.target)
+      if (ips && ips[0]) resolvedIp = ips[0]
+    } catch {}
+
+    const probe = await probePort({
+      host: resolvedIp,
+      port: t.port,
+      useTls: false,
+      expectedBannerPrefix: "220",
+      timeoutMs: 3500,
+    })
+
+    const passed = probe.ok
+    if (passed) anyPort25Ok = true
+
+    probedTargets.push({
+      target: t.target,
+      port: t.port,
+      status: passed ? "pass" : "fail",
+      latencyMs: probe.latencyMs,
+      error: passed ? undefined : probe.error,
+    })
+  }
+
+  // Check if an outbound relay / smart-host is configured in system settings
+  let relayActive = false
+  let relayTargetDesc = ""
+  try {
+    const { getOutboundEmailConfig } = await import("@/lib/db/system-settings")
+    const outConfig = await getOutboundEmailConfig()
+    if (
+      outConfig &&
+      outConfig.host &&
+      !outConfig.host.includes("stalwart") &&
+      !outConfig.host.includes("localhost") &&
+      !outConfig.host.includes("127.0.0.1") &&
+      !outConfig.host.includes("mail.yehia.dev")
+    ) {
+      relayTargetDesc = `${outConfig.host}:${outConfig.port}`
+      const relayProbe = await probePort({
+        host: outConfig.host,
+        port: outConfig.port,
+        useTls: outConfig.secure,
+        timeoutMs: 4000,
+      })
+      if (relayProbe.ok) {
+        relayActive = true
+      }
+      probedTargets.push({
+        target: `Relay: ${outConfig.host}`,
+        port: outConfig.port,
+        status: relayProbe.ok ? "pass" : "fail",
+        latencyMs: relayProbe.latencyMs,
+        error: relayProbe.ok ? undefined : relayProbe.error,
+      })
+    }
+  } catch {}
+
+  const canDeliverExternal = anyPort25Ok || relayActive
+  const port25Blocked = !anyPort25Ok
+
+  return {
+    status: canDeliverExternal ? "pass" : "fail",
+    port25Reachable: anyPort25Ok,
+    relayReachable: relayActive,
+    canDeliverExternal,
+    probedTargets,
+    summary: canDeliverExternal
+      ? (anyPort25Ok ? "Direct internet MX egress (port 25) is fully functional." : `Delivering via active external relay (${relayTargetDesc}).`)
+      : "Outbound Port 25 is blocked by VPS provider or firewall. External emails cannot leave this server.",
+    recommendation: canDeliverExternal
+      ? undefined
+      : "Submit a support ticket to your VPS provider (RackNerd / ColoCrossing) requesting outbound Port 25 to be unblocked, or configure an authenticated outbound SMTP relay.",
+  }
+}
+
 /** Check connectivity across standard email ports */
-async function evaluatePorts(mailHost: string): Promise<PortCheck[]> {
+async function evaluatePorts(mailHost: string, egress: EgressProbeResult): Promise<PortCheck[]> {
   const [smtp587, smtp465, imap993, smtp25] = await Promise.all([
     probePort({
       host: mailHost,
@@ -633,6 +738,8 @@ async function evaluatePorts(mailHost: string): Promise<PortCheck[]> {
     }),
   ])
 
+  const egress25Target = egress.probedTargets.find((t) => t.port === 25)
+
   return [
     {
       port: 587,
@@ -661,8 +768,17 @@ async function evaluatePorts(mailHost: string): Promise<PortCheck[]> {
       status: smtp25.ok ? "pass" : "warn",
       latencyMs: smtp25.latencyMs,
       note: smtp25.ok
-        ? `Connected (${smtp25.latencyMs}ms)`
-        : `Local probe timeout. Note: outbound port 25 may be filtered by VPS provider; inbound port 25 is handled by server firewall.`,
+        ? `Inbound port 25 listener ready (${smtp25.latencyMs}ms)`
+        : `Local probe timeout. Inbound port 25 handled by server firewall.`,
+    },
+    {
+      port: 25,
+      service: "SMTP (Outbound Egress 25)",
+      status: egress.canDeliverExternal ? "pass" : "fail",
+      latencyMs: egress25Target?.latencyMs ?? 0,
+      note: egress.canDeliverExternal
+        ? (egress.port25Reachable ? "Outbound internet MX port 25 open and reachable" : "Outbound direct port 25 filtered; active external relay is in use")
+        : `Outbound port 25 timed out. Blocked by VPS host (RackNerd / ColoCrossing). External mail cannot leave server.`,
     },
   ]
 }
@@ -672,8 +788,15 @@ function calculateDomainScore(
   dnsChecks: DnsRecordCheck[],
   portChecks: PortCheck[],
   outbound: OutboundProbeResult,
-  inbound: InboundProbeResult
+  inbound: InboundProbeResult,
+  egress: EgressProbeResult
 ): { score: number; grade: "A+" | "A" | "B" | "C" | "D" | "F" } {
+  // CRITICAL FATAL OVERRIDE: If the server cannot deliver outbound email to the internet,
+  // the deliverability score is HARD-FAILED to 0.0 (Grade F)!
+  if (!egress.canDeliverExternal) {
+    return { score: 0.0, grade: "F" }
+  }
+
   let score = 10.0
 
   // DNS penalties
@@ -733,6 +856,9 @@ export async function runComprehensiveDeliverabilityTest(
     ? allDomains.filter((d) => options.domains?.map((s) => s.toLowerCase()).includes(d.name.toLowerCase()))
     : allDomains
 
+  // Probe server internet egress connectivity (Port 25 to external MX or active relay)
+  const egressResult = await probeInternetEgress()
+
   const domainReports: DomainDeliverabilityReport[] = []
 
   for (const domainObj of targetDomains) {
@@ -774,8 +900,8 @@ export async function runComprehensiveDeliverabilityTest(
     // 2. DNS Checks
     const { checks: dnsChecks, issues: dnsIssues } = await evaluateDomainDns(domain, mailHost)
 
-    // 3. Port Checks
-    const portChecks = await evaluatePorts(mailHost)
+    // 3. Port Checks (Inbound listeners + Outbound Internet Egress)
+    const portChecks = await evaluatePorts(mailHost, egressResult)
 
     // 4. Inbound IMAP Probe
     let inboundResult: InboundProbeResult = {
@@ -936,11 +1062,22 @@ export async function runComprehensiveDeliverabilityTest(
     // 8. Compile Domain Issues & Scoring
     const allIssues = [...dnsIssues]
 
+    if (!egressResult.canDeliverExternal) {
+      allIssues.unshift({
+        severity: "critical",
+        title: "Outbound Port 25 Blocked (0/10 Undeliverable)",
+        message:
+          "Outbound TCP connections to external mail servers on Port 25 timed out. Your hosting provider (RackNerd / ColoCrossing) blocks outbound port 25 by default. Even though your DNS records (SPF, DKIM, DMARC) are 100% valid, NO OUTBOUND EMAILS CAN LEAVE THIS SERVER until port 25 is unblocked or an outbound relay is configured.",
+        recommendation:
+          "Submit a support ticket to RackNerd to unblock outbound port 25 on IP 23.94.107.153, or configure an authenticated SMTP relay in Stalwart Settings > Routes.",
+      })
+    }
+
     if (outboundResult.status === "fail") {
       allIssues.push({
         severity: "critical",
-        title: "Outbound SMTP Delivery Failure",
-        message: outboundResult.error || "Failed to complete SMTP handshake or delivery.",
+        title: "Outbound SMTP Submission Failure",
+        message: outboundResult.error || "Failed to complete SMTP handshake or local queue submission.",
         recommendation: "Check Stalwart SMTP logs and ensure port 587 is accessible.",
       })
     }
@@ -954,7 +1091,13 @@ export async function runComprehensiveDeliverabilityTest(
       })
     }
 
-    const { score, grade } = calculateDomainScore(dnsChecks, portChecks, outboundResult, inboundResult)
+    const { score, grade } = calculateDomainScore(
+      dnsChecks,
+      portChecks,
+      outboundResult,
+      inboundResult,
+      egressResult
+    )
 
     domainReports.push({
       domain,
@@ -970,6 +1113,7 @@ export async function runComprehensiveDeliverabilityTest(
       portChecks,
       outbound: outboundResult,
       inbound: inboundResult,
+      egress: egressResult,
       external: externalResult,
       issues: allIssues,
     })
@@ -979,10 +1123,13 @@ export async function runComprehensiveDeliverabilityTest(
   const totalDomains = domainReports.length
   const passedDomains = domainReports.filter((d) => d.score >= 8.0).length
   const totalScoreSum = domainReports.reduce((acc, d) => acc + d.score, 0)
-  const overallScore = totalDomains > 0 ? Math.round((totalScoreSum / totalDomains) * 10) / 10 : 0
+  let overallScore = totalDomains > 0 ? Math.round((totalScoreSum / totalDomains) * 10) / 10 : 0
 
   let overallGrade: "A+" | "A" | "B" | "C" | "D" | "F" = "F"
-  if (overallScore >= 9.8) overallGrade = "A+"
+  if (!egressResult.canDeliverExternal) {
+    overallScore = 0.0
+    overallGrade = "F"
+  } else if (overallScore >= 9.8) overallGrade = "A+"
   else if (overallScore >= 9.0) overallGrade = "A"
   else if (overallScore >= 8.0) overallGrade = "B"
   else if (overallScore >= 7.0) overallGrade = "C"
@@ -998,6 +1145,12 @@ export async function runComprehensiveDeliverabilityTest(
   }
 
   const globalRecommendations: string[] = []
+  if (!egressResult.canDeliverExternal) {
+    globalRecommendations.unshift(
+      "CRITICAL BLOCKER: Outbound Port 25 is filtered by your VPS hosting provider (RackNerd). Deliverability is 0/10 because external mail cannot leave the server. Request Port 25 unblocking or set up an outbound relay."
+    )
+  }
+
   if (failuresCount === 0 && warningsCount === 0) {
     globalRecommendations.push("All email systems, DNS records, and deliverability pipelines are in pristine condition.")
   } else {
@@ -1022,7 +1175,10 @@ export async function runComprehensiveDeliverabilityTest(
     warningsCount,
     failuresCount,
     domainReports,
-    systemSummary: `System checkup complete across ${totalDomains} domains: ${passedDomains} optimal, ${failuresCount} critical issues, ${warningsCount} warnings.`,
+    egress: egressResult,
+    systemSummary: !egressResult.canDeliverExternal
+      ? `CRITICAL: Outbound email delivery is blocked (Port 25 egress filter). All ${totalDomains} domains are currently unable to deliver external emails to the internet.`
+      : `System checkup complete across ${totalDomains} domains: ${passedDomains} optimal, ${failuresCount} critical issues, ${warningsCount} warnings.`,
     recommendations: globalRecommendations,
   }
 
@@ -1042,6 +1198,7 @@ export async function runComprehensiveDeliverabilityTest(
       passedDomains,
       failuresCount,
       warningsCount,
+      egressBlocked: !egressResult.canDeliverExternal,
     },
   })
 

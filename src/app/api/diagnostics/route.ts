@@ -461,6 +461,21 @@ export async function GET(req: Request) {
     }
   }
 
+  // Action: Trigger full Deliverability Suite checkup
+  if (action === "deliverability-suite") {
+    try {
+      const { runComprehensiveDeliverabilityTest } = await import("@/lib/deliverability/engine")
+      const domain = url.searchParams.get("domain")
+      const res = await runComprehensiveDeliverabilityTest({
+        domains: domain ? [domain] : undefined,
+        autoCleanup: true,
+      })
+      return NextResponse.json({ action: "deliverability-suite", report: res })
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
   const results: Record<string, unknown> = {}
 
   // 1. Cloudflare Token Verification

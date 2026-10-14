@@ -230,6 +230,35 @@ export function DeliverabilityClient({
         </div>
       </div>
 
+      {/* Critical Egress Block Warning */}
+      {report && report.egress && !report.egress.canDeliverExternal && (
+        <div className="rounded-xl border border-rose-500/50 bg-rose-500/10 p-4 text-rose-600 dark:text-rose-400">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="size-5 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+            <div className="space-y-1.5 flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-sm font-semibold text-rose-600 dark:text-rose-300">
+                  Outbound Deliverability Blocked — Port 25 Egress Filter Active
+                </h4>
+                <Badge variant="destructive" className="font-mono text-[10px] uppercase tracking-wider">
+                  0 / 10 Undeliverable
+                </Badge>
+              </div>
+              <p className="text-xs leading-relaxed text-rose-600/90 dark:text-rose-300/90">
+                Deliverability is rated <strong>0 / 10 (Grade F)</strong> because outbound connections to external internet mail servers on Port 25 timed out. Your hosting provider (RackNerd / ColoCrossing) blocks outbound port 25 by default. Even though your DNS records (SPF, DKIM, DMARC) are 100% valid, <strong>no emails can leave this server</strong> until port 25 is unblocked or an outbound relay is configured.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                {report.egress.probedTargets.map((pt, idx) => (
+                  <span key={idx} className="rounded bg-rose-500/20 px-2 py-0.5 font-mono text-[11px]">
+                    {pt.target}:{pt.port} &rarr; {pt.status === "pass" ? "OK" : "TIMED OUT"}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Scoreboard Overview */}
       {report && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -237,18 +266,23 @@ export function DeliverabilityClient({
           <div className="rounded-xl border border-border/80 bg-card/40 p-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-muted-foreground">Deliverability Score</span>
-              <Badge variant="secondary" className="font-mono text-xs font-semibold">
+              <Badge
+                variant={report.egress && !report.egress.canDeliverExternal ? "destructive" : "secondary"}
+                className="font-mono text-xs font-semibold"
+              >
                 Grade {report.overallGrade}
               </Badge>
             </div>
             <div className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-mono text-2xl font-bold tracking-tight">
+              <span className={`font-mono text-2xl font-bold tracking-tight ${report.egress && !report.egress.canDeliverExternal ? "text-rose-500" : ""}`}>
                 {report.overallScore}
               </span>
               <span className="font-mono text-xs text-muted-foreground">/ 10</span>
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              {report.passedDomains} of {report.totalDomains} domains passing optimal rubrics
+              {report.egress && !report.egress.canDeliverExternal
+                ? "0 domains deliverable (Port 25 Egress Blocked)"
+                : `${report.passedDomains} of ${report.totalDomains} domains passing optimal rubrics`}
             </p>
           </div>
 
@@ -259,12 +293,14 @@ export function DeliverabilityClient({
               <Send className="size-3.5 text-muted-foreground" />
             </div>
             <div className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-mono text-2xl font-bold tracking-tight">
-                {outboundPassedCount} <span className="text-xs font-normal text-muted-foreground">/ {report.totalDomains}</span>
+              <span className={`font-mono text-2xl font-bold tracking-tight ${report.egress && !report.egress.canDeliverExternal ? "text-rose-500" : ""}`}>
+                {report.egress && !report.egress.canDeliverExternal ? "Blocked" : `${outboundPassedCount} / ${report.totalDomains}`}
               </span>
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Port 587 STARTTLS handshake &amp; submission OK
+              {report.egress && !report.egress.canDeliverExternal
+                ? "Port 587 submission OK · Port 25 Egress Blocked"
+                : "Port 587 STARTTLS handshake & submission OK"}
             </p>
           </div>
 
@@ -571,15 +607,22 @@ export function DeliverabilityClient({
 
                         {/* Ports status */}
                         <div className="rounded-lg border border-border/70 bg-card/30 p-3 text-xs space-y-2">
-                          <span className="font-medium text-foreground">Listening Mail Ports</span>
+                          <span className="font-medium text-foreground">Mail Ports &amp; Egress</span>
                           <div className="flex flex-wrap gap-2 pt-0.5">
-                            {domainReport.portChecks.map((portCheck) => (
+                            {domainReport.portChecks.map((portCheck, pIdx) => (
                               <div
-                                key={portCheck.port}
+                                key={`${portCheck.service}-${portCheck.port}-${pIdx}`}
+                                title={portCheck.note}
                                 className="flex items-center gap-1.5 rounded border border-border/60 bg-background px-2 py-1 font-mono text-[11px]"
                               >
                                 <span className={portCheck.status === "pass" ? "size-1.5 rounded-full bg-emerald-500" : "size-1.5 rounded-full bg-rose-500"} />
-                                <span>Port {portCheck.port}</span>
+                                <span>
+                                  {portCheck.service.includes("Outbound")
+                                    ? "Outbound 25"
+                                    : portCheck.service.includes("Inbound")
+                                    ? "Inbound 25"
+                                    : `Port ${portCheck.port}`}
+                                </span>
                               </div>
                             ))}
                           </div>

@@ -13,7 +13,30 @@ export type DnsRecordCheck = {
   recommendation?: string
 }
 
-export type PortService = "SMTP (Submission)" | "SMTP (Implicit TLS)" | "IMAP (SSL/TLS)" | "SMTP (Inbound MX)"
+export type PortService =
+  | "SMTP (Submission)"
+  | "SMTP (Implicit TLS)"
+  | "IMAP (SSL/TLS)"
+  | "SMTP (Inbound MX)"
+  | "SMTP (Outbound Egress 25)"
+
+export type EgressTarget = {
+  target: string
+  port: number
+  status: CheckStatus
+  latencyMs?: number
+  error?: string
+}
+
+export type EgressProbeResult = {
+  status: CheckStatus
+  port25Reachable: boolean
+  relayReachable: boolean
+  canDeliverExternal: boolean
+  probedTargets: EgressTarget[]
+  summary: string
+  recommendation?: string
+}
 
 export type PortCheck = {
   port: number
@@ -81,6 +104,7 @@ export type DomainDeliverabilityReport = {
   portChecks: PortCheck[]
   outbound: OutboundProbeResult
   inbound: InboundProbeResult
+  egress?: EgressProbeResult
   external: ExternalTesterResult
   issues: DeliverabilityIssue[]
 }
@@ -95,6 +119,7 @@ export type DeliverabilitySuiteReport = {
   warningsCount: number
   failuresCount: number
   domainReports: DomainDeliverabilityReport[]
+  egress?: EgressProbeResult
   systemSummary: string
   recommendations: string[]
 }
