@@ -152,6 +152,16 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    command: >
+      sh -c '
+        docker-entrypoint.sh postgres &
+        pid=$$!
+        until pg_isready -U "$${POSTGRES_USER:-mailwart}" -d "$${POSTGRES_DB:-mailwart}" -q; do
+          sleep 0.5
+        done
+        psql -U "$${POSTGRES_USER:-mailwart}" -d "$${POSTGRES_DB:-mailwart}" -c "ALTER USER \"$${POSTGRES_USER:-mailwart}\" WITH PASSWORD '\''$${POSTGRES_PASSWORD}'\'';" 2>/dev/null || true
+        wait $$pid
+      '
     networks:
       - default
 
