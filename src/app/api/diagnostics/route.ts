@@ -271,6 +271,23 @@ export async function GET(req: Request) {
     }
   }
 
+  // Action: Ensure catch-all mailboxes on all domains
+  if (action === "ensure-all-catchalls") {
+    try {
+      const { ensureCatchAllMailbox } = await import("@/lib/stalwart/catchall")
+      const domains = await queryDomains()
+      const results = []
+      for (const d of domains) {
+        const res = await ensureCatchAllMailbox(d.name)
+        results.push({ domain: d.name, ...res })
+      }
+      return NextResponse.json({ action: "ensure-all-catchalls", count: results.length, results })
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
+
   // Action: Live DNS Check for domain
   if (action === "dns-check") {
     const domain = url.searchParams.get("domain")?.trim()
