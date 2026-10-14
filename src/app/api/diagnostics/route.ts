@@ -54,9 +54,11 @@ export async function GET(req: Request) {
     try {
       const conf = getStalwartConfig()
       let session: unknown = null
+      let sessionUrl = ""
       if (conf) {
         try {
-          const sRes = await fetch(conf.jmapUrl, {
+          sessionUrl = new URL("/.well-known/jmap", conf.jmapUrl).toString()
+          const sRes = await fetch(sessionUrl, {
             method: "GET",
             headers: {
               Authorization: `Basic ${Buffer.from(`${conf.adminUser}:${conf.adminPassword}`).toString("base64")}`,
@@ -74,8 +76,15 @@ export async function GET(req: Request) {
       const g = await jmapCall([["x:Domain/get", { ids, properties: null }, "d1"]], { timeoutMs: 5000 })
       const domains = responseById(g, "d1").list || []
 
-      // Try querying directory / providers / settings
-      const probeTypes = ["Directory", "Setting", "DnsProvider", "Provider", "Dns", "Certificate", "Acme", "Resolver"]
+      // Try querying specific types
+      const probeTypes = [
+        "DnsServer",
+        "DnsProvider",
+        "Directory",
+        "Certificate",
+        "Server",
+        "Resolver",
+      ]
       const probeResults: Record<string, unknown> = {}
       for (const t of probeTypes) {
         try {
@@ -86,12 +95,33 @@ export async function GET(req: Request) {
         }
       }
 
+      // Try getting the specific dnsServerId and acmeProviderId
+      let dnsServerObj: unknown = null
+      let acmeProviderObj: unknown = null
+      try {
+        const dCall = await jmapCall([["x:DnsServer/get", { ids: ["i1bpr1ieaaqa"] }, "ds0"]], { timeoutMs: 3000 })
+        dnsServerObj = responseById(dCall, "ds0")
+      } catch (e) {
+        dnsServerObj = { error: String(e) }
+      }
+
+      try {
+        const aCall = await jmapCall([["x:AcmeProvider/get", { ids: ["i1bpsbe1abaa"] }, "ap0"]], { timeoutMs: 3000 })
+        acmeProviderObj = responseById(aCall, "ap0")
+      } catch (e) {
+        acmeProviderObj = { error: String(e) }
+      }
+
       return NextResponse.json({
         action: "stalwart-inspect",
+        jmapUrl: conf?.jmapUrl,
+        sessionUrl,
         session,
         ids,
         domains,
         probeResults,
+        dnsServerObj,
+        acmeProviderObj,
       })
     } catch (err) {
       return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -104,9 +134,39 @@ export async function GET(req: Request) {
       const q = await jmapCall([["x:Domain/query", { filter: null }, "d0"]], { timeoutMs: 5000 })
       const ids = (responseById(q, "d0").ids as string[]) || []
       const results: Record<string, unknown> = {}
+
       for (const id of ids) {
+        // Attempt 1: tagged object form { "@type": "Manual" }
         try {
-          const upd = await jmapCall([
+          const upd1 = await jmapCall([
+            [
+              "x:Domain/set",
+              {
+                update: {
+                  [id]: {
+                    dnsManagement: { "@type": "Manual" },
+                    certificateManagement: { "@type": "Manual" },
+                  },
+                },
+              },
+              "u1",
+            ],
+          ], { timeoutMs: 5000 })
+          const r1 = responseById(upd1, "u1")
+          const updated1 = r1.updated as Record<string, unknown> | undefined
+          if (updated1?.[id]) {
+            results[id] = { method: "tagged-object", success: true, updated: updated1[id] }
+            continue
+          }
+          // If not updated, save error info
+          results[id] = { attempt1: r1 }
+        } catch (e) {
+          results[id] = { attempt1Error: String(e) }
+        }
+
+        // Attempt 2: string form "Manual"
+        try {
+          const upd2 = await jmapCall([
             [
               "x:Domain/set",
               {
@@ -117,18 +177,62 @@ export async function GET(req: Request) {
                   },
                 },
               },
-              "u0",
+              "u2",
             ],
           ], { timeoutMs: 5000 })
-          results[id] = responseById(upd, "u0")
+          const r2 = responseById(upd2, "u2")
+          const updated2 = r2.updated as Record<string, unknown> | undefined
+          if (updated2?.[id]) {
+            results[id] = { method: "string", success: true, updated: updated2[id] }
+            continue
+          }
+          results[id] = { ...((results[id] as object) || {}), attempt2: r2 }
         } catch (e) {
-          results[id] = { error: String(e) }
+          results[id] = { ...((results[id] as object) || {}), attempt2Error: String(e) }
         }
       }
+
       return NextResponse.json({ action: "stalwart-migrate-manual", count: ids.length, results })
     } catch (err) {
       return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
     }
+  }
+
+  // Action: Remove Cloudflare DNS account on Stalwart
+  if (action === "stalwart-remove-cloudflare") {
+    const dnsServerId = url.searchParams.get("id") || "i1bpr1ieaaqa"
+    const candidateTypes = ["DnsServer", "DnsProvider", "Directory", "Server"]
+    const results: Record<string, unknown> = {}
+
+    for (const t of candidateTypes) {
+      try {
+        const delCall = await jmapCall([
+          [
+            `x:${t}/set`,
+            {
+              destroy: [dnsServerId],
+            },
+            "del0",
+          ],
+        ], { timeoutMs: 5000 })
+        results[t] = responseById(delCall, "del0")
+      } catch (e) {
+        results[t] = { error: String(e) }
+      }
+    }
+
+    return NextResponse.json({ action: "stalwart-remove-cloudflare", dnsServerId, results })
+  }
+
+  // Action: Reveal admin credentials safely to authorized diagnostic caller for manual web UI steps
+  if (action === "stalwart-credentials") {
+    const conf = getStalwartConfig()
+    return NextResponse.json({
+      action: "stalwart-credentials",
+      adminUser: conf?.adminUser,
+      adminPassword: conf?.adminPassword,
+      jmapUrl: conf?.jmapUrl,
+    })
   }
 
   // Action: Auto-provision all domains in Cloudflare
