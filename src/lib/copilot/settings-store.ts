@@ -83,23 +83,60 @@ function sanitizeStored(raw: unknown): CopilotStoredSettings {
   return { activeProvider: active, models, baseUrls, apiKeys }
 }
 
-export async function readCopilotSettings(): Promise<CopilotStoredSettings> {
+import {
+  getDbCopilotSettings,
+  upsertDbCopilotSettings,
+} from "@/lib/db"
+
+export async function readCopilotSettings(
+  userId?: string
+): Promise<CopilotStoredSettings> {
+  // 1. Check PostgreSQL first
+  try {
+    const dbSettings = await getDbCopilotSettings(userId)
+    if (dbSettings) {
+      return sanitizeStored(dbSettings)
+    }
+  } catch (err) {
+    console.warn("[copilot] DB settings read warning:", err)
+  }
+
+  // 2. Read from filesystem file if exists and backfill into DB
   const filePath = resolveSettingsPath()
   try {
     const text = await readFile(filePath, "utf8")
-    return sanitizeStored(JSON.parse(text) as unknown)
+    const stored = sanitizeStored(JSON.parse(text) as unknown)
+    upsertDbCopilotSettings(stored, userId).catch(() => {})
+    return stored
   } catch {
     return { ...DEFAULT_SETTINGS, models: {}, baseUrls: {}, apiKeys: {} }
   }
 }
 
 export async function writeCopilotSettings(
-  next: CopilotStoredSettings
+  next: CopilotStoredSettings,
+  userId?: string
 ): Promise<void> {
-  const filePath = resolveSettingsPath()
-  await ensureParent(filePath)
   const sanitized = sanitizeStored(next)
-  await writeFile(filePath, `${JSON.stringify(sanitized, null, 2)}\n`, "utf8")
+
+  // 1. Write directly to PostgreSQL
+  try {
+    await upsertDbCopilotSettings(sanitized, userId)
+  } catch (err) {
+    console.error("[copilot] DB settings write failed:", err)
+  }
+
+  // 2. Best-effort fallback write to disk (never fatal on EACCES)
+  try {
+    const filePath = resolveSettingsPath()
+    await ensureParent(filePath)
+    await writeFile(filePath, `${JSON.stringify(sanitized, null, 2)}\n`, "utf8")
+  } catch (err) {
+    console.warn(
+      "[copilot] Disk settings backup skipped (using PostgreSQL):",
+      err instanceof Error ? err.message : err
+    )
+  }
 }
 
 export function getCopilotSettingsPath(): string {

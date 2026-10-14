@@ -516,6 +516,16 @@ export async function provisionCloudflareDnsAction(input: {
   const domain = parsed.data.domain.toLowerCase()
 
   try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    const userId = session?.userId
+    if (!isAdmin && userId) {
+      const owned = await getUserOwnedDomainNames(userId)
+      if (!owned.map((d) => d.toLowerCase()).includes(domain)) {
+        return fail(new Error("Unauthorized: You do not own this domain."), src)
+      }
+    }
+
     const result = await provisionDomainDns({
       domain,
       selector: parsed.data.selector,
@@ -562,6 +572,11 @@ export async function propagateAllWebmailDnsAction(): Promise<
   const src = source()
 
   try {
+    const session = await getSession().catch(() => null)
+    if (session?.role !== "admin") {
+      return fail(new Error("Admin role required to propagate DNS across all domains."), src)
+    }
+
     // Collect any domains registered in Stalwart as well
     const stalwartDomains = await queryDomains().catch(() => [])
     const stalwartDomainNames = stalwartDomains

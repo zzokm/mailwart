@@ -8,6 +8,13 @@ import type { UIMessage } from "ai"
 import { COPILOT_PROVIDERS } from "./providers"
 import { getActiveProviderId, resolveProviderCreds } from "./resolve"
 import { sanitizeToolPayload } from "./tools/sanitize"
+import {
+  deleteDbCopilotConversation,
+  getDbCopilotConversation,
+  getDbCopilotConversations,
+  saveDbCopilotConversation,
+  type DbCopilotConversationRecord,
+} from "@/lib/db"
 
 const MAX_CONVERSATIONS = 50
 const MAX_MESSAGES = 200
@@ -189,35 +196,44 @@ async function atomicWrite(
   actor: string,
   record: CopilotConversationRecord
 ): Promise<void> {
-  const dir = scopeDir(actor)
-  await mkdir(/* turbopackIgnore: true */ dir, { recursive: true })
-  const target = filePath(actor, record.id)
-  const temp = `${target}.${process.pid}.${randomUUID()}.tmp`
-  const serialized = `${JSON.stringify(record)}\n`
-  if (Buffer.byteLength(serialized, "utf8") > MAX_FILE_BYTES) {
-    throw new Error("Conversation is too large to save.")
+  try {
+    const dir = scopeDir(actor)
+    await mkdir(/* turbopackIgnore: true */ dir, { recursive: true })
+    const target = filePath(actor, record.id)
+    const temp = `${target}.${process.pid}.${randomUUID()}.tmp`
+    const serialized = `${JSON.stringify(record)}\n`
+    if (Buffer.byteLength(serialized, "utf8") > MAX_FILE_BYTES) {
+      return
+    }
+    await writeFile(/* turbopackIgnore: true */ temp, serialized, {
+      encoding: "utf8",
+      mode: 0o600,
+    })
+    await rename(
+      /* turbopackIgnore: true */ temp,
+      /* turbopackIgnore: true */ target
+    )
+  } catch (err) {
+    console.warn(
+      "[copilot] Disk history write skipped (using PostgreSQL):",
+      err instanceof Error ? err.message : err
+    )
   }
-  await writeFile(/* turbopackIgnore: true */ temp, serialized, {
-    encoding: "utf8",
-    mode: 0o600,
-  })
-  await rename(
-    /* turbopackIgnore: true */ temp,
-    /* turbopackIgnore: true */ target
-  )
 }
 
 async function prune(actor: string): Promise<void> {
-  const records = await listCopilotConversations(actor)
-  await Promise.all(
-    records
-      .slice(MAX_CONVERSATIONS)
-      .map((record) =>
-        unlink(
-          /* turbopackIgnore: true */ filePath(actor, record.id)
-        ).catch(() => undefined)
-      )
-  )
+  try {
+    const records = await listCopilotConversations(actor)
+    await Promise.all(
+      records
+        .slice(MAX_CONVERSATIONS)
+        .map((record) =>
+          unlink(
+            /* turbopackIgnore: true */ filePath(actor, record.id)
+          ).catch(() => undefined)
+        )
+    )
+  } catch {}
 }
 
 function serialized<T>(actor: string, operation: () => Promise<T>): Promise<T> {
@@ -232,8 +248,21 @@ function serialized<T>(actor: string, operation: () => Promise<T>): Promise<T> {
 }
 
 export async function listCopilotConversations(
-  actor: string
+  actor: string,
+  userId?: string,
+  isAdmin?: boolean
 ): Promise<CopilotConversationSummary[]> {
+  // 1. Try PostgreSQL first
+  try {
+    const dbSummaries = await getDbCopilotConversations(actor, userId, isAdmin)
+    if (dbSummaries.length > 0) {
+      return dbSummaries
+    }
+  } catch (err) {
+    console.warn("[copilot] DB conversations list warning:", err)
+  }
+
+  // 2. Fallback to disk and backfill into DB
   let names: string[]
   try {
     names = await readdir(/* turbopackIgnore: true */ scopeDir(actor))
@@ -248,27 +277,57 @@ export async function listCopilotConversations(
       )
       .map((name) => readRecord(actor, name.slice(0, -5)))
   )
-  return records
+  const valid = records
     .filter((record): record is CopilotConversationRecord => Boolean(record))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .map(({ id, title, createdAt, updatedAt, messageCount }) => ({
-      id,
-      title,
-      createdAt,
-      updatedAt,
-      messageCount,
-    }))
+
+  for (const r of valid) {
+    saveDbCopilotConversation(
+      r as unknown as DbCopilotConversationRecord,
+      userId
+    ).catch(() => {})
+  }
+
+  return valid.map(({ id, title, createdAt, updatedAt, messageCount }) => ({
+    id,
+    title,
+    createdAt,
+    updatedAt,
+    messageCount,
+  }))
 }
 
 export async function getCopilotConversation(
   actor: string,
-  id: string
+  id: string,
+  userId?: string,
+  isAdmin?: boolean
 ): Promise<CopilotConversationRecord | null> {
-  return readRecord(actor, id)
+  // 1. Try PostgreSQL first
+  try {
+    const dbRecord = await getDbCopilotConversation(id, actor, userId, isAdmin)
+    if (dbRecord) {
+      return dbRecord as unknown as CopilotConversationRecord
+    }
+  } catch (err) {
+    console.warn("[copilot] DB conversation read warning:", err)
+  }
+
+  // 2. Fallback to disk and backfill
+  const fileRecord = await readRecord(actor, id)
+  if (fileRecord) {
+    saveDbCopilotConversation(
+      fileRecord as unknown as DbCopilotConversationRecord,
+      userId
+    ).catch(() => {})
+    return fileRecord
+  }
+  return null
 }
 
 export async function createCopilotConversation(
-  actor: string
+  actor: string,
+  userId?: string
 ): Promise<CopilotConversationRecord> {
   return serialized(actor, async () => {
     const now = isoNow()
@@ -282,6 +341,16 @@ export async function createCopilotConversation(
       provider: await providerMetadata(),
       messages: [],
     }
+
+    // 1. Save to PostgreSQL
+    await saveDbCopilotConversation(
+      record as unknown as DbCopilotConversationRecord,
+      userId
+    ).catch((err) => {
+      console.error("[copilot] DB save conversation error:", err)
+    })
+
+    // 2. Safe best-effort disk write
     await atomicWrite(actor, record)
     await prune(actor)
     return record
@@ -291,10 +360,12 @@ export async function createCopilotConversation(
 export async function saveCopilotConversation(
   actor: string,
   id: string,
-  messages: UIMessage[]
+  messages: UIMessage[],
+  userId?: string,
+  isAdmin?: boolean
 ): Promise<CopilotConversationRecord> {
   return serialized(actor, async () => {
-    const existing = await readRecord(actor, id)
+    const existing = await getCopilotConversation(actor, id, userId, isAdmin)
     if (!existing) throw new Error("Conversation not found.")
     const cleaned = sanitizeMessages(messages, existing.messages)
     const record: CopilotConversationRecord = {
@@ -305,6 +376,16 @@ export async function saveCopilotConversation(
       provider: await providerMetadata(),
       messages: cleaned,
     }
+
+    // 1. Save to PostgreSQL
+    await saveDbCopilotConversation(
+      record as unknown as DbCopilotConversationRecord,
+      userId
+    ).catch((err) => {
+      console.error("[copilot] DB save conversation error:", err)
+    })
+
+    // 2. Safe best-effort disk write
     await atomicWrite(actor, record)
     await prune(actor)
     return record
@@ -313,14 +394,20 @@ export async function saveCopilotConversation(
 
 export async function deleteCopilotConversation(
   actor: string,
-  id: string
+  id: string,
+  userId?: string,
+  isAdmin?: boolean
 ): Promise<void> {
   await serialized(actor, async () => {
-    await unlink(
-      /* turbopackIgnore: true */ filePath(actor, id)
-    ).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== "ENOENT") throw error
+    // 1. Delete from PostgreSQL
+    await deleteDbCopilotConversation(id, actor, userId, isAdmin).catch((err) => {
+      console.error("[copilot] DB delete conversation error:", err)
     })
+
+    // 2. Best-effort unlink
+    try {
+      await unlink(filePath(actor, id))
+    } catch {}
   })
 }
 

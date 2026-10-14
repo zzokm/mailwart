@@ -85,10 +85,13 @@ function sanitizeStored(raw: unknown): CloudflareSettings {
   }
 }
 
-export async function readCloudflareSettings(): Promise<CloudflareSettings> {
+export async function readCloudflareSettings(
+  userId?: string,
+  isAdmin?: boolean
+): Promise<CloudflareSettings> {
   // 1. Check PostgreSQL first
   try {
-    const dbAccounts = await getDbCloudflareAccounts()
+    const dbAccounts = await getDbCloudflareAccounts(userId, isAdmin)
     if (dbAccounts.length > 0) {
       return { accounts: dbAccounts }
     }
@@ -111,9 +114,9 @@ export async function readCloudflareSettings(): Promise<CloudflareSettings> {
     // If no settings file exists or permission denied
   }
 
-  // 3. Fallback to env token
+  // 3. Fallback to env token (only available to admin or unauthenticated/unspecified)
   const envToken = process.env.CLOUDFLARE_API_TOKEN?.trim()
-  if (envToken) {
+  if (envToken && isAdmin !== false) {
     return {
       accounts: [
         {

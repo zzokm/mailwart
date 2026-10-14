@@ -10,9 +10,13 @@ import { getCopilotPublicStatus } from "@/lib/copilot/resolve"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-async function actor(): Promise<string> {
+async function getSessionInfo() {
   const session = await requireSession()
-  return session.username?.trim() || "admin"
+  return {
+    actor: session.username?.trim() || "admin",
+    userId: session.userId,
+    isAdmin: session.role === "admin",
+  }
 }
 
 function unauthorized(error: unknown): NextResponse | null {
@@ -23,9 +27,9 @@ function unauthorized(error: unknown): NextResponse | null {
 
 export async function GET() {
   try {
-    const owner = await actor()
+    const { actor, userId, isAdmin } = await getSessionInfo()
     const [conversations, status] = await Promise.all([
-      listCopilotConversations(owner),
+      listCopilotConversations(actor, userId, isAdmin),
       getCopilotPublicStatus(),
     ])
     const active = status.providers.find(
@@ -50,8 +54,8 @@ export async function GET() {
 
 export async function POST() {
   try {
-    const owner = await actor()
-    return NextResponse.json(await createCopilotConversation(owner), {
+    const { actor, userId } = await getSessionInfo()
+    return NextResponse.json(await createCopilotConversation(actor, userId), {
       status: 201,
     })
   } catch (error) {

@@ -26,7 +26,7 @@ export async function resolveAllCloudflareAccounts(options?: {
   userId?: string
   isAdmin?: boolean
 }): Promise<CloudflareAccountConfig[]> {
-  const stored = await readCloudflareSettings()
+  const stored = await readCloudflareSettings(options?.userId, options?.isAdmin)
   let accounts = [...stored.accounts]
 
   const envToken = process.env.CLOUDFLARE_API_TOKEN?.trim()

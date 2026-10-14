@@ -8,6 +8,7 @@ import { Pool } from "pg"
 import type { AuditEvent, AuditEventInput } from "@/lib/audit/types"
 import type { DeliveryEvent, DeliveryStatus } from "@/lib/stalwart/types"
 import type { CloudflareAccountConfig } from "@/lib/cloudflare/types"
+import type { DeliverabilitySuiteReport } from "@/lib/deliverability/types"
 import { ensureAdminUserInternal } from "./users"
 
 let poolInstance: Pool | null = null
@@ -162,12 +163,49 @@ export async function initDatabase(): Promise<void> {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_cf_user_id ON cloudflare_accounts(user_id);
+
+        CREATE TABLE IF NOT EXISTS copilot_settings (
+          id VARCHAR(64) PRIMARY KEY,
+          user_id VARCHAR(64),
+          active_provider VARCHAR(64) NOT NULL DEFAULT 'openai',
+          models JSONB NOT NULL DEFAULT '{}',
+          base_urls JSONB NOT NULL DEFAULT '{}',
+          api_keys JSONB NOT NULL DEFAULT '{}',
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_copilot_settings_user_id ON copilot_settings(user_id);
+
+        CREATE TABLE IF NOT EXISTS copilot_conversations (
+          id VARCHAR(64) PRIMARY KEY,
+          user_id VARCHAR(64),
+          actor VARCHAR(64) NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          provider JSONB NOT NULL,
+          messages JSONB NOT NULL DEFAULT '[]',
+          message_count INTEGER NOT NULL DEFAULT 0,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_copilot_conv_user_id ON copilot_conversations(user_id);
+        CREATE INDEX IF NOT EXISTS idx_copilot_conv_actor ON copilot_conversations(actor);
+        CREATE INDEX IF NOT EXISTS idx_copilot_conv_updated_at ON copilot_conversations(updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS deliverability_reports (
+          id VARCHAR(64) PRIMARY KEY,
+          user_id VARCHAR(64),
+          overall_score INTEGER NOT NULL,
+          total_domains INTEGER NOT NULL,
+          report JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_deliv_reports_user_id ON deliverability_reports(user_id);
+        CREATE INDEX IF NOT EXISTS idx_deliv_reports_created_at ON deliverability_reports(created_at DESC);
       `)
 
       // 2. Seed primary admin account yehia
       await ensureAdminUserInternal(pool)
 
-      // Backfill pre-existing domains and mailboxes to the primary admin account if owner is unset
+      // Backfill pre-existing domains, mailboxes, and cloudflare accounts to primary admin
       await pool.query(`
         UPDATE domains 
         SET owner_id = (SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1) 
@@ -176,6 +214,10 @@ export async function initDatabase(): Promise<void> {
         UPDATE mailboxes 
         SET owner_id = (SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1) 
         WHERE owner_id IS NULL;
+
+        UPDATE cloudflare_accounts 
+        SET user_id = (SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1) 
+        WHERE user_id IS NULL;
       `).catch(() => {})
 
       // 3. Migrate from SQLite if existing database file is found
@@ -913,7 +955,11 @@ export async function upsertDbCloudflareAccount(
   try {
     await pool.query(
       `INSERT INTO cloudflare_accounts (id, user_id, account_name, account_id, api_token, last_verified_at, zones_count, status, error_message, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       VALUES (
+         $1, 
+         COALESCE($2, (SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1)), 
+         $3, $4, $5, $6, $7, $8, $9, NOW()
+       )
        ON CONFLICT (id) DO UPDATE
        SET user_id = COALESCE(EXCLUDED.user_id, cloudflare_accounts.user_id),
            account_name = EXCLUDED.account_name,
@@ -954,5 +1000,337 @@ export async function deleteDbCloudflareAccount(id: string): Promise<boolean> {
   } catch (err) {
     console.error("[postgres] deleteDbCloudflareAccount error:", err)
     return false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Copilot Settings Operations (PostgreSQL-backed)
+// ---------------------------------------------------------------------------
+
+export type DbCopilotSettings = {
+  activeProvider: string
+  models: Record<string, string>
+  baseUrls: Record<string, string>
+  apiKeys: Record<string, string>
+}
+
+export async function getDbCopilotSettings(
+  userId?: string
+): Promise<DbCopilotSettings | null> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return null
+  try {
+    let res
+    if (userId) {
+      res = await pool.query(
+        `SELECT * FROM copilot_settings WHERE id = $1 OR id = 'global' ORDER BY CASE WHEN id = $1 THEN 0 ELSE 1 END LIMIT 1`,
+        [userId]
+      )
+    } else {
+      res = await pool.query(
+        `SELECT * FROM copilot_settings WHERE id = 'global' LIMIT 1`
+      )
+    }
+    if (res.rows.length === 0) return null
+    const row = res.rows[0]
+    return {
+      activeProvider: row.active_provider || "openai",
+      models: typeof row.models === "object" && row.models ? row.models : {},
+      baseUrls: typeof row.base_urls === "object" && row.base_urls ? row.base_urls : {},
+      apiKeys: typeof row.api_keys === "object" && row.api_keys ? row.api_keys : {},
+    }
+  } catch (err) {
+    console.error("[postgres] getDbCopilotSettings error:", err)
+    return null
+  }
+}
+
+export async function upsertDbCopilotSettings(
+  settings: {
+    activeProvider: string
+    models: Record<string, string>
+    baseUrls: Record<string, string>
+    apiKeys: Record<string, string>
+  },
+  userId?: string
+): Promise<void> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return
+  const id = userId || "global"
+  try {
+    await pool.query(
+      `INSERT INTO copilot_settings (id, user_id, active_provider, models, base_urls, api_keys, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       ON CONFLICT (id) DO UPDATE
+       SET active_provider = EXCLUDED.active_provider,
+           models = EXCLUDED.models,
+           base_urls = EXCLUDED.base_urls,
+           api_keys = EXCLUDED.api_keys,
+           updated_at = NOW()`,
+      [
+        id,
+        userId || null,
+        settings.activeProvider,
+        JSON.stringify(settings.models || {}),
+        JSON.stringify(settings.baseUrls || {}),
+        JSON.stringify(settings.apiKeys || {}),
+      ]
+    )
+  } catch (err) {
+    console.error("[postgres] upsertDbCopilotSettings error:", err)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Copilot Conversation Operations (PostgreSQL-backed with RBAC)
+// ---------------------------------------------------------------------------
+
+export type DbCopilotConversationSummary = {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  messageCount: number
+}
+
+export type DbCopilotConversationRecord = DbCopilotConversationSummary & {
+  version: 1
+  provider: { id: string; label: string; model: string }
+  messages: unknown[]
+}
+
+export async function getDbCopilotConversations(
+  actor: string,
+  userId?: string,
+  isAdmin?: boolean
+): Promise<DbCopilotConversationSummary[]> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return []
+  try {
+    let res
+    if (isAdmin) {
+      res = await pool.query(
+        `SELECT id, title, message_count, created_at, updated_at
+         FROM copilot_conversations
+         WHERE actor = $1 OR user_id = $2
+         ORDER BY updated_at DESC LIMIT 50`,
+        [actor, userId || null]
+      )
+    } else {
+      res = await pool.query(
+        `SELECT id, title, message_count, created_at, updated_at
+         FROM copilot_conversations
+         WHERE (user_id IS NOT NULL AND user_id = $1) OR (user_id IS NULL AND actor = $2)
+         ORDER BY updated_at DESC LIMIT 50`,
+        [userId || null, actor]
+      )
+    }
+    return res.rows.map(
+      (r: {
+        id: string
+        title: string
+        message_count: number
+        created_at: Date
+        updated_at: Date
+      }) => ({
+        id: r.id,
+        title: r.title,
+        messageCount: Number(r.message_count || 0),
+        createdAt: new Date(r.created_at).toISOString(),
+        updatedAt: new Date(r.updated_at).toISOString(),
+      })
+    )
+  } catch (err) {
+    console.error("[postgres] getDbCopilotConversations error:", err)
+    return []
+  }
+}
+
+export async function getDbCopilotConversation(
+  id: string,
+  actor: string,
+  userId?: string,
+  isAdmin?: boolean
+): Promise<DbCopilotConversationRecord | null> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return null
+  try {
+    const res = await pool.query(
+      `SELECT * FROM copilot_conversations WHERE id = $1 LIMIT 1`,
+      [id]
+    )
+    if (res.rows.length === 0) return null
+    const r = res.rows[0]
+    if (!isAdmin) {
+      if (userId && r.user_id && r.user_id !== userId) return null
+      if (r.actor !== actor && (!userId || r.user_id !== userId)) return null
+    }
+    return {
+      id: r.id,
+      version: 1,
+      title: r.title,
+      messageCount: Number(r.message_count || 0),
+      provider:
+        typeof r.provider === "object" && r.provider
+          ? r.provider
+          : JSON.parse(r.provider || "{}"),
+      messages: Array.isArray(r.messages)
+        ? r.messages
+        : JSON.parse(r.messages || "[]"),
+      createdAt: new Date(r.created_at).toISOString(),
+      updatedAt: new Date(r.updated_at).toISOString(),
+    }
+  } catch (err) {
+    console.error("[postgres] getDbCopilotConversation error:", err)
+    return null
+  }
+}
+
+export async function saveDbCopilotConversation(
+  record: DbCopilotConversationRecord,
+  userId?: string
+): Promise<void> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return
+  try {
+    await pool.query(
+      `INSERT INTO copilot_conversations (id, user_id, actor, title, provider, messages, message_count, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+       ON CONFLICT (id) DO UPDATE
+       SET title = EXCLUDED.title,
+           provider = EXCLUDED.provider,
+           messages = EXCLUDED.messages,
+           message_count = EXCLUDED.message_count,
+           updated_at = NOW()`,
+      [
+        record.id,
+        userId || null,
+        record.provider?.id || "user",
+        record.title,
+        JSON.stringify(record.provider || {}),
+        JSON.stringify(record.messages || []),
+        record.messageCount || (Array.isArray(record.messages) ? record.messages.length : 0),
+        record.createdAt ? new Date(record.createdAt) : new Date(),
+      ]
+    )
+  } catch (err) {
+    console.error("[postgres] saveDbCopilotConversation error:", err)
+  }
+}
+
+export async function deleteDbCopilotConversation(
+  id: string,
+  actor: string,
+  userId?: string,
+  isAdmin?: boolean
+): Promise<boolean> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return false
+  try {
+    let res
+    if (isAdmin) {
+      res = await pool.query(
+        `DELETE FROM copilot_conversations WHERE id = $1`,
+        [id]
+      )
+    } else {
+      res = await pool.query(
+        `DELETE FROM copilot_conversations WHERE id = $1 AND (user_id = $2 OR actor = $3)`,
+        [id, userId || null, actor]
+      )
+    }
+    return (res.rowCount ?? 0) > 0
+  } catch (err) {
+    console.error("[postgres] deleteDbCopilotConversation error:", err)
+    return false
+  }
+}
+
+export async function deleteAllDbCopilotConversations(
+  actor: string,
+  userId?: string,
+  isAdmin?: boolean
+): Promise<number> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return 0
+  try {
+    let res
+    if (isAdmin && !userId) {
+      res = await pool.query(
+        `DELETE FROM copilot_conversations WHERE actor = $1`,
+        [actor]
+      )
+    } else {
+      res = await pool.query(
+        `DELETE FROM copilot_conversations WHERE user_id = $1 OR actor = $2`,
+        [userId || null, actor]
+      )
+    }
+    return res.rowCount ?? 0
+  } catch (err) {
+    console.error("[postgres] deleteAllDbCopilotConversations error:", err)
+    return 0
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Deliverability Report Operations (PostgreSQL-backed)
+// ---------------------------------------------------------------------------
+
+export async function getDbLatestDeliverabilityReport(): Promise<DeliverabilitySuiteReport | null> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return null
+  try {
+    const res = await pool.query(
+      `SELECT report FROM deliverability_reports ORDER BY created_at DESC LIMIT 1`
+    )
+    if (res.rows.length === 0) return null
+    const r = res.rows[0]
+    return typeof r.report === "object" && r.report
+      ? (r.report as DeliverabilitySuiteReport)
+      : (JSON.parse(r.report) as DeliverabilitySuiteReport)
+  } catch (err) {
+    console.error("[postgres] getDbLatestDeliverabilityReport error:", err)
+    return null
+  }
+}
+
+export async function saveDbDeliverabilityReport(
+  report: DeliverabilitySuiteReport,
+  userId?: string
+): Promise<void> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return
+  const id = `rep_${Date.now()}_${randomUUID().slice(0, 8)}`
+  try {
+    await pool.query(
+      `INSERT INTO deliverability_reports (id, user_id, overall_score, total_domains, report, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())`,
+      [
+        id,
+        userId || null,
+        report.overallScore ?? 0,
+        report.totalDomains ?? (report.domainReports?.length ?? 0),
+        JSON.stringify(report),
+      ]
+    )
+
+    // Keep latest 20 reports, prune older
+    await pool.query(
+      `DELETE FROM deliverability_reports WHERE id NOT IN (
+        SELECT id FROM deliverability_reports ORDER BY created_at DESC LIMIT 20
+      )`
+    ).catch(() => {})
+  } catch (err) {
+    console.error("[postgres] saveDbDeliverabilityReport error:", err)
   }
 }

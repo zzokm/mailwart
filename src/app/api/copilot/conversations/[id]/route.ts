@@ -14,9 +14,13 @@ export const dynamic = "force-dynamic"
 
 const bodySchema = z.object({ messages: z.array(z.unknown()).max(200) })
 
-async function owner(): Promise<string> {
+async function getSessionInfo() {
   const session = await requireSession()
-  return session.username?.trim() || "admin"
+  return {
+    actor: session.username?.trim() || "admin",
+    userId: session.userId,
+    isAdmin: session.role === "admin",
+  }
 }
 
 function failure(error: unknown): NextResponse {
@@ -40,8 +44,11 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const [actor, { id }] = await Promise.all([owner(), context.params])
-    const conversation = await getCopilotConversation(actor, id)
+    const [{ actor, userId, isAdmin }, { id }] = await Promise.all([
+      getSessionInfo(),
+      context.params,
+    ])
+    const conversation = await getCopilotConversation(actor, id, userId, isAdmin)
     return conversation
       ? NextResponse.json(conversation)
       : NextResponse.json({ error: "Conversation not found." }, { status: 404 })
@@ -55,8 +62,8 @@ export async function PUT(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const [actor, { id }, json] = await Promise.all([
-      owner(),
+    const [{ actor, userId, isAdmin }, { id }, json] = await Promise.all([
+      getSessionInfo(),
       context.params,
       request.json(),
     ])
@@ -71,7 +78,9 @@ export async function PUT(
       await saveCopilotConversation(
         actor,
         id,
-        parsed.data.messages as UIMessage[]
+        parsed.data.messages as UIMessage[],
+        userId,
+        isAdmin
       )
     )
   } catch (error) {
@@ -84,8 +93,11 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const [actor, { id }] = await Promise.all([owner(), context.params])
-    await deleteCopilotConversation(actor, id)
+    const [{ actor, userId, isAdmin }, { id }] = await Promise.all([
+      getSessionInfo(),
+      context.params,
+    ])
+    await deleteCopilotConversation(actor, id, userId, isAdmin)
     return new NextResponse(null, { status: 204 })
   } catch (error) {
     return failure(error)
