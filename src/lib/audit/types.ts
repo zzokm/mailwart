@@ -43,6 +43,8 @@ export type AuditAction =
   | "user.password_reset"
   | "user.email_change"
   | "system.setup_noreply"
+  | "system.change_noreply_domain"
+  | "system.test_email"
   | "system.outbound_email_config"
   | "system.email_sent"
   | "system.email_failed"

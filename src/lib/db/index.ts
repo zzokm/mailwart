@@ -539,6 +539,20 @@ export async function removeDomainRecord(domainIdOrName: string): Promise<void> 
   }
 }
 
+export async function removeMailboxRecord(mailboxIdOrEmail: string): Promise<void> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return
+  try {
+    await pool.query(
+      `DELETE FROM mailboxes WHERE id = $1 OR LOWER(email) = LOWER($1)`,
+      [mailboxIdOrEmail]
+    )
+  } catch (err) {
+    console.error("[postgres] removeMailboxRecord error:", err)
+  }
+}
+
 export async function assignMailboxOwner(
   mailboxId: string,
   email: string,

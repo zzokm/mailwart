@@ -30,63 +30,77 @@ export async function sendSystemEmail(options: SendEmailOptions): Promise<{
     return { success: false, error: errMsg }
   }
 
-  try {
-    const transporter = nodemailer.createTransport({
-      host: config.host || "mail.yehia.dev",
-      port: config.port || 587,
-      secure: config.port === 465,
-      auth: config.password
-        ? {
-            user: config.mailboxEmail,
-            pass: config.password,
-          }
-        : undefined,
-      tls: {
-        rejectUnauthorized: false, // accommodate self-signed or internal docker certificates
-      },
-      connectionTimeout: 10000,
-    })
+  // Attempt with configured host first, fallback to stalwart-mail or mail.zokm.me if container networking/hairpin NAT fails
+  const candidateHosts = [
+    config.host,
+    "stalwart-mail",
+    "mail.zokm.me",
+  ].filter((h, idx, arr): h is string => Boolean(h) && arr.indexOf(h) === idx)
 
-    const fromAddress = config.fromName
-      ? `"${config.fromName}" <${config.mailboxEmail}>`
-      : config.mailboxEmail
+  let lastError: unknown = null
 
-    const info = await transporter.sendMail({
-      from: fromAddress,
-      to: options.to,
-      subject: options.subject,
-      text: options.text,
-      html: options.html,
-    })
+  for (const host of candidateHosts) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host,
+        port: config.port || 587,
+        secure: config.port === 465,
+        auth: config.password
+          ? {
+              user: config.mailboxEmail,
+              pass: config.password,
+            }
+          : undefined,
+        tls: {
+          rejectUnauthorized: false, // accommodate self-signed or internal docker certificates
+        },
+        connectionTimeout: 8000,
+      })
 
-    await recordAudit({
-      actor: "system",
-      action: "system.email_sent",
-      detail: `System email dispatched to ${options.to} via ${config.mailboxEmail}`,
-      meta: { to: options.to, subject: options.subject, messageId: info.messageId },
-    }).catch(() => {})
+      const fromAddress = config.fromName
+        ? `"${config.fromName}" <${config.mailboxEmail}>`
+        : config.mailboxEmail
 
-    return { success: true, messageId: info.messageId }
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err)
-    await recordAudit({
-      actor: "system",
-      action: "system.email_failed",
-      detail: `Failed to dispatch email to ${options.to}: ${errorMsg}`,
-      meta: { error: errorMsg, host: config.host, port: config.port },
-    }).catch(() => {})
-    return { success: false, error: errorMsg }
+      const info = await transporter.sendMail({
+        from: fromAddress,
+        to: options.to,
+        subject: options.subject,
+        text: options.text,
+        html: options.html,
+      })
+
+      await recordAudit({
+        actor: "system",
+        action: "system.email_sent",
+        detail: `System email dispatched to ${options.to} via ${config.mailboxEmail} (${host})`,
+        meta: { to: options.to, subject: options.subject, messageId: info.messageId, host },
+      }).catch(() => {})
+
+      return { success: true, messageId: info.messageId }
+    } catch (err) {
+      lastError = err
+      console.warn(`[nodemailer] Attempt with host '${host}' failed, trying next candidate:`, err)
+    }
   }
+
+  const errorMsg = lastError instanceof Error ? lastError.message : String(lastError)
+  await recordAudit({
+    actor: "system",
+    action: "system.email_failed",
+    detail: `Failed to dispatch email to ${options.to}: ${errorMsg}`,
+    meta: { error: errorMsg, host: config.host, port: config.port },
+  }).catch(() => {})
+  return { success: false, error: errorMsg }
 }
 
 
 /**
- * Sends a clean, branded 6-digit OTP verification email for password resets.
+ * Sends a clean, branded 6-digit OTP verification email for password resets or deliverability tests.
  */
 export async function sendPasswordResetEmail(
   recipientEmail: string,
   otpCode: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const subject = `Your mailwart verification code: ${otpCode}`
 
   const html = `

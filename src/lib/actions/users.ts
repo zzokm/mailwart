@@ -21,7 +21,7 @@ import {
   updateUserEmail,
   type SafeUser,
 } from "@/lib/db/users"
-import { initDatabase } from "@/lib/db"
+import { initDatabase, removeMailboxRecord } from "@/lib/db"
 import {
   getOutboundEmailConfig,
   saveOutboundEmailConfig,
@@ -30,8 +30,10 @@ import {
 import {
   createAccount,
   updateAccountPassword,
+  destroyAccount,
   queryAccounts,
 } from "@/lib/stalwart/accounts"
+import { sendPasswordResetEmail } from "@/lib/email/sender"
 
 
 import { queryDomains } from "@/lib/stalwart/domains"
@@ -449,6 +451,181 @@ export async function setupNoreplyEmailAction(
     return { ok: true, data: config }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to setup noreply mailbox."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Changes the active domain for the 1-click noreply mailbox:
+ * Removes the old noreply mailbox on the old domain from Stalwart,
+ * creates a new noreply mailbox on the new domain with the same abstracted password,
+ * and updates system outbound mailer configuration.
+ */
+export async function changeNoreplyDomainAction(
+  newDomainName: string
+): Promise<ActionResult<SystemEmailSenderConfig>> {
+  try {
+    const session = await requireSession()
+    if (!isPrimaryAdmin(session.username)) {
+      return {
+        ok: false,
+        error: "Forbidden: Only the primary administrator can change the noreply domain.",
+      }
+    }
+
+    const currentConfig = await getOutboundEmailConfig()
+    if (!currentConfig) {
+      return {
+        ok: false,
+        error: "No system outbound sender is currently configured.",
+      }
+    }
+
+    const newCleanDomain = newDomainName.trim().toLowerCase()
+    if (newCleanDomain === currentConfig.domain.toLowerCase()) {
+      return {
+        ok: false,
+        error: `Noreply is already configured on domain '@${newCleanDomain}'.`,
+      }
+    }
+
+    const domains = await queryDomains()
+    const targetDomain = domains.find((d) => d.name.toLowerCase() === newCleanDomain)
+    if (!targetDomain) {
+      return { ok: false, error: `Domain '${newCleanDomain}' not found in Stalwart.` }
+    }
+
+    const oldEmail = currentConfig.mailboxEmail.toLowerCase()
+    const oldDomain = currentConfig.domain.toLowerCase()
+    const passwordToUse =
+      currentConfig.password || crypto.randomBytes(18).toString("base64") + "!Aa1"
+
+    const accounts = await queryAccounts(domains)
+
+    // 1. Remove old mailbox from Stalwart if it existed
+    const oldAccount = accounts.find((a) => a.email.toLowerCase() === oldEmail)
+    if (oldAccount) {
+      try {
+        await destroyAccount(oldAccount.id)
+        await removeMailboxRecord(oldAccount.id).catch(() => {})
+      } catch (destroyErr) {
+        console.warn(`[changeNoreplyDomain] Failed to destroy old account ${oldEmail}:`, destroyErr)
+      }
+    }
+
+    // 2. Provision new mailbox noreply@<newCleanDomain> on Stalwart
+    const newTargetEmail = `noreply@${newCleanDomain}`
+    const existingNewAccount = accounts.find(
+      (a) => a.email.toLowerCase() === newTargetEmail
+    )
+
+    if (!existingNewAccount) {
+      await createAccount({
+        local: "noreply",
+        email: newTargetEmail,
+        domainId: targetDomain.id,
+        password: passwordToUse,
+        description: "Automated System Mailer",
+      })
+    } else {
+      await updateAccountPassword(existingNewAccount.id, passwordToUse)
+    }
+
+    // 3. Update configuration in database
+    const updatedConfig: SystemEmailSenderConfig = {
+      mailboxEmail: newTargetEmail,
+      domain: newCleanDomain,
+      password: passwordToUse,
+      host: `mail.${newCleanDomain}`,
+      port: currentConfig.port || 587,
+      secure: currentConfig.secure ?? false,
+      fromName: currentConfig.fromName || "mailwart",
+      isNoreply: true,
+      configuredAt: new Date().toISOString(),
+    }
+
+    await saveOutboundEmailConfig(updatedConfig)
+
+    await recordAudit({
+      actor: session.username || "yehia",
+      action: "system.change_noreply_domain",
+      detail: `Switched noreply domain from @${oldDomain} to @${newCleanDomain} (removed ${oldEmail}, provisioned ${newTargetEmail})`,
+    })
+
+    revalidatePath("/dashboard/settings")
+    return { ok: true, data: updatedConfig }
+  } catch (err) {
+    const msg =
+      err instanceof Error ? err.message : "Failed to change noreply domain."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Test outbound deliverability by dispatching a verification code email to any target email.
+ */
+export async function sendTestVerificationEmailAction(input: {
+  to: string
+  code?: string
+}): Promise<
+  ActionResult<{
+    messageId?: string
+    to: string
+    code: string
+    senderEmail: string
+    host: string
+  }>
+> {
+  try {
+    const session = await requireSession()
+    if (!isPrimaryAdmin(session.username)) {
+      return {
+        ok: false,
+        error: "Forbidden: Only the primary administrator can trigger system mailer tests.",
+      }
+    }
+
+    const cleanTo = input.to?.trim().toLowerCase()
+    if (!cleanTo || !cleanTo.includes("@")) {
+      return { ok: false, error: "Please enter a valid recipient email address." }
+    }
+
+    const config = await getOutboundEmailConfig()
+    if (!config) {
+      return {
+        ok: false,
+        error: "System outbound mailer is not configured. Please setup or configure a mailbox first.",
+      }
+    }
+
+    const testCode = (input.code?.trim() || crypto.randomInt(100000, 1000000).toString())
+
+    const res = await sendPasswordResetEmail(cleanTo, testCode)
+    if (!res.success) {
+      return {
+        ok: false,
+        error: res.error || "Failed to dispatch test verification email.",
+      }
+    }
+
+    await recordAudit({
+      actor: session.username || "yehia",
+      action: "system.test_email",
+      detail: `Sent test verification code (${testCode}) to ${cleanTo} via ${config.mailboxEmail}`,
+    }).catch(() => {})
+
+    return {
+      ok: true,
+      data: {
+        messageId: res.messageId,
+        to: cleanTo,
+        code: testCode,
+        senderEmail: config.mailboxEmail,
+        host: config.host,
+      },
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to send test email."
     return { ok: false, error: msg }
   }
 }
