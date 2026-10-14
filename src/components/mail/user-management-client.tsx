@@ -34,10 +34,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  createUserAction,
-  deleteUserAction,
-} from "@/lib/actions/users"
 import type { SafeUser } from "@/lib/db/users"
 
 interface UserManagementClientProps {
@@ -94,21 +90,27 @@ export function UserManagementClient({
 
     setIsSubmitting(true)
     try {
-      const res = await createUserAction({
-        username: username.trim(),
-        email: email.trim(),
-        password,
-        role,
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: username.trim(),
+          email: email.trim(),
+          password,
+          role,
+        }),
       })
 
-      if (!res.ok) {
-        toast.error(res.error || "Failed to create user.")
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok || !data?.ok) {
+        toast.error(data?.error || "Failed to create user.")
         return
       }
 
       toast.success(`Account '${username}' created successfully!`)
-      if (res.data) {
-        setUsers((prev) => [...prev, res.data!])
+      if (data.user) {
+        setUsers((prev) => [...prev, data.user])
       }
       setIsDialogOpen(false)
       resetForm()
@@ -126,9 +128,16 @@ export function UserManagementClient({
 
     setDeletingId(user.id)
     try {
-      const res = await deleteUserAction({ userId: user.id })
-      if (!res.ok) {
-        toast.error(res.error || "Failed to delete user.")
+      const res = await fetch("/api/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id }),
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok || !data?.ok) {
+        toast.error(data?.error || "Failed to delete user.")
         return
       }
 

@@ -20,6 +20,7 @@ import {
   isAuthenticated,
   sessionActor,
 } from "@/lib/auth/session"
+import { initDatabase } from "@/lib/db"
 import {
   ensureAdminUser,
   findUserByUsernameOrEmail,
@@ -65,7 +66,8 @@ export async function loginAction(input: {
 
   const { username, password } = parsed.data
 
-  // Ensure admin user exists in DB
+  // Ensure database and admin user exist
+  await initDatabase().catch(() => {})
   await ensureAdminUser().catch((err) => {
     console.error("[auth] failed to ensure admin user:", err)
   })

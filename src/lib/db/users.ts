@@ -2,7 +2,8 @@ import "server-only"
 
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto"
 
-import { getPool } from "./index"
+import type { Pool } from "pg"
+import { getPool, initDatabase } from "./index"
 
 export type UserRole = "admin" | "user"
 
@@ -104,10 +105,7 @@ export function toSafeUser(user: DbUser): SafeUser {
   }
 }
 
-export async function findUserByUsernameOrEmail(identifier: string): Promise<DbUser | null> {
-  const pool = getPool()
-  if (!pool) return null
-
+async function findUserByUsernameOrEmailDirect(pool: Pool, identifier: string): Promise<DbUser | null> {
   const clean = identifier.trim().toLowerCase()
   const res = await pool.query(
     `SELECT id, username, email, password_hash, salt, role, created_at, updated_at
@@ -121,7 +119,15 @@ export async function findUserByUsernameOrEmail(identifier: string): Promise<DbU
   return mapUserRow(res.rows[0])
 }
 
+export async function findUserByUsernameOrEmail(identifier: string): Promise<DbUser | null> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return null
+  return findUserByUsernameOrEmailDirect(pool, identifier)
+}
+
 export async function findUserById(id: string): Promise<SafeUser | null> {
+  await initDatabase().catch(() => {})
   const pool = getPool()
   if (!pool) return null
 
@@ -138,6 +144,7 @@ export async function findUserById(id: string): Promise<SafeUser | null> {
 }
 
 export async function listAllUsers(): Promise<SafeUser[]> {
+  await initDatabase().catch(() => {})
   const pool = getPool()
   if (!pool) return []
 
@@ -158,6 +165,7 @@ export async function createUser(input: {
   password: string
   role?: UserRole
 }): Promise<SafeUser> {
+  await initDatabase().catch(() => {})
   const pool = getPool()
   if (!pool) {
     throw new Error("Database connection is not available.")
@@ -168,11 +176,11 @@ export async function createUser(input: {
   const role: UserRole = input.role === "admin" ? "admin" : "user"
 
   // Check unique constraints
-  const existing = await findUserByUsernameOrEmail(username)
+  const existing = await findUserByUsernameOrEmailDirect(pool, username)
   if (existing) {
     throw new Error(`Username "${username}" is already taken.`)
   }
-  const existingEmail = await findUserByUsernameOrEmail(email)
+  const existingEmail = await findUserByUsernameOrEmailDirect(pool, email)
   if (existingEmail) {
     throw new Error(`Email "${email}" is already registered.`)
   }
@@ -199,6 +207,7 @@ export async function updateUser(
     role?: UserRole
   }
 ): Promise<SafeUser> {
+  await initDatabase().catch(() => {})
   const pool = getPool()
   if (!pool) throw new Error("Database connection is not available.")
 
@@ -207,7 +216,7 @@ export async function updateUser(
 
   let newEmail = current.email
   if (patch.email && patch.email.trim().toLowerCase() !== current.email) {
-    const emailCheck = await findUserByUsernameOrEmail(patch.email.trim().toLowerCase())
+    const emailCheck = await findUserByUsernameOrEmailDirect(pool, patch.email.trim().toLowerCase())
     if (emailCheck && emailCheck.id !== id) {
       throw new Error(`Email "${patch.email}" is already in use.`)
     }
@@ -241,6 +250,7 @@ export async function updateUser(
 }
 
 export async function deleteUser(id: string): Promise<boolean> {
+  await initDatabase().catch(() => {})
   const pool = getPool()
   if (!pool) return false
 
@@ -257,19 +267,16 @@ export async function deleteUser(id: string): Promise<boolean> {
 }
 
 /**
- * Seeds or migrates the primary admin account 'yehia'.
+ * Internal seed worker used by initDatabase() once tables are created.
  */
-export async function ensureAdminUser(): Promise<SafeUser | null> {
-  const pool = getPool()
-  if (!pool) return null
-
+export async function ensureAdminUserInternal(pool: Pool): Promise<SafeUser | null> {
   try {
     const adminUser = process.env.APP_ADMIN_USER?.trim() || "yehia"
     const defaultPassword = process.env.APP_ADMIN_PASSWORD?.trim() || "admin"
     const defaultEmail = process.env.APP_ADMIN_EMAIL?.trim() || "yehia@yehia.dev"
 
     // 1. Check if user 'yehia' already exists
-    const yehiaUser = await findUserByUsernameOrEmail(adminUser)
+    const yehiaUser = await findUserByUsernameOrEmailDirect(pool, adminUser)
     if (yehiaUser) {
       // Check on each deploy: if APP_ADMIN_PASSWORD was changed in env, update the hash!
       if (
@@ -293,7 +300,7 @@ export async function ensureAdminUser(): Promise<SafeUser | null> {
     }
 
     // 2. Check if legacy 'admin' exists — migrate to 'yehia'
-    const legacyAdmin = await findUserByUsernameOrEmail("admin")
+    const legacyAdmin = await findUserByUsernameOrEmailDirect(pool, "admin")
     if (legacyAdmin) {
       const newSalt = generateSalt()
       const newHash = hashPassword(defaultPassword, newSalt)
@@ -324,10 +331,20 @@ export async function ensureAdminUser(): Promise<SafeUser | null> {
       return toSafeUser(mapUserRow(res.rows[0]))
     }
 
-    const created = await findUserByUsernameOrEmail(adminUser)
+    const created = await findUserByUsernameOrEmailDirect(pool, adminUser)
     return created ? toSafeUser(created) : null
   } catch (err) {
     console.error("Failed to seed admin user 'yehia':", err)
     return null
   }
+}
+
+/**
+ * Public function to seed or ensure the primary admin account 'yehia'.
+ */
+export async function ensureAdminUser(): Promise<SafeUser | null> {
+  await initDatabase().catch(() => {})
+  const pool = getPool()
+  if (!pool) return null
+  return ensureAdminUserInternal(pool)
 }

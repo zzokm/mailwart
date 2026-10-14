@@ -7,7 +7,7 @@ import { Pool } from "pg"
 
 import type { AuditEvent, AuditEventInput } from "@/lib/audit/types"
 import type { DeliveryEvent, DeliveryStatus } from "@/lib/stalwart/types"
-import { ensureAdminUser } from "./users"
+import { ensureAdminUserInternal } from "./users"
 
 let poolInstance: Pool | null = null
 let isInitialized = false
@@ -143,7 +143,7 @@ export async function initDatabase(): Promise<void> {
       `)
 
       // 2. Seed primary admin account yehia
-      await ensureAdminUser()
+      await ensureAdminUserInternal(pool)
 
       // 3. Migrate from SQLite if existing database file is found
       await migrateFromSqlite(pool)

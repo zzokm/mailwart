@@ -15,6 +15,7 @@ import {
   listUsers,
   type SafeUser,
 } from "@/lib/db/users"
+import { initDatabase } from "@/lib/db"
 import { zodIssuesMessage } from "@/lib/validations/common"
 import {
   createUserSchema,
@@ -30,6 +31,7 @@ export type ActionResult<T = void> =
 export async function listUsersAction(): Promise<ActionResult<SafeUser[]>> {
   try {
     await requireAdminSession()
+    await initDatabase()
     const users = await listUsers()
     return { ok: true, data: users }
   } catch (err: unknown) {
@@ -43,6 +45,7 @@ export async function createUserAction(
 ): Promise<ActionResult<SafeUser>> {
   try {
     await requireAdminSession()
+    await initDatabase()
     const parsed = createUserSchema.safeParse(rawInput)
     if (!parsed.success) {
       return { ok: false, error: zodIssuesMessage(parsed.error) }
