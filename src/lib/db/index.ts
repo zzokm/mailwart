@@ -146,6 +146,11 @@ export async function initDatabase(): Promise<void> {
       isInitialized = true
     } catch (err) {
       console.warn("[postgres] initDatabase warning (PostgreSQL offline or starting):", (err as Error).message)
+    } finally {
+      if (!isInitialized) {
+        initPromise = null
+        poolInstance = null
+      }
     }
   })()
 
