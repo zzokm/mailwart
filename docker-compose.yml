@@ -84,6 +84,21 @@ services:
       - traefik.http.routers.email-manager.priority=1
       - traefik.http.routers.email-manager.service=email-manager
       - traefik.http.services.email-manager.loadbalancer.server.port=3000
+      # Auto-redirect all webmail.<any-domain> to single global webmail instance
+      - traefik.http.routers.webmail-redirect.rule=HostRegexp(`^webmail\..+$$`)
+      - traefik.http.routers.webmail-redirect.entrypoints=web
+      - traefik.http.routers.webmail-redirect.priority=100
+      - traefik.http.routers.webmail-redirect.middlewares=webmail-redirect-mw
+      - traefik.http.routers.webmail-redirect.service=email-manager
+      - traefik.http.routers.webmail-redirect-secure.rule=HostRegexp(`^webmail\..+$$`)
+      - traefik.http.routers.webmail-redirect-secure.entrypoints=websecure
+      - traefik.http.routers.webmail-redirect-secure.tls=true
+      - traefik.http.routers.webmail-redirect-secure.priority=100
+      - traefik.http.routers.webmail-redirect-secure.middlewares=webmail-redirect-mw
+      - traefik.http.routers.webmail-redirect-secure.service=email-manager
+      - traefik.http.middlewares.webmail-redirect-mw.redirectregex.regex=^https?://webmail\.[^/]+/?(.*)
+      - traefik.http.middlewares.webmail-redirect-mw.redirectregex.replacement=https://email.yehia.dev/webmail/$${1}
+      - traefik.http.middlewares.webmail-redirect-mw.redirectregex.permanent=false
     networks:
       - default
       - dokploy-network

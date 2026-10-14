@@ -19,6 +19,7 @@ import {
   addCloudflareAccountAction,
   auditNewCloudflareTokenAction,
   getCloudflareStatusAction,
+  propagateAllWebmailDnsAction,
   removeCloudflareAccountAction,
   testCloudflareAccountAction,
 } from "@/lib/actions/cloudflare"
@@ -68,6 +69,7 @@ export function CloudflareSettingsClient({
   const [pending, startTransition] = useTransition()
   const [testingId, setTestingId] = useState<string | null>(null)
   const [removingId, setRemovingId] = useState<string | null>(null)
+  const [propagatingWebmail, setPropagatingWebmail] = useState(false)
 
   useEffect(() => {
     if (status.accounts.length > 0 && status.totalZonesCount === 0) {
@@ -196,6 +198,24 @@ export function CloudflareSettingsClient({
     })
   }
 
+  function onPropagateWebmailDns() {
+    setPropagatingWebmail(true)
+    startTransition(async () => {
+      try {
+        const res = await propagateAllWebmailDnsAction()
+        if (res.ok) {
+          toastActionResult(res, {
+            success: `Webmail DNS auto-propagated! ${res.data.successCount} domain${res.data.successCount === 1 ? "" : "s"} ready.`,
+          })
+        } else {
+          toastActionResult(res, { success: "" })
+        }
+      } finally {
+        setPropagatingWebmail(false)
+      }
+    })
+  }
+
   const conflictingZones = (auditResult?.zonesAudits || []).filter((z) => z.hasConflicts)
 
   return (
@@ -217,10 +237,24 @@ export function CloudflareSettingsClient({
           )}
         </div>
 
-        <Button size="sm" onClick={openAddDialog} className="gap-1.5 text-xs">
-          <Plus className="size-3.5" />
-          Add Cloudflare Account
-        </Button>
+        <div className="flex items-center gap-2">
+          {status.accounts.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onPropagateWebmailDns}
+              disabled={pending || propagatingWebmail}
+              className="gap-1.5 text-xs border-primary/30 hover:border-primary text-primary hover:bg-primary/5"
+            >
+              <RefreshCw className={cn("size-3.5", propagatingWebmail && "animate-spin")} />
+              {propagatingWebmail ? "Propagating DNS..." : "Propagate Webmail DNS"}
+            </Button>
+          )}
+          <Button size="sm" onClick={openAddDialog} className="gap-1.5 text-xs">
+            <Plus className="size-3.5" />
+            Add Cloudflare Account
+          </Button>
+        </div>
       </div>
 
       {/* Connected Accounts List */}

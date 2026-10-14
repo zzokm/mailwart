@@ -114,3 +114,20 @@ export type CloudflareSettings = {
   lastVerifiedAt?: string
   defaultMailHost?: string
 }
+
+export type WebmailPropagationItem = {
+  domain: string
+  zoneId?: string
+  success: boolean
+  action?: "created" | "updated" | "exists"
+  detail?: string
+  error?: string
+}
+
+export type WebmailPropagationSummary = {
+  total: number
+  successCount: number
+  failureCount: number
+  items: WebmailPropagationItem[]
+}
+

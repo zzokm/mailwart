@@ -15,6 +15,8 @@ import type {
   CloudflareStatus,
   CloudflareZone,
   ProvisionedRecordResult,
+  WebmailPropagationItem,
+  WebmailPropagationSummary,
   ZoneMailAudit,
 } from "./types"
 
@@ -959,11 +961,164 @@ export async function provisionDomainDns(input: {
     }
   }
 
+  // 7. Provision Webmail CNAME: webmail.<domain> -> email.yehia.dev (proxied: true)
+  try {
+    const webmailRec = await ensureWebmailDnsRecord(domain)
+    results.push(webmailRec)
+  } catch (webmailErr) {
+    console.error(`Failed to ensure webmail DNS record for ${domain}:`, webmailErr)
+  }
+
   return {
     domain,
     zoneId: zone.id,
     zoneName: zone.name,
     records: results,
     success: true,
+  }
+}
+
+/**
+ * Ensures a webmail.<domain> CNAME record pointing to the global webmail host (email.yehia.dev)
+ * exists in Cloudflare with proxying enabled (proxied: true).
+ */
+export async function ensureWebmailDnsRecord(domainInput: string): Promise<ProvisionedRecordResult> {
+  const domain = domainInput.trim().toLowerCase()
+  const found = await findZoneForDomain(domain)
+  if (!found) {
+    throw new Error(`No active Cloudflare zone found for "${domain}". Ensure this domain is added and active in your connected Cloudflare account.`)
+  }
+
+  const { zone, account } = found
+  const token = account.apiToken
+  const existingRecords = await listZoneDnsRecords(zone.id, token)
+
+  const webmailSub = "webmail"
+  const expectedWebmailFqdn = `webmail.${zone.name.toLowerCase()}`
+  const webmailTarget = process.env.WEBMAIL_CNAME_TARGET?.trim() || "email.yehia.dev"
+
+  const existingWebmail = existingRecords.find(
+    (r) =>
+      (r.type === "CNAME" || r.type === "A") &&
+      (r.name.toLowerCase() === expectedWebmailFqdn ||
+        r.name.toLowerCase() === `webmail.${domain}` ||
+        r.name.toLowerCase() === webmailSub)
+  )
+
+  if (existingWebmail) {
+    if (
+      existingWebmail.type === "CNAME" &&
+      existingWebmail.content.toLowerCase().replace(/\.$/, "") === webmailTarget &&
+      existingWebmail.proxied
+    ) {
+      return {
+        type: "CNAME",
+        name: webmailSub,
+        content: webmailTarget,
+        action: "exists",
+        id: existingWebmail.id,
+        detail: `webmail CNAME already points to ${webmailTarget} (proxied).`,
+      }
+    }
+
+    await cfRequest(
+      `/zones/${zone.id}/dns_records/${existingWebmail.id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          type: "CNAME",
+          name: webmailSub,
+          content: webmailTarget,
+          proxied: true,
+          ttl: 1,
+          comment: "Managed by mailwart (webmail redirect)",
+        }),
+      },
+      token
+    )
+
+    return {
+      type: "CNAME",
+      name: webmailSub,
+      content: webmailTarget,
+      action: "updated",
+      id: existingWebmail.id,
+      detail: `Updated webmail CNAME to ${webmailTarget} with Cloudflare proxy (proxied: true).`,
+    }
+  }
+
+  const createdWebmail = await cfRequest<CloudflareDnsRecord>(
+    `/zones/${zone.id}/dns_records`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        type: "CNAME",
+        name: webmailSub,
+        content: webmailTarget,
+        proxied: true,
+        ttl: 1,
+        comment: "Managed by mailwart (webmail redirect)",
+      }),
+    },
+    token
+  )
+
+  return {
+    type: "CNAME",
+    name: webmailSub,
+    content: webmailTarget,
+    action: "created",
+    id: createdWebmail.result.id,
+    detail: `Created webmail CNAME pointing to ${webmailTarget} (proxied: true).`,
+  }
+}
+
+/**
+ * Auto-propagates the webmail.<domain> DNS record across ALL existing domains.
+ * Pools domains from Cloudflare zones and Stalwart domains.
+ */
+export async function propagateAllWebmailDns(extraDomains: string[] = []): Promise<WebmailPropagationSummary> {
+  const domainSet = new Set<string>()
+
+  // 1. Gather all Cloudflare zones
+  const zones = await listCloudflareZones().catch(() => [])
+  for (const z of zones) {
+    if (z.name) domainSet.add(z.name.toLowerCase().trim())
+  }
+
+  // 2. Extra domains passed by caller (e.g. Stalwart domains)
+  for (const d of extraDomains) {
+    if (d && d.trim()) domainSet.add(d.toLowerCase().trim())
+  }
+
+  const items: WebmailPropagationItem[] = []
+  let successCount = 0
+  let failureCount = 0
+
+  for (const domain of Array.from(domainSet)) {
+    try {
+      const rec = await ensureWebmailDnsRecord(domain)
+      items.push({
+        domain,
+        success: true,
+        action: rec.action as "created" | "updated" | "exists",
+        detail: rec.detail,
+      })
+      successCount++
+    } catch (err) {
+      items.push({
+        domain,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      failureCount++
+    }
+  }
+
+  return {
+    total: domainSet.size,
+    successCount,
+    failureCount,
+    items,
   }
 }

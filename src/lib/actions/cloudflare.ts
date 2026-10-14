@@ -16,6 +16,7 @@ import {
   getCloudflareStatus,
   listCloudflareZones,
   listZoneDnsRecords,
+  propagateAllWebmailDns,
   provisionDomainDns,
   removeCloudflareAccount,
   resolveAllCloudflareAccounts,
@@ -24,6 +25,7 @@ import {
   type CloudflareProvisionResult,
   type CloudflareStatus,
   type CloudflareZone,
+  type WebmailPropagationSummary,
   type ZoneMailAudit,
 } from "@/lib/cloudflare"
 import { detectOlderMailRecords } from "@/lib/cloudflare/detect"
@@ -510,3 +512,41 @@ export async function provisionCloudflareDnsAction(input: {
     return fail(err, src)
   }
 }
+
+/**
+ * Auto-propagates webmail.<domain> CNAME records across all existing domains (both Cloudflare zones & Stalwart domains).
+ */
+export async function propagateAllWebmailDnsAction(): Promise<
+  ActionResult<WebmailPropagationSummary>
+> {
+  const denied = await denyUnlessAuthed<WebmailPropagationSummary>()
+  if (denied) return denied
+  const src = source()
+
+  try {
+    // Collect any domains registered in Stalwart as well
+    const stalwartDomains = await queryDomains().catch(() => [])
+    const stalwartDomainNames = stalwartDomains
+      .map((d) => (typeof d === "string" ? d : d.name || ""))
+      .filter(Boolean)
+
+    const result = await propagateAllWebmailDns(stalwartDomainNames)
+
+    const actor = await sessionActor()
+    await recordAudit({
+      actor,
+      action: "domain.dns_provision",
+      target: "all_domains:webmail",
+      detail: `Webmail DNS auto-propagated: ${result.successCount} succeeded, ${result.failureCount} failed out of ${result.total} domains.`,
+    })
+
+    revalidatePath("/dashboard/domains")
+    revalidatePath("/dashboard/settings/cloudflare")
+    revalidatePath("/dashboard/tools")
+
+    return ok(result, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
