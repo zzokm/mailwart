@@ -41,10 +41,10 @@ export default async function LoginPage() {
         </div>
       </header>
 
-      <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-5 pb-20 pt-8">
+      <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-5 pb-16 pt-4">
         <div className="w-full max-w-md">
-          <Card className="border-border/80 bg-card/80 backdrop-blur-sm">
-            <CardHeader className="space-y-1.5 pb-4 pt-6">
+          <Card className="border-border/80 bg-card/80 backdrop-blur-sm pt-2">
+            <CardHeader className="space-y-1 pb-4 pt-1 sm:pt-2">
               <CardTitle className="text-xl font-semibold tracking-[-0.02em]">
                 Sign in
               </CardTitle>
