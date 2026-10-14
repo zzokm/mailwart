@@ -5,6 +5,8 @@ import { getStalwartConfig } from "@/lib/env"
 import { jmapCall, responseById } from "@/lib/stalwart/client"
 import { resolveCloudflareApiToken, provisionDomainDns } from "@/lib/cloudflare"
 import { queryDomains, ensureMailboxesOnAllDomains } from "@/lib/stalwart"
+import { getOutboundEmailConfig } from "@/lib/db/system-settings"
+import { sendPasswordResetEmail } from "@/lib/email/sender"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -48,6 +50,37 @@ export async function GET(req: Request) {
   }
 
   const action = url.searchParams.get("action")
+
+  if (action === "outbound-config") {
+    try {
+      const config = await getOutboundEmailConfig()
+      return NextResponse.json({ success: true, config })
+    } catch (err) {
+      return NextResponse.json({ success: false, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  if (action === "test-outbound") {
+    try {
+      const to = url.searchParams.get("to") || "yyehia.elzokm@gmail.com"
+      const code = url.searchParams.get("code") || Math.floor(100000 + Math.random() * 900000).toString()
+      const config = await getOutboundEmailConfig()
+      if (!config) {
+        return NextResponse.json({ success: false, error: "Outbound mailer is not configured yet." })
+      }
+      const result = await sendPasswordResetEmail(to, code)
+      return NextResponse.json({
+        success: result.success,
+        to,
+        code,
+        sender: config.mailboxEmail,
+        host: config.host,
+        result,
+      })
+    } catch (err) {
+      return NextResponse.json({ success: false, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
 
   // Action: Inspect Stalwart session, domains, and settings
   if (action === "stalwart-inspect" || action === "stalwart-session") {
