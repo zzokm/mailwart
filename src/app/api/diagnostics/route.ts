@@ -7,6 +7,8 @@ import { resolveCloudflareApiToken, provisionDomainDns } from "@/lib/cloudflare"
 import { queryDomains, ensureMailboxesOnAllDomains } from "@/lib/stalwart"
 import { getOutboundEmailConfig } from "@/lib/db/system-settings"
 import { sendPasswordResetEmail } from "@/lib/email/sender"
+import { createAccount, queryAccounts, updateAccountPassword } from "@/lib/stalwart/accounts"
+import { sendSmtpMessage } from "@/lib/stalwart/deliverability"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -79,6 +81,89 @@ export async function GET(req: Request) {
       })
     } catch (err) {
       return NextResponse.json({ success: false, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  if (action === "test-new-mailbox") {
+    try {
+      const domains = await queryDomains()
+      const domainName = url.searchParams.get("domain") || "yehia.dev"
+      const localPart = url.searchParams.get("local") || "deliverycheck"
+      const recipient = url.searchParams.get("to") || "test-la6200zbu@srv1.mail-tester.com"
+      const domainObj = domains.find((d) => d.name.toLowerCase() === domainName.toLowerCase())
+      if (!domainObj) {
+        return NextResponse.json({ success: false, error: `Domain ${domainName} not found in Stalwart` })
+      }
+
+      const email = `${localPart}@${domainName}`
+      const password = "DeliveryCheckPass2026!"
+      const accounts = await queryAccounts(domains)
+      let account = accounts.find((a) => a.email.toLowerCase() === email.toLowerCase())
+      let created = false
+
+      if (!account) {
+        account = await createAccount({
+          local: localPart,
+          email,
+          domainId: domainObj.id,
+          password,
+          description: "New Mailbox for Outbound Deliverability Test",
+        })
+        created = true
+      } else {
+        await updateAccountPassword(account.id, password).catch(() => {})
+      }
+
+      // Try sending email via SMTP 587
+      const smtpRes = await sendSmtpMessage({
+        host: "stalwart-mail",
+        port: 587,
+        user: email,
+        pass: password,
+        from: email,
+        to: recipient,
+        subject: `Mailwart Outbound Test from ${email} (${new Date().toISOString()})`,
+        text: `Automated deliverability test message sent from newly created mailbox ${email} to ${recipient}. Timestamp: ${new Date().toISOString()}`,
+        html: `<p>Automated deliverability test message sent from newly created mailbox <strong>${email}</strong> to <strong>${recipient}</strong>.</p><p>Timestamp: ${new Date().toISOString()}</p>`,
+      }).catch((e) => ({ ok: false, response: String(e), queueId: undefined }))
+
+      // Test external outbound connectivity
+      const targets = [
+        { host: "reception.mail-tester.com", port: 25 },
+        { host: "gmail-smtp-in.l.google.com", port: 25 },
+        { host: "smtp.mailgun.org", port: 587 },
+        { host: "smtp.gmail.com", port: 587 },
+      ]
+      const probeMap: Record<string, unknown> = {}
+      for (const t of targets) {
+        try {
+          let ip = t.host
+          try {
+            const r = await dns.resolve4(t.host)
+            if (r[0]) ip = r[0]
+          } catch {}
+          probeMap[`${t.host}:${t.port}`] = await testPort(ip, t.port, 3500)
+        } catch (e) {
+          probeMap[`${t.host}:${t.port}`] = { ok: false, error: String(e) }
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        mailbox: {
+          email,
+          created,
+          accountId: account?.id,
+        },
+        recipient,
+        smtpSubmission: smtpRes,
+        outboundConnectivity: probeMap,
+      })
+    } catch (err) {
+      return NextResponse.json({
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 
