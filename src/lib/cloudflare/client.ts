@@ -995,11 +995,11 @@ export async function ensureWebmailDnsRecord(domainInput: string): Promise<Provi
 
   const webmailSub = "webmail"
   const expectedWebmailFqdn = `webmail.${zone.name.toLowerCase()}`
-  const webmailTarget = process.env.WEBMAIL_CNAME_TARGET?.trim() || "email.yehia.dev"
+  const webmailTargetIp = process.env.MAIL_SERVER_IP?.trim() || "23.94.107.153"
 
   const existingWebmail = existingRecords.find(
     (r) =>
-      (r.type === "CNAME" || r.type === "A") &&
+      (r.type === "A" || r.type === "CNAME") &&
       (r.name.toLowerCase() === expectedWebmailFqdn ||
         r.name.toLowerCase() === `webmail.${domain}` ||
         r.name.toLowerCase() === webmailSub)
@@ -1007,17 +1007,17 @@ export async function ensureWebmailDnsRecord(domainInput: string): Promise<Provi
 
   if (existingWebmail) {
     if (
-      existingWebmail.type === "CNAME" &&
-      existingWebmail.content.toLowerCase().replace(/\.$/, "") === webmailTarget &&
+      existingWebmail.type === "A" &&
+      existingWebmail.content === webmailTargetIp &&
       existingWebmail.proxied
     ) {
       return {
-        type: "CNAME",
+        type: "A",
         name: webmailSub,
-        content: webmailTarget,
+        content: webmailTargetIp,
         action: "exists",
         id: existingWebmail.id,
-        detail: `webmail CNAME already points to ${webmailTarget} (proxied).`,
+        detail: `webmail A record already points to ${webmailTargetIp} (proxied: true).`,
       }
     }
 
@@ -1026,9 +1026,9 @@ export async function ensureWebmailDnsRecord(domainInput: string): Promise<Provi
       {
         method: "PUT",
         body: JSON.stringify({
-          type: "CNAME",
+          type: "A",
           name: webmailSub,
-          content: webmailTarget,
+          content: webmailTargetIp,
           proxied: true,
           ttl: 1,
           comment: "Managed by mailwart (webmail redirect)",
@@ -1038,12 +1038,12 @@ export async function ensureWebmailDnsRecord(domainInput: string): Promise<Provi
     )
 
     return {
-      type: "CNAME",
+      type: "A",
       name: webmailSub,
-      content: webmailTarget,
+      content: webmailTargetIp,
       action: "updated",
       id: existingWebmail.id,
-      detail: `Updated webmail CNAME to ${webmailTarget} with Cloudflare proxy (proxied: true).`,
+      detail: `Updated webmail A record to ${webmailTargetIp} with Cloudflare proxy (proxied: true).`,
     }
   }
 
@@ -1052,9 +1052,9 @@ export async function ensureWebmailDnsRecord(domainInput: string): Promise<Provi
     {
       method: "POST",
       body: JSON.stringify({
-        type: "CNAME",
+        type: "A",
         name: webmailSub,
-        content: webmailTarget,
+        content: webmailTargetIp,
         proxied: true,
         ttl: 1,
         comment: "Managed by mailwart (webmail redirect)",
@@ -1064,12 +1064,12 @@ export async function ensureWebmailDnsRecord(domainInput: string): Promise<Provi
   )
 
   return {
-    type: "CNAME",
+    type: "A",
     name: webmailSub,
-    content: webmailTarget,
+    content: webmailTargetIp,
     action: "created",
     id: createdWebmail.result.id,
-    detail: `Created webmail CNAME pointing to ${webmailTarget} (proxied: true).`,
+    detail: `Created webmail A record pointing to ${webmailTargetIp} (proxied: true).`,
   }
 }
 
