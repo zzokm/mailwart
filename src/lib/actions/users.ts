@@ -86,7 +86,7 @@ export async function deleteUserAction(
       return { ok: false, error: zodIssuesMessage(parsed.error) }
     }
 
-    const { userId } = parsed.data
+    const userId = (parsed.data.userId || parsed.data.id)!
 
     const targetUser = await findUserById(userId)
     if (!targetUser) {

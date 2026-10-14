@@ -79,22 +79,29 @@ export async function DELETE(req: Request) {
     const session = await requireAdminSession()
     await initDatabase()
 
-    let body: unknown
-    try {
-      body = await req.json()
-    } catch {
-      return NextResponse.json({ ok: false, error: "Invalid JSON payload" }, { status: 400 })
-    }
+    let userId: string | null = null
+    const url = new URL(req.url)
+    const queryId = url.searchParams.get("userId") || url.searchParams.get("id")
 
-    const parsed = deleteUserSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json(
-        { ok: false, error: zodIssuesMessage(parsed.error) },
-        { status: 400 }
-      )
-    }
+    if (queryId) {
+      userId = queryId
+    } else {
+      let body: unknown
+      try {
+        body = await req.json()
+      } catch {
+        return NextResponse.json({ ok: false, error: "Invalid JSON payload" }, { status: 400 })
+      }
 
-    const { userId } = parsed.data
+      const parsed = deleteUserSchema.safeParse(body)
+      if (!parsed.success) {
+        return NextResponse.json(
+          { ok: false, error: zodIssuesMessage(parsed.error) },
+          { status: 400 }
+        )
+      }
+      userId = (parsed.data.userId || parsed.data.id)!
+    }
 
     const targetUser = await findUserById(userId)
     if (!targetUser) {

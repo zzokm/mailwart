@@ -24,14 +24,23 @@ export const createUserSchema = z.object({
 
 export type CreateUserInput = z.infer<typeof createUserSchema>
 
-export const deleteUserSchema = z.object({
-  userId: z.string().uuid("Invalid user ID."),
-})
+const userIdRegex =
+  /^(usr-[a-zA-Z0-9._-]+|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/
+
+export const deleteUserSchema = z
+  .object({
+    userId: z.string().regex(userIdRegex, "Invalid user ID.").optional(),
+    id: z.string().regex(userIdRegex, "Invalid user ID.").optional(),
+  })
+  .refine((data) => data.userId || data.id, {
+    message: "User ID is required.",
+    path: ["userId"],
+  })
 
 export type DeleteUserInput = z.infer<typeof deleteUserSchema>
 
 export const updateUserPasswordSchema = z.object({
-  userId: z.string().uuid("Invalid user ID."),
+  userId: z.string().regex(userIdRegex, "Invalid user ID."),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters.")
