@@ -127,15 +127,17 @@ export function LoginForm() {
           )}
           Sign in
         </Button>
-        <p className="text-center text-xs text-muted-foreground">
-          Use your mailwart console account credentials.{" "}
-          <Link
-            href="/"
-            className="text-foreground/80 underline-offset-4 hover:underline"
-          >
-            Back to home
-          </Link>
-        </p>
+        <div className="space-y-1.5 text-center text-xs text-muted-foreground">
+          <p>Use your mailwart console account credentials.</p>
+          <div>
+            <Link
+              href="/"
+              className="text-foreground/80 underline-offset-4 hover:underline"
+            >
+              Back to home
+            </Link>
+          </div>
+        </div>
       </form>
     </Form>
   )

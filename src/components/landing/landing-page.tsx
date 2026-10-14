@@ -88,7 +88,7 @@ export function LandingPage() {
         className="pointer-events-none absolute inset-x-0 top-0 h-[70vh] [background-image:linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [background-size:48px_48px] [mask-image:radial-gradient(ellipse_at_50%_0%,black_10%,transparent_70%)]"
       />
 
-      <header className="relative z-10 border-b border-border/50">
+      <header className="relative z-10">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5 sm:px-8">
           <Link
             href="/"
