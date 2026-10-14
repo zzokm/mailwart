@@ -15,7 +15,12 @@ let initPromise: Promise<void> | null = null
 
 export function resolveDatabaseUrl(): string {
   const fromEnv = process.env.DATABASE_URL?.trim()
-  if (fromEnv) return fromEnv
+  if (fromEnv) {
+    // Prevent DNS collision with other compose stacks sharing dokploy-network
+    return fromEnv
+      .replace("@postgres:5432", "@mailwart-postgres:5432")
+      .replace("@postgres/", "@mailwart-postgres/")
+  }
   return ""
 }
 
