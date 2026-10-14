@@ -56,6 +56,13 @@ function enrichStalwartMessage(error: StalwartError): string {
     return "Cannot delete domain: mailboxes, aliases, or DKIM keys are still linked in Stalwart. Enable 'Force destroy' to clear them automatically or remove mailboxes first."
   }
 
+  if (
+    base.toLowerCase().includes("primarykeyviolation") ||
+    fromDetails?.toLowerCase().includes("primarykeyviolation")
+  ) {
+    return "This domain or an alias with this name is already registered in Stalwart."
+  }
+
   if (!fromDetails) return base
   // Avoid duplicating when formatSetFailure already inlined type:description.
   if (base.includes(fromDetails)) return base

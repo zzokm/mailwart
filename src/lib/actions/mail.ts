@@ -103,6 +103,7 @@ import {
   destroyDomain,
   getAccount,
   getDomain,
+  getDomainByName,
   getDomainDnsHealth,
   getMockStore,
   isExternalEmail,
@@ -580,15 +581,30 @@ export async function createDomainAction(input: {
   const src = source()
   const parsed = validateInput(createDomainSchema, input, src)
   if (!parsed.ok) return parsed.result
-  const name = parsed.data.name
+  const name = parsed.data.name.trim().toLowerCase()
 
   try {
     if (src === "mock") {
       const store = getMockStore()
-      if (store.domains.some((d) => d.name === name)) {
-        return fail(
-          new StalwartError("Domain already exists.", "validation"),
-          src
+      const existing = store.domains.find(
+        (d) => d.name.toLowerCase() === name
+      )
+      if (existing) {
+        const session = await getSession().catch(() => null)
+        if (session?.userId) {
+          await assignDomainOwner(existing.id, existing.name, session.userId)
+        }
+        await audit("domain.update", {
+          target: existing.name,
+          detail: "Linked existing domain",
+        })
+        await ensureCatchAllMailbox(name, session?.userId).catch(() => {})
+        return ok(
+          existing,
+          src,
+          parsed.data.autoProvisionDns
+            ? "Cloudflare DNS auto-provisioned (mock)."
+            : "Domain already registered in Stalwart; linked to your account."
         )
       }
       const domain: StalwartDomain = {
@@ -614,17 +630,34 @@ export async function createDomainAction(input: {
       await ensureCatchAllMailbox(name, session?.userId).catch(() => {})
       return ok(domain, src)
     }
-    const domain = await createDomain({
-      name,
-      description: parsed.data.description,
-    })
+
+    // Live Stalwart flow: check if domain already exists to handle idempotency cleanly
+    const existing = await getDomainByName(name).catch(() => null)
+    let domain: StalwartDomain
+    let isExisting = false
+
+    if (existing) {
+      domain = existing
+      isExisting = true
+      // Enforce manual DNS & certificate management on existing domain
+      await updateDomain(existing.id, {
+        dnsManagement: "Manual",
+        certificateManagement: "Manual",
+      }).catch(() => {})
+    } else {
+      domain = await createDomain({
+        name,
+        description: parsed.data.description,
+      })
+    }
+
     const session = await getSession().catch(() => null)
     if (session?.userId) {
       await assignDomainOwner(domain.id, domain.name, session.userId)
     }
-    await audit("domain.create", {
+    await audit(isExisting ? "domain.update" : "domain.create", {
       target: domain.name,
-      detail: "Created domain",
+      detail: isExisting ? "Linked existing domain" : "Created domain",
     })
 
     let note: string | undefined
@@ -632,9 +665,13 @@ export async function createDomainAction(input: {
       try {
         const cfResult = await provisionDomainDns({ domain: name })
         clearDnsCache(name)
-        note = `Cloudflare DNS auto-provisioned (${cfResult.records.length} records: ${cfResult.records.map((r) => `${r.type}:${r.action}`).join(", ")}).`
+        if (cfResult.success) {
+          note = `Cloudflare DNS auto-provisioned (${cfResult.records.length} records: ${cfResult.records.map((r) => `${r.type}:${r.action}`).join(", ")}).`
+        } else {
+          note = `Domain ${isExisting ? "linked" : "created"} in Stalwart, but Cloudflare DNS was paused: ${cfResult.error}`
+        }
       } catch (cfErr) {
-        note = `Domain created in Stalwart, but Cloudflare DNS provisioning failed: ${cfErr instanceof Error ? cfErr.message : String(cfErr)}`
+        note = `Domain ${isExisting ? "linked" : "created"} in Stalwart, but Cloudflare DNS provisioning failed: ${cfErr instanceof Error ? cfErr.message : String(cfErr)}`
       }
     }
 
@@ -651,7 +688,14 @@ export async function createDomainAction(input: {
       })
       .catch(() => {})
 
-    return ok(domain, src, note)
+    return ok(
+      domain,
+      src,
+      note ||
+        (isExisting
+          ? `Domain ${domain.name} already exists in Stalwart; linked to your account.`
+          : undefined)
+    )
   } catch (err) {
     return fail(err, src)
   }

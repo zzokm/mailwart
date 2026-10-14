@@ -120,7 +120,9 @@ export function CreateDomainDialog() {
       }
 
       toastActionResult(result, {
-        success: `Created domain ${result.data.name}.`,
+        success: result.note?.includes("already exists")
+          ? `Domain ${result.data.name} linked.`
+          : `Domain ${result.data.name} ready.`,
         note: result.note,
       })
       setOpen(false)

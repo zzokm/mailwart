@@ -7,6 +7,7 @@ export { parseActionError, describeJmapDetails } from "./parse-error"
 export {
   queryDomains,
   getDomain,
+  getDomainByName,
   createDomain,
   updateDomain,
   destroyDomain,

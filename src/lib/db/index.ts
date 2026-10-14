@@ -503,14 +503,23 @@ export async function assignDomainOwner(
   await initDatabase().catch(() => {})
   const pool = getPool()
   if (!pool) return
+  const normName = domainName.toLowerCase()
   try {
-    await pool.query(
-      `INSERT INTO domains (id, name, owner_id, updated_at)
-       VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (id) DO UPDATE
-       SET owner_id = EXCLUDED.owner_id, name = EXCLUDED.name, updated_at = NOW()`,
-      [domainId, domainName.toLowerCase(), ownerId]
+    // 1. Try updating existing record by id or name
+    const updateRes = await pool.query(
+      `UPDATE domains SET owner_id = $1, updated_at = NOW() WHERE id = $2 OR LOWER(name) = $3`,
+      [ownerId, domainId, normName]
     )
+    // 2. Insert new record if no existing record matched
+    if (updateRes.rowCount === 0) {
+      await pool.query(
+        `INSERT INTO domains (id, name, owner_id, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (id) DO UPDATE
+         SET owner_id = EXCLUDED.owner_id, name = EXCLUDED.name, updated_at = NOW()`,
+        [domainId, normName, ownerId]
+      )
+    }
   } catch (err) {
     console.error("[postgres] assignDomainOwner error:", err)
   }

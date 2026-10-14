@@ -111,6 +111,51 @@ export async function getDomain(id: string): Promise<StalwartDomain | null> {
   return mapDomain(list[0])
 }
 
+export async function getDomainByName(
+  name: string
+): Promise<StalwartDomain | null> {
+  const target = name.trim().toLowerCase()
+  if (!target) return null
+
+  // 1. Direct get by target as ID (frequently identical to domain name in Stalwart JMAP)
+  try {
+    const direct = await getDomain(target)
+    if (direct && direct.name.toLowerCase() === target) {
+      return direct
+    }
+  } catch {
+    // continue to query
+  }
+
+  // 2. Query with filter: { name: target }
+  try {
+    const dq = await jmapCall(
+      [["x:Domain/query", { filter: { name: target }, limit: 10 }, "dq0"]],
+      { retry: true }
+    )
+    const ids = (responseById(dq, "dq0").ids as string[]) ?? []
+    for (const id of ids) {
+      const dom = await getDomain(id)
+      if (dom && dom.name.toLowerCase() === target) {
+        return dom
+      }
+    }
+  } catch {
+    // continue to full list
+  }
+
+  // 3. Fallback: list all domains and find case-insensitive match
+  try {
+    const all = await queryDomains()
+    const found = all.find((d) => d.name.toLowerCase() === target)
+    if (found) return found
+  } catch {
+    // ignore
+  }
+
+  return null
+}
+
 const FULL_CREATE_DEFAULTS = {
   certificateManagement: { "@type": "Manual" },
   dkimManagement: { "@type": "Automatic" },
@@ -150,6 +195,27 @@ export async function createDomain(input: {
     return mapDomain({ ...fullCreated[createKey], name, description })
   }
 
+  const fullNotCreated = fullBody.notCreated as
+    | Record<string, { type?: string; description?: string }>
+    | undefined
+
+  // If Stalwart reports primaryKeyViolation on primary attempt, domain exists!
+  if (fullNotCreated?.[createKey]?.type === "primaryKeyViolation") {
+    const existing = await getDomainByName(name)
+    if (existing) {
+      await updateDomain(existing.id, {
+        dnsManagement: "Manual",
+        certificateManagement: "Manual",
+      }).catch(() => {})
+      return existing
+    }
+    throw new StalwartError(
+      `Domain "${name}" already exists in Stalwart.`,
+      "validation",
+      fullNotCreated
+    )
+  }
+
   // Fallback to minimal create if Stalwart rejects additional fields
   const minimal = await jmapCall([
     [
@@ -166,6 +232,23 @@ export async function createDomain(input: {
 
   if (created?.[createKey]) {
     return mapDomain({ ...created[createKey], name, description })
+  }
+
+  // If Stalwart reports primaryKeyViolation on minimal attempt, domain exists!
+  if (notCreated?.[createKey]?.type === "primaryKeyViolation") {
+    const existing = await getDomainByName(name)
+    if (existing) {
+      await updateDomain(existing.id, {
+        dnsManagement: "Manual",
+        certificateManagement: "Manual",
+      }).catch(() => {})
+      return existing
+    }
+    throw new StalwartError(
+      `Domain "${name}" already exists in Stalwart.`,
+      "validation",
+      notCreated
+    )
   }
 
   throw new StalwartError(

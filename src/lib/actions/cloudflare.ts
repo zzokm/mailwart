@@ -470,16 +470,15 @@ export async function getAvailableCloudflareDomainsAction(): Promise<
       )
     }
 
-    const [zones, addedDomains] = await Promise.all([
+    const [zones, stalwartDomains, userOwned] = await Promise.all([
       listCloudflareZones({ userId, isAdmin }),
-      isAdmin
-        ? queryDomains()
-            .then((ds) => ds.map((d) => d.name.toLowerCase()))
-            .catch(() => [])
-        : getUserOwnedDomainNames(userId || ""),
+      queryDomains().catch(() => []),
+      userId ? getUserOwnedDomainNames(userId).catch(() => []) : Promise.resolve([]),
     ])
 
-    const alreadyAdded = (addedDomains || []).map((d) => d.toLowerCase())
+    const stalwartNames = (stalwartDomains || []).map((d) => d.name.toLowerCase())
+    const ownedNames = (userOwned || []).map((d) => d.toLowerCase())
+    const alreadyAdded = Array.from(new Set([...stalwartNames, ...ownedNames]))
 
     return ok(
       {
