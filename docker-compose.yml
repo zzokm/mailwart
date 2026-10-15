@@ -32,6 +32,8 @@ services:
       STALWART_ADMIN_PASSWORD: ${STALWART_ADMIN_PASSWORD}
       STALWART_ADMIN_UI_URL: ${STALWART_ADMIN_UI_URL:-https://mail.yehia.dev/admin}
       ROUNDCUBE_URL: ${ROUNDCUBE_URL:-https://email.yehia.dev/webmail/}
+      RAV_URL: ${RAV_URL:-https://email.yehia.dev/rav/}
+      DEFAULT_WEBMAIL_CLIENT: ${DEFAULT_WEBMAIL_CLIENT:-rav}
       WEBMAIL_SSO_SECRET: ${WEBMAIL_SSO_SECRET}
       APP_ADMIN_USER: ${APP_ADMIN_USER:-yehia}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD}
@@ -130,13 +132,13 @@ services:
       - traefik.http.routers.email-manager-webmail.middlewares=email-manager-webmail-strip
       - traefik.http.routers.email-manager-webmail.service=email-manager-webmail
       - traefik.http.middlewares.email-manager-webmail-strip.stripprefix.prefixes=/webmail
-      # 2. Direct webmail on HTTP for all webmail.<any-domain> and mail.zokm.me (NO REDIRECTION)
-      - traefik.http.routers.webmail-direct-http.rule=HostRegexp(`^webmail\..+$$`) || Host(`mail.zokm.me`)
+      # 2. Direct Roundcube on HTTP for roundcube.<any-domain>
+      - traefik.http.routers.webmail-direct-http.rule=HostRegexp(`^roundcube\..+$$`)
       - traefik.http.routers.webmail-direct-http.entrypoints=web
       - traefik.http.routers.webmail-direct-http.priority=100
       - traefik.http.routers.webmail-direct-http.service=email-manager-webmail
-      # 3. Direct webmail on HTTPS for all webmail.<any-domain> and mail.zokm.me (NO REDIRECTION)
-      - traefik.http.routers.webmail-direct-https.rule=HostRegexp(`^webmail\..+$$`) || Host(`mail.zokm.me`)
+      # 3. Direct Roundcube on HTTPS for roundcube.<any-domain>
+      - traefik.http.routers.webmail-direct-https.rule=HostRegexp(`^roundcube\..+$$`)
       - traefik.http.routers.webmail-direct-https.entrypoints=websecure
       - traefik.http.routers.webmail-direct-https.tls=true
       - traefik.http.routers.webmail-direct-https.tls.certresolver=letsencrypt
@@ -144,6 +146,54 @@ services:
       - traefik.http.routers.webmail-direct-https.service=email-manager-webmail
       # Service definition
       - traefik.http.services.email-manager-webmail.loadbalancer.server.port=80
+    networks:
+      - default
+      - dokploy-network
+      - stalwart-net
+
+  rav:
+    build:
+      context: ./rav
+      dockerfile: Dockerfile
+    image: email-manager-rav:latest
+    container_name: email-manager-rav
+    restart: always
+    environment:
+      IMAP_HOST: stalwart-mail
+      IMAP_PORT: "993"
+      SMTP_HOST: stalwart-mail
+      SMTP_PORT: "587"
+      TLS_ENABLED: "true"
+      DATA_DIR: /data
+      PORT: "3001"
+      RUST_LOG: info
+    volumes:
+      - rav_data:/data
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      # 1. Main Rav webmail under dashboard at /rav
+      - traefik.http.routers.email-manager-rav.rule=Host(`email.yehia.dev`) && PathPrefix(`/rav`)
+      - traefik.http.routers.email-manager-rav.entrypoints=websecure
+      - traefik.http.routers.email-manager-rav.tls.certresolver=letsencrypt
+      - traefik.http.routers.email-manager-rav.priority=110
+      - traefik.http.routers.email-manager-rav.middlewares=email-manager-rav-strip
+      - traefik.http.routers.email-manager-rav.service=email-manager-rav
+      - traefik.http.middlewares.email-manager-rav-strip.stripprefix.prefixes=/rav
+      # 2. Direct webmail on HTTP for rav.<domain>, webmail.<domain>, and mail.zokm.me
+      - traefik.http.routers.rav-direct-http.rule=HostRegexp(`^rav\..+$$`) || HostRegexp(`^webmail\..+$$`) || Host(`mail.zokm.me`)
+      - traefik.http.routers.rav-direct-http.entrypoints=web
+      - traefik.http.routers.rav-direct-http.priority=105
+      - traefik.http.routers.rav-direct-http.service=email-manager-rav
+      # 3. Direct webmail on HTTPS for rav.<domain>, webmail.<domain>, and mail.zokm.me
+      - traefik.http.routers.rav-direct-https.rule=HostRegexp(`^rav\..+$$`) || HostRegexp(`^webmail\..+$$`) || Host(`mail.zokm.me`)
+      - traefik.http.routers.rav-direct-https.entrypoints=websecure
+      - traefik.http.routers.rav-direct-https.tls=true
+      - traefik.http.routers.rav-direct-https.tls.certresolver=letsencrypt
+      - traefik.http.routers.rav-direct-https.priority=105
+      - traefik.http.routers.rav-direct-https.service=email-manager-rav
+      # Service definition
+      - traefik.http.services.email-manager-rav.loadbalancer.server.port=3001
     networks:
       - default
       - dokploy-network
@@ -178,5 +228,6 @@ networks:
 
 volumes:
   roundcube_db:
+  rav_data:
   mailwart_audit:
   mailwart_postgres:
