@@ -1,4 +1,4 @@
-# mailwart 📬
+# <img src="public/icon.png" width="32" height="32" alt="mailwart" style="vertical-align: middle;" /> mailwart
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org/)
@@ -14,6 +14,10 @@ Equipped with an **embedded AI Copilot**, **1-Click Cloudflare DNS Sync**, a **f
 |---|---|
 | **Live Production Console** | [https://email.yehia.dev](https://email.yehia.dev) |
 | **Webmail (Signed SSO)** | [https://email.yehia.dev/webmail/](https://email.yehia.dev/webmail/) |
+
+<p align="center">
+  <img src="public/screenshots/mailboxes.png" alt="mailwart Mailboxes Console UI" width="100%" />
+</p>
 
 ---
 
