@@ -42,7 +42,7 @@ export function RoundcubeButton({
         {iconOnly ? null : "Open webmail"}
       </TooltipTrigger>
       <TooltipContent className="max-w-xs text-xs">
-        Opens {email ?? "this mailbox"} in Roundcube with a short-lived signed
+        Opens {email ?? "this mailbox"} in webmail with a short-lived signed
         login.
       </TooltipContent>
     </Tooltip>
