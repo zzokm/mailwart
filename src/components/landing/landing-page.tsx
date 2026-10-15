@@ -14,6 +14,7 @@ import {
 
 import { BrandMark } from "@/components/layout/brand-mark"
 import { ThemeToggle } from "@/components/layout/theme-toggle"
+import { GithubIcon } from "@/components/icons/github-icon"
 import { Button } from "@/components/ui/button"
 import { ZoneSheet } from "@/components/landing/zone-sheet"
 
@@ -97,6 +98,22 @@ export function LandingPage() {
             <BrandMark glyph />
           </Link>
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              nativeButton={false}
+              render={
+                <a
+                  href="https://github.com/zzokm/mailwart"
+                  target="_blank"
+                  rel="noreferrer"
+                  title="GitHub repository"
+                />
+              }
+              aria-label="GitHub repository"
+            >
+              <GithubIcon className="size-4" />
+            </Button>
             <ThemeToggle />
             <Button
               size="sm"
@@ -282,9 +299,23 @@ export function LandingPage() {
       </main>
 
       <footer className="relative z-10 border-t border-border/50">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-5 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-5 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <BrandMark className="text-base text-foreground" />
-          <span>Directory operations for Stalwart mail.</span>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm">
+            <span>Directory operations for Stalwart mail.</span>
+            <span className="hidden sm:inline text-border" aria-hidden>•</span>
+            <span>
+              Made by{" "}
+              <a
+                href="https://github.com/zzokm"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-foreground underline underline-offset-4 hover:text-brand transition-colors"
+              >
+                zzokm
+              </a>
+            </span>
+          </div>
         </div>
       </footer>
     </div>

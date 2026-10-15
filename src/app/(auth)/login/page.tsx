@@ -4,6 +4,8 @@ import Link from "next/link"
 import { LoginForm } from "@/components/auth/login-form"
 import { BrandMark } from "@/components/layout/brand-mark"
 import { ThemeToggle } from "@/components/layout/theme-toggle"
+import { GithubIcon } from "@/components/icons/github-icon"
+import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 
 import { redirectIfAuthenticated } from "@/lib/actions/auth"
@@ -32,7 +34,25 @@ export default async function LoginPage() {
           >
             <BrandMark glyph />
           </Link>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              nativeButton={false}
+              render={
+                <a
+                  href="https://github.com/zzokm/mailwart"
+                  target="_blank"
+                  rel="noreferrer"
+                  title="GitHub repository"
+                />
+              }
+              aria-label="GitHub repository"
+            >
+              <GithubIcon className="size-4" />
+            </Button>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
@@ -44,6 +64,22 @@ export default async function LoginPage() {
         </div>
       </main>
 
+      <footer className="relative z-10 border-t border-border/50">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-5 py-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
+          <span className="text-xs">Directory operations for Stalwart mail.</span>
+          <span className="text-xs">
+            Made by{" "}
+            <a
+              href="https://github.com/zzokm"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-foreground underline underline-offset-4 hover:text-brand transition-colors"
+            >
+              zzokm
+            </a>
+          </span>
+        </div>
+      </footer>
     </div>
   )
 }

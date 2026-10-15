@@ -17,6 +17,8 @@ import {
 import { LogoutButton } from "@/components/auth/logout-button"
 import { BrandGlyph } from "@/components/layout/brand-mark"
 import { ThemeToggle } from "@/components/layout/theme-toggle"
+import { GithubIcon } from "@/components/icons/github-icon"
+import { Button } from "@/components/ui/button"
 import { CopilotProvider } from "@/components/copilot/copilot-context"
 import {
   CopilotDesktopRail,
@@ -190,6 +192,30 @@ export function AppShell({
                 <LogoutButton />
               </SidebarMenuItem>
             </SidebarMenu>
+
+            <div className="px-2 pt-1 pb-0.5 text-center group-data-[collapsible=icon]:px-0">
+              <span className="text-[11px] text-muted-foreground group-data-[collapsible=icon]:hidden">
+                Made by{" "}
+                <a
+                  href="https://github.com/zzokm"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-foreground underline underline-offset-2 hover:text-brand transition-colors"
+                >
+                  zzokm
+                </a>
+              </span>
+              <a
+                href="https://github.com/zzokm"
+                target="_blank"
+                rel="noreferrer"
+                title="Made by zzokm"
+                aria-label="Made by zzokm"
+                className="hidden group-data-[collapsible=icon]:inline-flex size-7 mx-auto items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+              >
+                <GithubIcon className="size-3.5" />
+              </a>
+            </div>
           </SidebarFooter>
         </Sidebar>
 
@@ -208,6 +234,22 @@ export function AppShell({
                   )}
                   <HealthPill health={health} />
                   <CopilotToggleButton />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    nativeButton={false}
+                    render={
+                      <a
+                        href="https://github.com/zzokm/mailwart"
+                        target="_blank"
+                        rel="noreferrer"
+                        title="GitHub repository"
+                      />
+                    }
+                    aria-label="GitHub repository"
+                  >
+                    <GithubIcon className="size-4" />
+                  </Button>
                   <ThemeToggle />
                 </div>
               </header>
