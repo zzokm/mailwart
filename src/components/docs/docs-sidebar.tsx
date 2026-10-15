@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Search, BookOpen, Layers, Terminal, Sparkles, ShieldCheck } from "lucide-react"
-import type { DocMetadata } from "@/lib/docs"
+import type { DocMetadata } from "@/lib/docs-config"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 

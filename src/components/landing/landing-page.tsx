@@ -1,9 +1,11 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { motion, useReducedMotion } from "motion/react"
 import {
   AtSign,
+  BookOpen,
   FileUp,
   Globe,
   KeyRound,
@@ -17,6 +19,7 @@ import { ThemeToggle } from "@/components/layout/theme-toggle"
 import { GithubIcon } from "@/components/icons/github-icon"
 import { Button } from "@/components/ui/button"
 import { ZoneSheet } from "@/components/landing/zone-sheet"
+import { cn } from "@/lib/utils"
 
 type Capability = {
   icon: LucideIcon
@@ -77,9 +80,13 @@ const STEPS = [
 
 export function LandingPage() {
   const reduce = useReducedMotion()
+  const [isScrolled, setIsScrolled] = useState(false)
 
   return (
-    <div className="relative flex h-full max-h-dvh min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+    <div
+      onScroll={(e) => setIsScrolled(e.currentTarget.scrollTop > 20)}
+      className="relative flex h-full max-h-dvh min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
+    >
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-[70vh] bg-[radial-gradient(ellipse_75%_60%_at_72%_-15%,var(--brand),transparent_62%)] opacity-[0.09] dark:opacity-[0.2]"
@@ -89,7 +96,14 @@ export function LandingPage() {
         className="pointer-events-none absolute inset-x-0 top-0 h-[70vh] [background-image:linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [background-size:48px_48px] [mask-image:radial-gradient(ellipse_at_50%_0%,black_10%,transparent_70%)]"
       />
 
-      <header className="relative z-10">
+      <header
+        className={cn(
+          "sticky top-0 z-30 w-full transition-all duration-200",
+          isScrolled
+            ? "border-b border-border/70 bg-background/80 backdrop-blur-md shadow-xs"
+            : "border-b border-transparent bg-transparent"
+        )}
+      >
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5 sm:px-8">
           <Link
             href="/"
@@ -98,6 +112,16 @@ export function LandingPage() {
             <BrandMark glyph />
           </Link>
           <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+              nativeButton={false}
+              render={<Link href="/docs" />}
+            >
+              <BookOpen className="size-3.5" />
+              <span>Documentation</span>
+            </Button>
             <Button
               variant="ghost"
               size="icon-sm"
@@ -113,15 +137,6 @@ export function LandingPage() {
               aria-label="GitHub repository"
             >
               <GithubIcon className="size-4" />
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-xs h-8 px-2.5 text-muted-foreground hover:text-foreground"
-              nativeButton={false}
-              render={<Link href="/docs" />}
-            >
-              Docs
             </Button>
             <ThemeToggle />
             <Button
@@ -153,7 +168,7 @@ export function LandingPage() {
                 Domains, mailboxes, catch-alls, quotas, and DNS health in one
                 console, backed by live JMAP.
               </p>
-              <div className="mt-8">
+              <div className="mt-8 flex flex-wrap items-center gap-3">
                 <Button
                   size="lg"
                   nativeButton={false}
@@ -161,6 +176,15 @@ export function LandingPage() {
                 >
                   <ShieldCheck data-icon="inline-start" strokeWidth={1.5} />
                   Sign in
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  nativeButton={false}
+                  render={<Link href="/docs" />}
+                >
+                  <BookOpen data-icon="inline-start" strokeWidth={1.5} />
+                  Documentation
                 </Button>
               </div>
             </motion.div>
