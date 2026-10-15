@@ -56,13 +56,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(webmail)
     }
 
-    // Rav Webmail: redirect to webmail.<domain> or configured RAV_URL
+    // Rav Webmail: redirect to webmail.<domain>/sso?token=... or configured RAV_URL
+    const token = createWebmailSsoToken(email)
     const mailboxDomain = email.split("@")[1]
-    let ravTargetUrl = getRavUrl()
+    let ravTargetBase = getRavUrl()
     if (mailboxDomain && !mailboxDomain.includes("example.com")) {
-      ravTargetUrl = `https://webmail.${mailboxDomain}/`
+      ravTargetBase = `https://webmail.${mailboxDomain}/`
     }
-    return NextResponse.redirect(new URL(ravTargetUrl))
+    const ssoUrl = new URL("/sso", ravTargetBase)
+    ssoUrl.searchParams.set("token", token)
+    return NextResponse.redirect(ssoUrl)
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Webmail SSO is unavailable."

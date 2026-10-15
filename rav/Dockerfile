@@ -19,6 +19,12 @@ RUN curl -fSL "https://github.com/naust-mail/rav/releases/download/${RAV_VERSION
     && rm -f /tmp/rav.tar.gz \
     && chmod +x /app/rav-email-server
 
+# Apply Mailwart design palette override (matching dark & light theme tokens)
+COPY theme-override.css /app/theme-override.css
+RUN for css in /app/static/_next/static/chunks/*.css; do \
+      cat /app/theme-override.css >> "$css"; \
+    done
+
 # Runtime environment defaults
 ENV STATIC_DIR=/app/static \
     DATA_DIR=/data \

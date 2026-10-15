@@ -415,17 +415,48 @@ export async function syncMailboxesToDb(
   const pool = getPool()
   if (!pool || accounts.length === 0) return
   try {
+    // 1. Deduplicate incoming accounts by id and lowercase email
+    const seenIds = new Set<string>()
+    const seenEmails = new Set<string>()
+    const dedupedAccounts: typeof accounts = []
+
     for (const a of accounts) {
+      const email = a.email?.trim().toLowerCase()
+      const id = a.id?.trim()
+      if (!id || !email) continue
+      if (seenIds.has(id) || seenEmails.has(email)) continue
+      seenIds.add(id)
+      seenEmails.add(email)
+      dedupedAccounts.push({ ...a, id, email: a.email.trim() })
+    }
+
+    for (const a of dedupedAccounts) {
+      // 2. Fetch existing owner_id if present by either id or email
+      const existing = await pool.query(
+        `SELECT id, owner_id FROM mailboxes WHERE id = $1 OR LOWER(email) = LOWER($2) LIMIT 1`,
+        [a.id, a.email]
+      )
+      const existingOwnerId = existing.rows[0]?.owner_id ?? null
+
+      // 3. Clean up any conflicting stale rows having either the same email with different ID,
+      // or the same ID with different email, preventing unique constraint collisions.
       await pool.query(
-        `INSERT INTO mailboxes (id, email, name, domain_id, quota_bytes, used_bytes, status, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        `DELETE FROM mailboxes WHERE (id != $1 AND LOWER(email) = LOWER($2)) OR (id = $1 AND LOWER(email) != LOWER($2))`,
+        [a.id, a.email]
+      )
+
+      // 4. Upsert cleanly with ON CONFLICT (id)
+      await pool.query(
+        `INSERT INTO mailboxes (id, email, name, domain_id, quota_bytes, used_bytes, status, owner_id, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
          ON CONFLICT (id) DO UPDATE
          SET email = EXCLUDED.email,
-             name = EXCLUDED.name,
+             name = COALESCE(EXCLUDED.name, mailboxes.name),
              domain_id = EXCLUDED.domain_id,
              quota_bytes = EXCLUDED.quota_bytes,
              used_bytes = EXCLUDED.used_bytes,
              status = EXCLUDED.status,
+             owner_id = COALESCE(mailboxes.owner_id, EXCLUDED.owner_id),
              updated_at = NOW()`,
         [
           a.id,
@@ -435,6 +466,7 @@ export async function syncMailboxesToDb(
           a.quotaBytes ?? 0,
           a.usedBytes ?? 0,
           a.status ?? "active",
+          existingOwnerId,
         ]
       )
     }
@@ -487,15 +519,41 @@ export async function syncDomainsToDb(
   const pool = getPool()
   if (!pool || domains.length === 0) return
   try {
+    const seenIds = new Set<string>()
+    const seenNames = new Set<string>()
+    const dedupedDomains: typeof domains = []
+
     for (const d of domains) {
+      const name = d.name?.trim().toLowerCase()
+      const id = d.id?.trim()
+      if (!id || !name) continue
+      if (seenIds.has(id) || seenNames.has(name)) continue
+      seenIds.add(id)
+      seenNames.add(name)
+      dedupedDomains.push({ ...d, id, name: d.name.trim() })
+    }
+
+    for (const d of dedupedDomains) {
+      const existing = await pool.query(
+        `SELECT id, owner_id FROM domains WHERE id = $1 OR LOWER(name) = LOWER($2) LIMIT 1`,
+        [d.id, d.name]
+      )
+      const existingOwnerId = existing.rows[0]?.owner_id ?? null
+
       await pool.query(
-        `INSERT INTO domains (id, name, description, updated_at)
-         VALUES ($1, $2, $3, NOW())
+        `DELETE FROM domains WHERE (id != $1 AND LOWER(name) = LOWER($2)) OR (id = $1 AND LOWER(name) != LOWER($2))`,
+        [d.id, d.name]
+      )
+
+      await pool.query(
+        `INSERT INTO domains (id, name, description, owner_id, updated_at)
+         VALUES ($1, $2, $3, $4, NOW())
          ON CONFLICT (id) DO UPDATE
          SET name = EXCLUDED.name,
-             description = EXCLUDED.description,
+             description = COALESCE(EXCLUDED.description, domains.description),
+             owner_id = COALESCE(domains.owner_id, EXCLUDED.owner_id),
              updated_at = NOW()`,
-        [d.id, d.name, d.description ?? null]
+        [d.id, d.name, d.description ?? null, existingOwnerId]
       )
     }
   } catch (err) {
