@@ -14,7 +14,6 @@ Equipped with an **embedded AI Copilot**, **1-Click Cloudflare DNS Sync**, a **f
 |---|---|
 | **Live Production Console** | [https://email.yehia.dev](https://email.yehia.dev) |
 | **Webmail (Signed SSO)** | [https://email.yehia.dev/webmail/](https://email.yehia.dev/webmail/) |
-| **Source Code** | [https://github.com/zzokm/yehia-email-manager](https://github.com/zzokm/yehia-email-manager) |
 
 ---
 
@@ -51,7 +50,7 @@ Equipped with an **embedded AI Copilot**, **1-Click Cloudflare DNS Sync**, a **f
 
 ### 🔐 Zero-Password Webmail SSO (Roundcube)
 - Open Roundcube webmail directly from any mailbox card.
-- Authenticates via HMAC-SHA256 signed, short-lived tokens through the `em_sso` Roundcube plugin—mailbox passwords are never exposed in browser URLs, local storage, or network payloads.
+- Authenticates via HMAC-SHA256 signed, short-lived tokens through the `em_sso` Roundcube plugin (mailbox passwords are never exposed in browser URLs, local storage, or network payloads).
 
 ### 📜 Structured Audit Logs & Telemetry
 - Persistent JSONL audit logging tracking logins, password changes, mailbox CRUD, and SSO requests.
@@ -185,8 +184,8 @@ mailwart is licensed under the **[GNU Affero General Public License v3.0 (AGPL-3
 
 ### Why AGPL-3.0?
 mailwart is built to accompany and orchestrate two outstanding open-source projects:
-1. **[Stalwart Mail Server](https://github.com/stalwartlabs/mail-server)** — licensed under **AGPL-3.0**.
-2. **[Roundcube Webmail](https://github.com/roundcube/roundcubemail)** — licensed under **GPL-3.0-or-later**.
+1. **[Stalwart Mail Server](https://github.com/stalwartlabs/mail-server)**: licensed under **AGPL-3.0**.
+2. **[Roundcube Webmail](https://github.com/roundcube/roundcubemail)**: licensed under **GPL-3.0-or-later**.
 
 By choosing AGPL-3.0:
 - **Full Legal & Architectural Harmony**: Mailwart adheres to the same copyleft principles as Stalwart Mail Server, ensuring seamless compatibility under Section 13 of GPLv3.
