@@ -6,8 +6,15 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Hash, Info, AlertTriangle, Lightbulb, ShieldAlert } from "lucide-react"
 import { CodeBlock } from "@/components/docs/code-block"
-import { slugify } from "@/lib/docs"
 import { cn } from "@/lib/utils"
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+}
 
 export function MarkdownRenderer({ content }: { content: string }) {
   return (

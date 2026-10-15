@@ -180,9 +180,153 @@ function mapTraceToDelivery(
 
 import { insertDeliveryLog, queryDeliveryLogs } from "@/lib/db"
 
+function parseLogDetails(detailsVal: unknown): {
+  from?: string
+  to?: string
+  queueId?: string
+  sizeBytes?: number | null
+  code?: string
+  detail?: string
+} {
+  if (!detailsVal) return {}
+
+  if (typeof detailsVal === "object" && detailsVal !== null) {
+    const o = detailsVal as Record<string, unknown>
+    return {
+      from: asString(o.from) ?? asString(o.sender),
+      to: asString(o.to) ?? asString(o.recipient),
+      queueId: asString(o.queueId) ?? asString(o.queue),
+      sizeBytes: asNumber(o.size) ?? asNumber(o.sizeBytes),
+      code: asString(o.code),
+      detail: asString(o.detail) ?? asString(o.message) ?? asString(o.details),
+    }
+  }
+
+  const s = String(detailsVal)
+
+  // from = "..." or from = ...
+  const fromMatch = s.match(/\bfrom\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s,]+))/i)
+  const from = fromMatch ? (fromMatch[1] || fromMatch[2] || fromMatch[3]) : undefined
+
+  // to = ["..."] or to = "..." or to = ...
+  let to: string | undefined
+  const toArrayMatch = s.match(/\bto\s*=\s*\[\s*"([^"]+)"/i)
+  if (toArrayMatch) {
+    to = toArrayMatch[1]
+  } else {
+    const toMatch = s.match(/\bto\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s,]+))/i)
+    if (toMatch) {
+      to = toMatch[1] || toMatch[2] || toMatch[3]
+    }
+  }
+
+  // queueId = ...
+  const queueMatch = s.match(/\bqueueId\s*=\s*"?([0-9a-zA-Z_-]+)"?/i)
+  const queueId = queueMatch ? queueMatch[1] : undefined
+
+  // size = ...
+  const sizeMatch = s.match(/\bsize\s*=\s*(\d+)/i)
+  const sizeBytes = sizeMatch ? parseInt(sizeMatch[1], 10) : null
+
+  // code = ...
+  const codeMatch = s.match(/\bcode\s*=\s*(\d+)/i)
+  const code = codeMatch ? codeMatch[1] : undefined
+
+  // details = "..." or reason = "..."
+  const detailMatch = s.match(/\b(?:details|reason)\s*=\s*"([^"]+)"/i)
+  const detail = detailMatch ? detailMatch[1] : (code ? `Status ${code}` : undefined)
+
+  return { from, to, queueId, sizeBytes, code, detail }
+}
+
+function classifyDeliveryStatus(event: string, details: string): DeliveryStatus {
+  const ev = event.toLowerCase()
+  const dt = details.toLowerCase()
+  if (
+    ev.includes("bounce") ||
+    ev.includes("dsn-failed") ||
+    dt.includes("550") ||
+    dt.includes("user unknown") ||
+    dt.includes("mailbox full")
+  ) {
+    return "bounce"
+  }
+  if (
+    ev.includes("reject") ||
+    ev.includes("failed") ||
+    dt.includes("554") ||
+    dt.includes("rejected") ||
+    dt.includes("denied")
+  ) {
+    return "rejected"
+  }
+  if (
+    ev.includes("defer") ||
+    dt.includes("greylist") ||
+    dt.includes("451") ||
+    dt.includes("temporary")
+  ) {
+    return "deferred"
+  }
+  if (
+    ev.includes("delivered") ||
+    ev.includes("completed") ||
+    ev.includes("message-ingest") ||
+    dt.includes("250") ||
+    dt.includes("ok")
+  ) {
+    return "delivered"
+  }
+  return "queued"
+}
+
+/** Ensures that a file-based Log tracer is active in Stalwart to support x:Log queries. */
+async function ensureStalwartLogTracer(): Promise<void> {
+  try {
+    const q = await jmapCall([["x:Tracer/query", {}, "t0"]], { timeoutMs: 3000, retry: false })
+    const ids = (responseById(q, "t0").ids as string[]) ?? []
+    if (ids.length > 0) {
+      const get = await jmapCall([["x:Tracer/get", { ids }, "t1"]], { timeoutMs: 3000, retry: false })
+      const list = (responseById(get, "t1").list as Array<Record<string, unknown>>) ?? []
+      const hasLog = list.some((t) => t["@type"] === "Log" && t.enable !== false)
+      if (hasLog) return
+    }
+
+    // Provision Log tracer pointing to container logs directory
+    await jmapCall(
+      [
+        [
+          "x:Tracer/set",
+          {
+            create: {
+              "mailwart-file-logger": {
+                "@type": "Log",
+                path: "/var/lib/stalwart/logs",
+                prefix: "stalwart",
+                rotate: "daily",
+                ansi: false,
+                multiline: false,
+                enable: true,
+                level: "info",
+                lossy: false,
+                events: {},
+                eventsPolicy: "exclude",
+              },
+            },
+          },
+          "s0",
+        ],
+      ],
+      { timeoutMs: 5000, retry: false }
+    )
+  } catch {
+    // Best-effort
+  }
+}
+
 /**
  * Read recent delivery traces via Stalwart `x:Trace` or `x:Log` when available,
- * and always persist / surface real records from the local SQLite database.
+ * and always persist / surface real records from the PostgreSQL database.
  */
 export async function queryDeliveryTracesLive(limit = 200): Promise<{
   events: DeliveryEvent[]
@@ -244,54 +388,69 @@ export async function queryDeliveryTracesLive(limit = 200): Promise<{
       }
     }
   } catch {
-    // If x:Trace fails (e.g. Community Edition license notice), try x:Log
+    // If x:Trace fails (e.g. Community Edition license notice), query x:Log
     try {
       const logQ = await jmapCall(
-        [["x:Log/query", { filter: null, limit: 50 }, "l0"]],
+        [["x:Log/query", { filter: null, limit: Math.min(capped, 250) }, "l0"]],
         { timeoutMs: 5_000, retry: false }
       )
-      const logIds = (responseById(logQ, "l0").ids as string[]) ?? []
+      const qRes = responseById(logQ, "l0")
+      const logIds = Array.isArray(qRes.ids) ? (qRes.ids as string[]).filter(Boolean) : []
+
       if (logIds.length > 0) {
         const logG = await jmapCall(
           [
             [
               "x:Log/get",
               {
-                ids: logIds,
+                ids: logIds.slice(0, 100),
                 properties: ["timestamp", "level", "event", "details", "message"],
               },
               "l1",
             ],
           ],
-          { timeoutMs: 5_000, retry: false }
+          { timeoutMs: 8_000, retry: false }
         )
         const logList =
           (responseById(logG, "l1").list as Array<Record<string, unknown>>) ?? []
+
         for (const item of logList) {
-          const ev = String(item.event ?? "").toLowerCase()
-          if (ev.includes("smtp") || ev.includes("mta") || ev.includes("delivery")) {
-            const dt = (item.details as Record<string, unknown>) ?? {}
-            const from = String(dt.from ?? dt.sender ?? "")
-            const to = String(dt.to ?? dt.recipient ?? "")
+          const ev = String(item.event ?? "")
+          const evLower = ev.toLowerCase()
+          if (
+            evLower.includes("delivery") ||
+            evLower.includes("message-ingest") ||
+            evLower.includes("smtp") ||
+            evLower.includes("mta")
+          ) {
+            const rawDetails = item.details ?? item.message ?? ""
+            const parsed = parseLogDetails(rawDetails)
+            const from = parsed.from ?? ""
+            const to = parsed.to ?? ""
+
             if (from || to) {
-              const status = ev.includes("reject")
-                ? "rejected"
-                : ev.includes("bounce")
-                  ? "bounce"
-                  : ev.includes("defer")
-                    ? "deferred"
-                    : ev.includes("queue")
-                      ? "queued"
-                      : "delivered"
+              const status = classifyDeliveryStatus(ev, String(rawDetails))
+              const detail =
+                parsed.detail ||
+                (evLower.includes("message-ingest.ham")
+                  ? "Message ingested into local mailbox"
+                  : evLower.includes("message-ingest.spam")
+                    ? "Flagged as spam, moved to Junk"
+                    : evLower.includes("completed")
+                      ? "Delivery completed"
+                      : String(item.message ?? ev))
+              const id = parsed.queueId ? `del-${parsed.queueId}` : String(item.id ?? `log-${Date.now()}`)
+
               try {
                 await insertDeliveryLog({
-                  id: String(item.id ?? `log-${Date.now()}`),
+                  id,
                   timestamp: String(item.timestamp ?? new Date().toISOString()),
-                  sender: from || "mailer-daemon",
-                  recipient: to || "local",
+                  sender: from || "(unknown)",
+                  recipient: to || "(unknown)",
                   status,
-                  sizeBytes: null,
-                  detail: String(item.message ?? item.event ?? ""),
+                  sizeBytes: parsed.sizeBytes ?? null,
+                  detail,
+                  queueId: parsed.queueId,
                 })
               } catch {
                 // ignore
@@ -301,7 +460,7 @@ export async function queryDeliveryTracesLive(limit = 200): Promise<{
         }
       }
     } catch {
-      // Best-effort
+      await ensureStalwartLogTracer().catch(() => {})
     }
   }
 
