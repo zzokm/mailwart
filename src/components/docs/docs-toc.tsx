@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import type { TocItem } from "@/lib/docs"
+import type { TocItem } from "@/lib/docs-config"
 import { cn } from "@/lib/utils"
 
 export function DocsToc({ toc }: { toc: TocItem[] }) {
@@ -10,16 +10,21 @@ export function DocsToc({ toc }: { toc: TocItem[] }) {
   useEffect(() => {
     if (toc.length === 0) return
 
+    const getScrollContainer = () =>
+      document.getElementById("docs-scroll-container")
+
     const handleScroll = () => {
+      const container = getScrollContainer()
+      const containerTop = container ? container.getBoundingClientRect().top : 0
+
       const headingElements = toc
         .map((item) => document.getElementById(item.id))
         .filter((el): el is HTMLElement => el !== null)
 
-      const scrollPosition = window.scrollY + 120
-
       for (let i = headingElements.length - 1; i >= 0; i--) {
         const el = headingElements[i]
-        if (el.offsetTop <= scrollPosition) {
+        const elTop = el.getBoundingClientRect().top - containerTop
+        if (elTop <= 120) {
           setActiveId(el.id)
           return
         }
@@ -30,10 +35,13 @@ export function DocsToc({ toc }: { toc: TocItem[] }) {
       }
     }
 
-    window.addEventListener("scroll", handleScroll, { passive: true })
+    const container = getScrollContainer()
+    const targetElement = container || window
+
+    targetElement.addEventListener("scroll", handleScroll, { passive: true })
     handleScroll()
 
-    return () => window.removeEventListener("scroll", handleScroll)
+    return () => targetElement.removeEventListener("scroll", handleScroll)
   }, [toc])
 
   if (toc.length === 0) return null
@@ -60,10 +68,19 @@ export function DocsToc({ toc }: { toc: TocItem[] }) {
                   onClick={(e) => {
                     e.preventDefault()
                     const target = document.getElementById(item.id)
-                    if (target) {
-                      const offset = 80
-                      const top = target.getBoundingClientRect().top + window.scrollY - offset
-                      window.scrollTo({ top, behavior: "smooth" })
+                    const container = document.getElementById("docs-scroll-container")
+                    if (target && container) {
+                      const targetTop = target.getBoundingClientRect().top
+                      const containerTop = container.getBoundingClientRect().top
+                      const offset = 24
+                      container.scrollTo({
+                        top: container.scrollTop + (targetTop - containerTop) - offset,
+                        behavior: "smooth",
+                      })
+                      history.replaceState(null, "", `#${item.id}`)
+                      setActiveId(item.id)
+                    } else if (target) {
+                      target.scrollIntoView({ behavior: "smooth", block: "start" })
                       history.replaceState(null, "", `#${item.id}`)
                       setActiveId(item.id)
                     }

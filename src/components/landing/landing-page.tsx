@@ -113,14 +113,13 @@ export function LandingPage() {
           </Link>
           <div className="flex items-center gap-2">
             <Button
-              size="sm"
               variant="ghost"
-              className="h-8 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+              size="icon-sm"
               nativeButton={false}
-              render={<Link href="/docs" />}
+              render={<Link href="/docs" title="Documentation" />}
+              aria-label="Documentation"
             >
-              <BookOpen className="size-3.5" />
-              <span>Documentation</span>
+              <BookOpen className="size-4" />
             </Button>
             <Button
               variant="ghost"

@@ -251,6 +251,22 @@ export function AppShell({
                     size="icon-sm"
                     nativeButton={false}
                     render={
+                      <Link
+                        href="/docs"
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Documentation"
+                      />
+                    }
+                    aria-label="Documentation"
+                  >
+                    <BookOpen className="size-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    nativeButton={false}
+                    render={
                       <a
                         href="https://github.com/zzokm/mailwart"
                         target="_blank"

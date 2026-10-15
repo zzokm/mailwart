@@ -22,17 +22,17 @@ export default function DocsLayout({
   const categories = getDocsCategories()
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background text-foreground">
+    <div className="flex h-dvh max-h-dvh min-h-0 w-full flex-col overflow-hidden bg-background text-foreground">
       <DocsHeader categories={categories} />
 
-      <div className="flex flex-1 mx-auto w-full max-w-7xl">
-        {/* Desktop Sidebar */}
-        <div className="hidden lg:block w-[280px] shrink-0 border-r border-border/70 sticky top-14 h-[calc(100dvh-3.5rem)] overflow-hidden">
+      <div className="flex flex-1 min-h-0 w-full overflow-hidden">
+        {/* Desktop Sidebar: pinned to the very left edge */}
+        <aside className="hidden lg:flex w-[280px] shrink-0 flex-col border-r border-border/70 bg-background/50 h-full overflow-hidden">
           <DocsSidebar categories={categories} />
-        </div>
+        </aside>
 
-        {/* Main Content Area */}
-        <main className="flex-1 min-w-0 px-4 py-8 sm:px-8 lg:px-10">
+        {/* Main Workspace (Content + Right TOC): fills the rest of the screen */}
+        <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
           {children}
         </main>
       </div>

@@ -8,12 +8,45 @@ import { Hash, Info, AlertTriangle, Lightbulb, ShieldAlert } from "lucide-react"
 import { CodeBlock } from "@/components/docs/code-block"
 import { cn } from "@/lib/utils"
 
+import { FILE_TO_DOC_MAP } from "@/lib/docs-config"
+
+function getNodeText(node: React.ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node)
+  }
+  if (Array.isArray(node)) {
+    return node.map(getNodeText).join("")
+  }
+  if (React.isValidElement<{ children?: React.ReactNode }>(node) && node.props?.children) {
+    return getNodeText(node.props.children)
+  }
+  return ""
+}
+
 function slugify(text: string): string {
   return text
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
     .trim()
     .replace(/\s+/g, "-")
+}
+
+function scrollToHeading(id: string) {
+  const target = document.getElementById(id)
+  const container = document.getElementById("docs-scroll-container")
+  if (target && container) {
+    const targetTop = target.getBoundingClientRect().top
+    const containerTop = container.getBoundingClientRect().top
+    const offset = 24
+    container.scrollTo({
+      top: container.scrollTop + (targetTop - containerTop) - offset,
+      behavior: "smooth",
+    })
+    history.replaceState(null, "", `#${id}`)
+  } else if (target) {
+    target.scrollIntoView({ behavior: "smooth", block: "start" })
+    history.replaceState(null, "", `#${id}`)
+  }
 }
 
 export function MarkdownRenderer({ content }: { content: string }) {
@@ -28,7 +61,7 @@ export function MarkdownRenderer({ content }: { content: string }) {
             </h1>
           ),
           h2: ({ children }) => {
-            const text = String(children)
+            const text = getNodeText(children)
             const id = slugify(text)
             return (
               <h2
@@ -37,6 +70,10 @@ export function MarkdownRenderer({ content }: { content: string }) {
               >
                 <a
                   href={`#${id}`}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    scrollToHeading(id)
+                  }}
                   className="absolute -left-5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 text-muted-foreground hover:text-foreground"
                   aria-label="Link to section"
                 >
@@ -47,7 +84,7 @@ export function MarkdownRenderer({ content }: { content: string }) {
             )
           },
           h3: ({ children }) => {
-            const text = String(children)
+            const text = getNodeText(children)
             const id = slugify(text)
             return (
               <h3
@@ -56,6 +93,10 @@ export function MarkdownRenderer({ content }: { content: string }) {
               >
                 <a
                   href={`#${id}`}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    scrollToHeading(id)
+                  }}
                   className="absolute -left-5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 text-muted-foreground hover:text-foreground"
                   aria-label="Link to subsection"
                 >
@@ -188,15 +229,50 @@ export function MarkdownRenderer({ content }: { content: string }) {
           a: ({ href, children, ...props }) => {
             if (!href) return <span>{children}</span>
 
-            // If internal docs link or relative link
-            if (href.startsWith("/docs") || href.startsWith("./") || href.startsWith("#")) {
-              const cleanHref = href.startsWith("./")
-                ? href.replace(/^\.\//, "/docs/").replace(/\.md$/, "")
-                : href
+            // In-page hash jump
+            if (href.startsWith("#")) {
+              const hashId = href.replace(/^#/, "")
+              return (
+                <a
+                  href={href}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    scrollToHeading(hashId)
+                  }}
+                  className="font-medium text-brand underline underline-offset-4 transition-colors hover:text-brand/80"
+                >
+                  {children}
+                </a>
+              )
+            }
+
+            // Check if link points to a markdown document (.md)
+            const mdMatch = href.match(/(?:^|\/|\.\/)(0\d_\w+\.md|10_\w+\.md|README\.md)(?:#(.+))?$/i)
+            if (mdMatch) {
+              const filename = mdMatch[1]
+              const hash = mdMatch[2] ? `#${mdMatch[2]}` : ""
+              const docInfo = FILE_TO_DOC_MAP[filename] || FILE_TO_DOC_MAP[filename.toLowerCase()]
+              const targetUrl = docInfo ? `/docs/${docInfo.slug}${hash}` : `/docs${hash}`
+
+              const text = getNodeText(children).trim()
+              const isRawFilename = text === filename || text === `./${filename}` || text.endsWith(".md")
+              const displayText = isRawFilename && docInfo ? docInfo.title : children
 
               return (
                 <Link
-                  href={cleanHref}
+                  href={targetUrl}
+                  className="font-medium text-brand underline underline-offset-4 transition-colors hover:text-brand/80"
+                >
+                  {displayText}
+                </Link>
+              )
+            }
+
+            // Internal Next.js links
+            if (href.startsWith("/") && !href.startsWith("//")) {
+              return (
+                <Link
+                  href={href}
                   className="font-medium text-brand underline underline-offset-4 transition-colors hover:text-brand/80"
                 >
                   {children}

@@ -10,18 +10,20 @@ mailwart is built with **Next.js 16 (App Router)**, **React 19**, **Tailwind CSS
 
 This documentation directory is organized into modular guides covering every layer of the system:
 
-| Document | Title | Description |
+| Guide | Title | Description |
 | :--- | :--- | :--- |
-| **[01_ARCHITECTURE.md](./01_ARCHITECTURE.md)** | **System Architecture & Infrastructure** | Complete topology, container networking, runtime isolation, data flow lifecycles, and mock vs. live dual runtime engine. |
-| **[02_PAGES_AND_ROUTES.md](./02_PAGES_AND_ROUTES.md)** | **Frontend Pages, Navigation & UX** | Exhaustive mapping of all 11 UI pages, AppShell chrome, navigation sidebar, modals, wizards, and interactive components. |
-| **[03_API_REFERENCE.md](./03_API_REFERENCE.md)** | **HTTP API Endpoints** | Specifications for all Next.js API route handlers (`/api/auth`, `/api/copilot`, `/api/deliverability`, `/api/diagnostics`, `/api/webmail/sso`, etc.). |
-| **[04_SERVER_ACTIONS.md](./04_SERVER_ACTIONS.md)** | **Server Actions Catalog** | In-depth technical catalog of all 80+ server actions across mail, users, Cloudflare, copilot, deliverability, and auth. |
-| **[05_STALWART_INTEGRATION.md](./05_STALWART_INTEGRATION.md)** | **Stalwart Mail Server Integration** | JMAP protocol specification, method calls, data normalization, catch-all handling, app passwords, and mock engine. |
-| **[06_ROUNDCUBE_SSO.md](./06_ROUNDCUBE_SSO.md)** | **Roundcube Webmail & SSO** | Custom `em_sso` PHP plugin, HMAC SHA-256 token minting, master impersonation protocol (`user%impersonator`), and Traefik routing. |
-| **[07_CLOUDFLARE_AUTOMATION.md](./07_CLOUDFLARE_AUTOMATION.md)** | **Cloudflare DNS Automation** | Multi-account token pooling, automated zone discovery, 1-click DNS record provisioning (MX, SPF, DKIM, DMARC), and conflict detection. |
-| **[08_DELIVERABILITY_SUITE.md](./08_DELIVERABILITY_SUITE.md)** | **Email Deliverability Suite** | 10-point deliverability audit engine, port & TLS probes, DNSBL blacklist monitoring, SMTP banner & EHLO checks, and mail-tester scoring. |
-| **[09_AI_COPILOT.md](./09_AI_COPILOT.md)** | **AI Copilot & Tool Registry** | Architecture with Vercel AI SDK, 10 supported LLM providers, 48 registered administrative tools, and human-in-the-loop approval workflows. |
-| **[10_DATABASE_AND_SECURITY.md](./10_DATABASE_AND_SECURITY.md)** | **Database, Security & Deployment** | PostgreSQL 12-table schema, iron-session encryption, RBAC, operator impersonation, OTP recovery, audit logging, and Dokploy deployment. |
+| **[Getting Started Guide](/docs/get-started)** | **Getting Started Guide** | Step-by-step setup, local development, domain provisioning, and webmail SSO. |
+| **[System Architecture](/docs/architecture)** | **System Architecture & Infrastructure** | Complete topology, container networking, runtime isolation, data flow lifecycles, and mock vs. live dual runtime engine. |
+| **[Pages, Navigation & UX](/docs/pages-and-routes)** | **Frontend Pages, Navigation & UX** | Exhaustive mapping of all 11 UI pages, AppShell chrome, navigation sidebar, modals, wizards, and interactive components. |
+| **[HTTP REST API Reference](/docs/api-reference)** | **HTTP API Endpoints** | Specifications for all Next.js API route handlers (`/api/auth`, `/api/copilot`, `/api/deliverability`, `/api/diagnostics`, `/api/webmail/sso`, etc.). |
+| **[Server Actions Catalog](/docs/server-actions)** | **Server Actions Catalog** | In-depth technical catalog of all 80+ server actions across mail, users, Cloudflare, copilot, deliverability, and auth. |
+| **[Stalwart Mail Server & JMAP](/docs/stalwart-integration)** | **Stalwart Mail Server Integration** | JMAP protocol specification, method calls, data normalization, catch-all handling, app passwords, and mock engine. |
+| **[Roundcube Webmail SSO](/docs/roundcube-sso)** | **Roundcube Webmail & SSO** | Custom `em_sso` PHP plugin, HMAC SHA-256 token minting, master impersonation protocol (`user%impersonator`), and Traefik routing. |
+| **[Cloudflare DNS Automation](/docs/cloudflare-automation)** | **Cloudflare DNS Automation** | Multi-account token pooling, automated zone discovery, 1-click DNS record provisioning (MX, SPF, DKIM, DMARC), and conflict detection. |
+| **[Deliverability Suite](/docs/deliverability-suite)** | **Email Deliverability Suite** | 10-point deliverability audit engine, port & TLS probes, DNSBL blacklist monitoring, SMTP banner & EHLO checks, and mail-tester scoring. |
+| **[AI Copilot & Tool Registry](/docs/ai-copilot)** | **AI Copilot & Tool Registry** | Architecture with Vercel AI SDK, 10 supported LLM providers, 48 registered administrative tools, and human-in-the-loop approval workflows. |
+| **[Database, Security & Deployment](/docs/database-and-security)** | **Database, Security & Deployment** | PostgreSQL 12-table schema, iron-session encryption, RBAC, operator impersonation, OTP recovery, audit logging, and Dokploy deployment. |
+| **[Rav Webmail & Dual Engine](/docs/rav-webmail)** | **Rav Webmail & Dual-Engine Architecture** | Next.js 16 + React 19 + Rust Axum webmail, Tantivy search, live WebSockets, and dual SSO. |
 
 ---
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 
+import { BookOpen } from "lucide-react"
 import { LoginForm } from "@/components/auth/login-form"
 import { BrandMark } from "@/components/layout/brand-mark"
 import { ThemeToggle } from "@/components/layout/theme-toggle"
@@ -35,6 +36,15 @@ export default async function LoginPage() {
             <BrandMark glyph />
           </Link>
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              nativeButton={false}
+              render={<Link href="/docs" title="Documentation" />}
+              aria-label="Documentation"
+            >
+              <BookOpen className="size-4" />
+            </Button>
             <Button
               variant="ghost"
               size="icon-sm"
