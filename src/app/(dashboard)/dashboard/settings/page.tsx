@@ -17,6 +17,8 @@ import { queryDomains } from "@/lib/stalwart/domains"
 import { getOutboundEmailConfig } from "@/lib/db/system-settings"
 import { isPrimaryAdmin } from "@/lib/db/users"
 import { queryAccounts } from "@/lib/stalwart/accounts"
+import { getWebmailSettingsAction } from "@/lib/actions/webmail"
+import { getRavUrl, getRoundcubeUrl } from "@/lib/env"
 
 export const metadata: Metadata = { title: "Settings" }
 export const runtime = "nodejs"
@@ -38,6 +40,7 @@ export default async function SettingsPage({
     session,
     domains,
     outboundConfig,
+    webmailResult,
   ] = await Promise.all([
     getSettingsAction(),
     getCopilotSettingsAction(),
@@ -47,6 +50,7 @@ export default async function SettingsPage({
     getSession(),
     queryDomains().catch(() => []),
     getOutboundEmailConfig().catch(() => null),
+    getWebmailSettingsAction(),
   ])
 
   if (!result.ok) {
@@ -89,6 +93,9 @@ export default async function SettingsPage({
         availableMailboxes={availableMailboxes}
         outboundEmailConfig={outboundConfig}
         users={usersResult.ok && usersResult.data ? usersResult.data : []}
+        webmailSettings={webmailResult.ok ? webmailResult.data : null}
+        roundcubeUrl={getRoundcubeUrl()}
+        ravUrl={getRavUrl()}
         session={{
           ...session,
           isPrimary: isPrimaryAdmin(session.username),

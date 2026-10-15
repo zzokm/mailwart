@@ -16,12 +16,14 @@ import { CopilotSettingsClient } from "@/components/mail/copilot-settings-client
 import { DeliverabilityClient } from "@/components/mail/deliverability-client"
 import { SystemOutboundSettingsClient } from "@/components/mail/system-outbound-settings-client"
 import { UserManagementClient } from "@/components/mail/user-management-client"
+import { WebmailSettingsClient } from "@/components/mail/webmail-settings-client"
 import { logoutAction } from "@/lib/actions/auth"
 import type { CloudflareStatus } from "@/lib/cloudflare/types"
 import type { CopilotPublicStatus } from "@/lib/copilot/types"
 import type { SafeUser } from "@/lib/db/users"
 import type { DeliverabilitySuiteReport } from "@/lib/deliverability/types"
 import type { SystemEmailSenderConfig } from "@/lib/db/system-settings"
+import type { WebmailSettings } from "@/lib/webmail/types"
 
 export type SettingsClientProps = {
   settings: {
@@ -41,6 +43,9 @@ export type SettingsClientProps = {
   availableMailboxes?: string[]
   outboundEmailConfig?: SystemEmailSenderConfig | null
   users: SafeUser[]
+  webmailSettings?: WebmailSettings | null
+  roundcubeUrl: string
+  ravUrl: string
   session: {
     userId?: string
     username?: string
@@ -62,38 +67,27 @@ export function SettingsClient({
   availableMailboxes,
   outboundEmailConfig,
   users,
+  webmailSettings,
+  roundcubeUrl,
+  ravUrl,
   session,
   initialTab,
 }: SettingsClientProps) {
   const isAdmin = session.role === "admin"
   const isPrimary = Boolean(session.isPrimary || session.username === "yehia")
   const allowedTabs = isAdmin
-    ? ["deliverability", "cloudflare", "copilot", "users", "system", "account"]
-    : ["deliverability", "cloudflare", "account"]
-
+    ? ["cloudflare", "copilot", "users", "system", "webmail", "deliverability", "account"]
+    : ["cloudflare", "webmail", "deliverability", "account"]
 
   const defaultTab =
     initialTab && allowedTabs.includes(initialTab)
       ? initialTab
-      : "deliverability"
+      : allowedTabs[0]
 
   return (
     <div className="w-full">
       <Tabs defaultValue={defaultTab} className="w-full">
         <TabsList variant="line" className="mb-6 w-full justify-start gap-8">
-          <TabsTrigger value="deliverability" className="gap-2">
-            <span>Deliverability</span>
-            {deliverabilityReport ? (
-              <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
-                {deliverabilityReport.overallScore}/10
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
-                Suite
-              </Badge>
-            )}
-          </TabsTrigger>
-
           <TabsTrigger value="cloudflare" className="gap-2">
             <span>DNS Automation</span>
             {cloudflareStatus?.accounts && cloudflareStatus.accounts.length > 0 ? (
@@ -129,19 +123,30 @@ export function SettingsClient({
             </TabsTrigger>
           )}
 
+          <TabsTrigger value="webmail" className="gap-2">
+            <span>Webmail</span>
+            <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4 uppercase">
+              {webmailSettings?.client || "Rav"}
+            </Badge>
+          </TabsTrigger>
+
+          <TabsTrigger value="deliverability" className="gap-2">
+            <span>Deliverability</span>
+            {deliverabilityReport ? (
+              <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
+                {deliverabilityReport.overallScore}/10
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
+                Suite
+              </Badge>
+            )}
+          </TabsTrigger>
+
           <TabsTrigger value="account" className="gap-2">
             <span>Account</span>
           </TabsTrigger>
         </TabsList>
-
-
-        {/* Deliverability Suite Tab */}
-        <TabsContent value="deliverability" className="w-full space-y-6">
-          <DeliverabilityClient
-            initialReport={deliverabilityReport}
-            availableDomains={availableDomains}
-          />
-        </TabsContent>
 
         {/* Cloudflare DNS Automation Tab */}
         <TabsContent value="cloudflare" className="w-full space-y-6">
@@ -311,6 +316,23 @@ export function SettingsClient({
             </div>
           </TabsContent>
         )}
+
+        {/* Webmail Preferences Tab */}
+        <TabsContent value="webmail" className="w-full space-y-6">
+          <WebmailSettingsClient
+            initialSettings={webmailSettings}
+            roundcubeUrl={roundcubeUrl}
+            ravUrl={ravUrl}
+          />
+        </TabsContent>
+
+        {/* Deliverability Suite Tab */}
+        <TabsContent value="deliverability" className="w-full space-y-6">
+          <DeliverabilityClient
+            initialReport={deliverabilityReport}
+            availableDomains={availableDomains}
+          />
+        </TabsContent>
 
         {/* Account Tab for all users (Primary Admin, Secondary Admins, Regular Users) */}
         <TabsContent value="account" className="w-full space-y-6">
