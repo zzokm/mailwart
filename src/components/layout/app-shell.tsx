@@ -12,6 +12,7 @@ import {
   ScrollText,
   Settings,
   Globe,
+  BookOpen,
 } from "lucide-react"
 
 import { LogoutButton } from "@/components/auth/logout-button"
@@ -175,6 +176,17 @@ export function AppShell({
             </div>
 
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Documentation"
+                  render={
+                    <Link href="/docs" target="_blank" />
+                  }
+                >
+                  <BookOpen />
+                  <span>Documentation</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               {userRole === "admin" && (
                 <SidebarMenuItem>
                   <SidebarMenuButton

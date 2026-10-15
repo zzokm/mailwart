@@ -114,6 +114,15 @@ export function LandingPage() {
             >
               <GithubIcon className="size-4" />
             </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-xs h-8 px-2.5 text-muted-foreground hover:text-foreground"
+              nativeButton={false}
+              render={<Link href="/docs" />}
+            >
+              Docs
+            </Button>
             <ThemeToggle />
             <Button
               size="sm"
@@ -303,6 +312,13 @@ export function LandingPage() {
           <BrandMark className="text-base text-foreground" />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm">
             <span>Directory operations for Stalwart mail.</span>
+            <span className="hidden sm:inline text-border" aria-hidden>•</span>
+            <Link
+              href="/docs"
+              className="text-foreground hover:text-brand underline underline-offset-4 transition-colors"
+            >
+              Documentation
+            </Link>
             <span className="hidden sm:inline text-border" aria-hidden>•</span>
             <span>
               Made by{" "}
