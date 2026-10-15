@@ -5,6 +5,7 @@ import path from "node:path"
 
 import {
   DOCS_REGISTRY,
+  FILE_TO_DOC_MAP,
   slugify,
   type DocMetadata,
   type TocItem,
@@ -52,7 +53,21 @@ export function extractToc(content: string): TocItem[] {
 }
 
 export async function getDocBySlug(slug: string): Promise<DocPageData | null> {
-  const index = DOCS_REGISTRY.findIndex((item) => item.slug === slug)
+  const normalized = slug.toLowerCase().replace(/\.md$/, "")
+  const mapped =
+    FILE_TO_DOC_MAP[slug] ||
+    FILE_TO_DOC_MAP[`${slug}.md`] ||
+    FILE_TO_DOC_MAP[normalized] ||
+    FILE_TO_DOC_MAP[`${normalized}.md`]
+
+  const targetSlug = mapped ? mapped.slug : slug
+
+  let index = DOCS_REGISTRY.findIndex((item) => item.slug === targetSlug)
+  if (index === -1) {
+    index = DOCS_REGISTRY.findIndex(
+      (item) => item.slug.toLowerCase() === normalized
+    )
+  }
   if (index === -1) return null
 
   const item = DOCS_REGISTRY[index]

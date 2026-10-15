@@ -123,6 +123,15 @@ export const DOCS_REGISTRY: DocMetadata[] = [
     order: 12,
     readTime: "7 min read",
   },
+  {
+    slug: "rav-webmail",
+    title: "Rav Webmail & Dual Engine",
+    description: "Next.js 16 + React 19 + Rust Axum webmail, Tantivy search, live WebSockets, and dual SSO.",
+    category: "Frontend & Interface",
+    filename: "11_RAV_WEBMAIL.md",
+    order: 13,
+    readTime: "6 min read",
+  },
 ]
 
 export function getDocsCategories(): Array<{
@@ -149,4 +158,33 @@ export function slugify(text: string): string {
     .replace(/[^a-z0-9\s-]/g, "")
     .trim()
     .replace(/\s+/g, "-")
+}
+
+export const FILE_TO_DOC_MAP: Record<string, { slug: string; title: string }> = {
+  "00_GET_STARTED.md": { slug: "get-started", title: "Getting Started Guide" },
+  "00_get_started.md": { slug: "get-started", title: "Getting Started Guide" },
+  "README.md": { slug: "overview", title: "System Overview & Map" },
+  "readme.md": { slug: "overview", title: "System Overview & Map" },
+  "01_ARCHITECTURE.md": { slug: "architecture", title: "System Architecture" },
+  "01_architecture.md": { slug: "architecture", title: "System Architecture" },
+  "02_PAGES_AND_ROUTES.md": { slug: "pages-and-routes", title: "Pages, Navigation & UX" },
+  "02_pages_and_routes.md": { slug: "pages-and-routes", title: "Pages, Navigation & UX" },
+  "03_API_REFERENCE.md": { slug: "api-reference", title: "HTTP REST API Reference" },
+  "03_api_reference.md": { slug: "api-reference", title: "HTTP REST API Reference" },
+  "04_SERVER_ACTIONS.md": { slug: "server-actions", title: "Server Actions Catalog" },
+  "04_server_actions.md": { slug: "server-actions", title: "Server Actions Catalog" },
+  "05_STALWART_INTEGRATION.md": { slug: "stalwart-integration", title: "Stalwart Mail Server & JMAP" },
+  "05_stalwart_integration.md": { slug: "stalwart-integration", title: "Stalwart Mail Server & JMAP" },
+  "06_ROUNDCUBE_SSO.md": { slug: "roundcube-sso", title: "Roundcube Webmail SSO" },
+  "06_roundcube_sso.md": { slug: "roundcube-sso", title: "Roundcube Webmail SSO" },
+  "07_CLOUDFLARE_AUTOMATION.md": { slug: "cloudflare-automation", title: "Cloudflare DNS Automation" },
+  "07_cloudflare_automation.md": { slug: "cloudflare-automation", title: "Cloudflare DNS Automation" },
+  "08_DELIVERABILITY_SUITE.md": { slug: "deliverability-suite", title: "Deliverability Suite" },
+  "08_deliverability_suite.md": { slug: "deliverability-suite", title: "Deliverability Suite" },
+  "09_AI_COPILOT.md": { slug: "ai-copilot", title: "AI Copilot & Tool Registry" },
+  "09_ai_copilot.md": { slug: "ai-copilot", title: "AI Copilot & Tool Registry" },
+  "10_DATABASE_AND_SECURITY.md": { slug: "database-and-security", title: "Database, Security & Deployment" },
+  "10_database_and_security.md": { slug: "database-and-security", title: "Database, Security & Deployment" },
+  "11_RAV_WEBMAIL.md": { slug: "rav-webmail", title: "Rav Webmail & Dual Engine" },
+  "11_rav_webmail.md": { slug: "rav-webmail", title: "Rav Webmail & Dual Engine" },
 }
