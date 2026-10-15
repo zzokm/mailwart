@@ -32,7 +32,7 @@ services:
       STALWART_ADMIN_PASSWORD: ${STALWART_ADMIN_PASSWORD}
       STALWART_ADMIN_UI_URL: ${STALWART_ADMIN_UI_URL:-https://mail.yehia.dev/admin}
       ROUNDCUBE_URL: ${ROUNDCUBE_URL:-https://email.yehia.dev/webmail/}
-      RAV_URL: ${RAV_URL:-https://email.yehia.dev/rav/}
+      RAV_URL: ${RAV_URL:-https://webmail.hiy.me/}
       DEFAULT_WEBMAIL_CLIENT: ${DEFAULT_WEBMAIL_CLIENT:-rav}
       WEBMAIL_SSO_SECRET: ${WEBMAIL_SSO_SECRET}
       APP_ADMIN_USER: ${APP_ADMIN_USER:-yehia}
@@ -165,27 +165,32 @@ services:
       retries: 3
       start_period: 10s
     environment:
-      IMAP_HOST: stalwart-mail
+      IMAP_HOST: ${STALWART_IMAP_HOST:-mail.hiy.me}
+      IMAP_CONNECT_HOST: stalwart-mail
       IMAP_PORT: "993"
-      SMTP_HOST: stalwart-mail
-      SMTP_PORT: "587"
+      SMTP_HOST: ${STALWART_SMTP_HOST:-mail.hiy.me}
+      SMTP_CONNECT_HOST: stalwart-mail
+      SMTP_PORT: "465"
       TLS_ENABLED: "true"
       DATA_DIR: /data
       PORT: "3001"
       RUST_LOG: info
+      TRUSTED_PROXIES: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1/32"
     volumes:
       - rav_data:/data
     labels:
       - traefik.enable=true
       - traefik.docker.network=dokploy-network
-      # 1. Main Rav webmail under dashboard at /rav
+      # 1. Redirect /rav under dashboard to dedicated webmail host
       - traefik.http.routers.email-manager-rav.rule=Host(`email.yehia.dev`) && PathPrefix(`/rav`)
       - traefik.http.routers.email-manager-rav.entrypoints=websecure
       - traefik.http.routers.email-manager-rav.tls.certresolver=letsencrypt
       - traefik.http.routers.email-manager-rav.priority=110
-      - traefik.http.routers.email-manager-rav.middlewares=email-manager-rav-strip
+      - traefik.http.routers.email-manager-rav.middlewares=email-manager-rav-redirect
+      - traefik.http.middlewares.email-manager-rav-redirect.redirectregex.regex=^https?://[^/]+/rav/?(.*)$$
+      - traefik.http.middlewares.email-manager-rav-redirect.redirectregex.replacement=https://webmail.hiy.me/$${1}
+      - traefik.http.middlewares.email-manager-rav-redirect.redirectregex.permanent=false
       - traefik.http.routers.email-manager-rav.service=email-manager-rav
-      - traefik.http.middlewares.email-manager-rav-strip.stripprefix.prefixes=/rav
       # 2. Direct webmail on HTTP for rav.<domain>, webmail.<domain>, and mail.zokm.me
       - traefik.http.routers.rav-direct-http.rule=HostRegexp(`^rav\..+$$`) || HostRegexp(`^webmail\..+$$`) || Host(`mail.zokm.me`)
       - traefik.http.routers.rav-direct-http.entrypoints=web
