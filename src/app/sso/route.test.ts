@@ -101,4 +101,27 @@ describe("Rav Webmail SSO Endpoint (/sso)", () => {
     expect(res.status).toBe(502)
     expect(await res.text()).toContain("Webmail Single Sign-On failed")
   })
+
+  it("respects X-Forwarded-Host and X-Forwarded-Proto behind reverse proxy", async () => {
+    const token = createWebmailSsoToken("alice@lebasko.com")
+    const req = new NextRequest(`http://0.0.0.0:3000/sso?token=${token}`, {
+      headers: {
+        "x-forwarded-host": "webmail.lebasko.com",
+        "x-forwarded-proto": "https",
+      },
+    })
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ account: { id: "acc1" } }), {
+        status: 201,
+        headers: {
+          "set-cookie": "rav_browser=abc; Path=/; SameSite=Strict",
+        },
+      })
+    )
+
+    const res = await GET(req)
+    expect(res.status).toBe(302)
+    expect(res.headers.get("location")).toBe("https://webmail.lebasko.com/mail")
+  })
 })

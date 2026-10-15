@@ -88,13 +88,13 @@ services:
       # 2. SSO router: forwards /sso and /api/sso on webmail.* or rav.* domains to Next.js for instant session authentication
       - traefik.http.routers.webmail-sso-http.rule=(HostRegexp(`^webmail\..+$$`) || HostRegexp(`^rav\..+$$`)) && (PathPrefix(`/sso`) || PathPrefix(`/api/sso`))
       - traefik.http.routers.webmail-sso-http.entrypoints=web
-      - traefik.http.routers.webmail-sso-http.priority=120
+      - traefik.http.routers.webmail-sso-http.priority=1000
       - traefik.http.routers.webmail-sso-http.service=email-manager
       - traefik.http.routers.webmail-sso-https.rule=(HostRegexp(`^webmail\..+$$`) || HostRegexp(`^rav\..+$$`)) && (PathPrefix(`/sso`) || PathPrefix(`/api/sso`))
       - traefik.http.routers.webmail-sso-https.entrypoints=websecure
       - traefik.http.routers.webmail-sso-https.tls=true
       - traefik.http.routers.webmail-sso-https.tls.certresolver=letsencrypt
-      - traefik.http.routers.webmail-sso-https.priority=120
+      - traefik.http.routers.webmail-sso-https.priority=1000
       - traefik.http.routers.webmail-sso-https.service=email-manager
       - traefik.http.services.email-manager.loadbalancer.server.port=3000
     networks:
