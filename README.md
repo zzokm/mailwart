@@ -1,8 +1,8 @@
 # <img src="public/icon.png" width="32" height="32" alt="mailwart" style="vertical-align: middle;" /> mailwart
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue.svg)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-blue.svg)](https://www.typescriptlang.org/)
 [![Stalwart](https://img.shields.io/badge/Powered%20By-Stalwart%20Mail%20Server-orange.svg)](https://stalw.art/)
 [![Roundcube](https://img.shields.io/badge/Webmail-Roundcube-green.svg)](https://roundcube.net/)
 
@@ -67,7 +67,7 @@ Equipped with an **embedded AI Copilot**, **1-Click Cloudflare DNS Sync**, a **f
 ```
                        ┌───────────────────────────────┐
                        │          mailwart UI          │
-                       │   Next.js 15 App Router       │
+                       │   Next.js 16 App Router       │
                        │   (Tailwind, React 19, Auth)  │
                        └───────┬───────────────┬───────┘
                                │               │
