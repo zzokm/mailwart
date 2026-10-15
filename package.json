@@ -1,6 +1,8 @@
 {
-  "name": "email-manager",
+  "name": "mailwart",
   "version": "0.1.0",
+  "description": "Modern cPanel-grade Stalwart Mail Server & Roundcube Webmail Admin Console with AI Copilot",
+  "license": "AGPL-3.0-only",
   "private": true,
   "scripts": {
     "dev": "next dev",

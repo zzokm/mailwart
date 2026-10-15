@@ -688,7 +688,6 @@ export async function probeInternetEgress(): Promise<EgressProbeResult> {
   } catch {}
 
   const canDeliverExternal = anyPort25Ok || relayActive
-  const port25Blocked = !anyPort25Ok
 
   return {
     status: canDeliverExternal ? "pass" : "fail",
