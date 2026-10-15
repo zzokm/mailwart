@@ -222,6 +222,14 @@ export async function initDatabase(): Promise<void> {
           value JSONB NOT NULL,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+
+        CREATE TABLE IF NOT EXISTS user_webmail_settings (
+          user_id VARCHAR(64) PRIMARY KEY,
+          client VARCHAR(32) NOT NULL DEFAULT 'rav',
+          features JSONB NOT NULL DEFAULT '{}',
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_webmail_user_id ON user_webmail_settings(user_id);
       `)
 
       // 2. Seed primary admin account yehia

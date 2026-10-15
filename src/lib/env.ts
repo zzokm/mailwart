@@ -5,6 +5,8 @@ const envSchema = z.object({
   STALWART_ADMIN_USER: z.string().optional(),
   STALWART_ADMIN_PASSWORD: z.string().optional(),
   ROUNDCUBE_URL: z.string().url().default("https://mail.example.com/webmail/"),
+  RAV_URL: z.string().url().default("https://mail.example.com/rav/"),
+  DEFAULT_WEBMAIL_CLIENT: z.enum(["rav", "roundcube"]).default("rav"),
   WEBMAIL_SSO_SECRET: z.string().min(32).optional(),
   STALWART_ADMIN_UI_URL: z
     .string()
@@ -44,6 +46,8 @@ function readRawEnv(): Record<string, string | undefined> {
     STALWART_ADMIN_USER: unset(process.env.STALWART_ADMIN_USER),
     STALWART_ADMIN_PASSWORD: unset(process.env.STALWART_ADMIN_PASSWORD),
     ROUNDCUBE_URL: unset(process.env.ROUNDCUBE_URL),
+    RAV_URL: unset(process.env.RAV_URL),
+    DEFAULT_WEBMAIL_CLIENT: unset(process.env.DEFAULT_WEBMAIL_CLIENT),
     WEBMAIL_SSO_SECRET: unset(process.env.WEBMAIL_SSO_SECRET),
     STALWART_ADMIN_UI_URL: unset(process.env.STALWART_ADMIN_UI_URL),
     APP_ADMIN_USER: unset(process.env.APP_ADMIN_USER),
@@ -100,6 +104,14 @@ export function getStalwartConfig(): StalwartConfig | null {
 
 export function getRoundcubeUrl(): string {
   return getEnv().ROUNDCUBE_URL;
+}
+
+export function getRavUrl(): string {
+  return getEnv().RAV_URL;
+}
+
+export function getDefaultWebmailClient(): "rav" | "roundcube" {
+  return getEnv().DEFAULT_WEBMAIL_CLIENT;
 }
 
 export function getStalwartAdminUiUrl(): string {

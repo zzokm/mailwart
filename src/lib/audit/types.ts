@@ -24,6 +24,7 @@ export type AuditAction =
   | "bulk.complete"
   | "bulk.abort"
   | "webmail.sso"
+  | "webmail.settings_update"
   | "app_password.create"
   | "app_password.revoke"
   | "copilot.settings_update"
