@@ -4,9 +4,10 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6-blue.svg)](https://www.typescriptlang.org/)
 [![Stalwart](https://img.shields.io/badge/Powered%20By-Stalwart%20Mail%20Server-orange.svg)](https://stalw.art/)
+[![Rav](https://img.shields.io/badge/Webmail-Rav%20(Rust%20%2B%20Next.js)-red.svg)](https://github.com/naust-mail/rav)
 [![Roundcube](https://img.shields.io/badge/Webmail-Roundcube-green.svg)](https://roundcube.net/)
 
-**mailwart** is an open-source, cPanel-grade administration console and deliverability control plane for [Stalwart Mail Server](https://stalw.art/) and [Roundcube Webmail](https://roundcube.net/).
+**mailwart** is an open-source, cPanel-grade administration console and deliverability control plane for [Stalwart Mail Server](https://stalw.art/) with dual-engine webmail support: [Rav](https://github.com/naust-mail/rav) by [Naust Mail](https://github.com/naust-mail) (Next.js 16 + Rust) and [Roundcube Webmail](https://roundcube.net/).
 
 Equipped with an **embedded AI Copilot**, **1-Click Cloudflare DNS Sync**, a **full 10-point Deliverability Audit Engine**, and **Zero-Password Webmail SSO**, mailwart makes running a modern, self-hosted, sovereign mail infrastructure enjoyable and production-ready.
 
@@ -199,6 +200,7 @@ By choosing AGPL-3.0:
 
 ## 🤝 Acknowledgments
 
+- **[Naust Mail](https://github.com/naust-mail)** for **[Rav](https://github.com/naust-mail/rav)**, the blazing-fast, modern webmail client built with Rust and Next.js.
 - **[Stalwart Labs](https://stalw.art/)** for creating the modern, memory-safe Rust mail server.
 - **[Roundcube](https://roundcube.net/)** for the reliable open-source webmail interface.
 - Built with [Next.js](https://nextjs.org/), [Tailwind CSS](https://tailwindcss.com/), and [Lucide Icons](https://lucide.dev/).

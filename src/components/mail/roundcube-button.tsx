@@ -1,13 +1,9 @@
 "use client"
 
-import { ExternalLink } from "lucide-react"
+import { useState } from "react"
+import { ExternalLink, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 
 export function RoundcubeButton({
   href,
@@ -18,33 +14,72 @@ export function RoundcubeButton({
   email?: string
   iconOnly?: boolean
 }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        delay={0}
-        render={
-          <Button
-            variant="outline"
-            size={iconOnly ? "icon-sm" : "sm"}
-            nativeButton={false}
-            render={
-              <a
-                href={href}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={`Open webmail for ${email ?? "mailbox"}`}
-              />
-            }
-          />
+  const [isPending, setIsPending] = useState(false)
+
+  const handleOpenWebmail = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (isPending) return
+    setIsPending(true)
+
+    // Pre-open a blank window synchronously during the user click to avoid popup blocker
+    const newTab = window.open("about:blank", "_blank")
+    if (newTab) {
+      try {
+        newTab.opener = null
+      } catch {
+        // ignore
+      }
+    }
+
+    try {
+      const res = await fetch(href, {
+        headers: { Accept: "application/json" },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data?.url && newTab) {
+          newTab.location.href = data.url
+          return
         }
-      >
-        <ExternalLink className="size-3.5" data-icon={iconOnly ? undefined : "inline-start"} />
-        {iconOnly ? null : "Open webmail"}
-      </TooltipTrigger>
-      <TooltipContent className="max-w-xs text-xs">
-        Opens {email ?? "this mailbox"} in webmail with a short-lived signed
-        login.
-      </TooltipContent>
-    </Tooltip>
+      }
+      if (newTab) {
+        newTab.location.href = href
+      } else {
+        window.open(href, "_blank", "noopener,noreferrer")
+      }
+    } catch {
+      if (newTab) {
+        newTab.location.href = href
+      } else {
+        window.open(href, "_blank", "noopener,noreferrer")
+      }
+    } finally {
+      setIsPending(false)
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size={iconOnly ? "icon-sm" : "sm"}
+      disabled={isPending}
+      onClick={handleOpenWebmail}
+      aria-label={`Open webmail for ${email ?? "mailbox"}`}
+    >
+      {isPending ? (
+        <Loader2
+          className="size-3.5 animate-spin"
+          data-icon={iconOnly ? undefined : "inline-start"}
+        />
+      ) : (
+        <ExternalLink
+          className="size-3.5"
+          data-icon={iconOnly ? undefined : "inline-start"}
+        />
+      )}
+      {iconOnly ? null : isPending ? "Opening..." : "Open webmail"}
+    </Button>
   )
 }

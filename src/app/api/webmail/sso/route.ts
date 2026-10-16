@@ -48,24 +48,35 @@ export async function GET(request: NextRequest) {
       detail: `Opened ${clientLabel} via SSO`,
     })
 
+    let targetUrl: URL
     if (client === "roundcube") {
       const token = createWebmailSsoToken(email)
       const webmail = new URL(getRoundcubeUrl())
       webmail.searchParams.set("_task", "login")
       webmail.searchParams.set("_em_sso", token)
-      return NextResponse.redirect(webmail)
+      targetUrl = webmail
+    } else {
+      // Rav Webmail: redirect to webmail.<domain>/sso?token=... or configured RAV_URL
+      const token = createWebmailSsoToken(email)
+      const mailboxDomain = email.split("@")[1]
+      let ravTargetBase = getRavUrl()
+      if (mailboxDomain && !mailboxDomain.includes("example.com")) {
+        ravTargetBase = `https://webmail.${mailboxDomain}/`
+      }
+      const ssoUrl = new URL("/sso", ravTargetBase)
+      ssoUrl.searchParams.set("token", token)
+      targetUrl = ssoUrl
     }
 
-    // Rav Webmail: redirect to webmail.<domain>/sso?token=... or configured RAV_URL
-    const token = createWebmailSsoToken(email)
-    const mailboxDomain = email.split("@")[1]
-    let ravTargetBase = getRavUrl()
-    if (mailboxDomain && !mailboxDomain.includes("example.com")) {
-      ravTargetBase = `https://webmail.${mailboxDomain}/`
+    const wantsJson =
+      request.headers.get("accept")?.includes("application/json") ||
+      request.nextUrl.searchParams.get("format") === "json"
+
+    if (wantsJson) {
+      return NextResponse.json({ url: targetUrl.toString() })
     }
-    const ssoUrl = new URL("/sso", ravTargetBase)
-    ssoUrl.searchParams.set("token", token)
-    return NextResponse.redirect(ssoUrl)
+
+    return NextResponse.redirect(targetUrl)
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Webmail SSO is unavailable."
