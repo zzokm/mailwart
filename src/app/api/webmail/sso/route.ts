@@ -9,22 +9,58 @@ import type { WebmailClientType } from "@/lib/webmail/types"
 
 export const runtime = "nodejs"
 
-export async function GET(request: NextRequest) {
-  let session
+async function handleWebmailSso(request: NextRequest) {
+  const wantsJson =
+    request.headers.get("accept")?.includes("application/json") ||
+    request.nextUrl.searchParams.get("format") === "json"
+
+  let session: Awaited<ReturnType<typeof requireSession>>
   try {
     session = await requireSession()
   } catch {
-    const login = new URL("/login", request.url)
+    if (wantsJson) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    const host =
+      request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ||
+      request.headers.get("host")?.trim() ||
+      request.nextUrl.host
+    const proto =
+      request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
+      request.nextUrl.protocol?.replace(":", "") ||
+      "https"
+    const login = new URL("/login", `${proto}://${host}`)
     login.searchParams.set("from", "/dashboard/mailboxes")
     return NextResponse.redirect(login)
   }
 
-  const email = request.nextUrl.searchParams.get("email")?.trim().toLowerCase()
+  let email = request.nextUrl.searchParams.get("email")?.trim().toLowerCase()
+  let clientParam = request.nextUrl.searchParams.get("client")?.trim().toLowerCase()
+
+  if (request.method === "POST") {
+    try {
+      const body = await request.clone().json().catch(() => ({}))
+      if (body?.email && typeof body.email === "string") {
+        email = body.email.trim().toLowerCase()
+      }
+      if (body?.client && typeof body.client === "string") {
+        clientParam = body.client.trim().toLowerCase()
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    if (wantsJson) {
+      return NextResponse.json(
+        { error: "A valid mailbox email is required." },
+        { status: 400 }
+      )
+    }
     return new NextResponse("A valid mailbox email is required.", { status: 400 })
   }
 
-  const clientParam = request.nextUrl.searchParams.get("client")?.trim().toLowerCase()
   let client: WebmailClientType = "rav"
 
   try {
@@ -68,10 +104,6 @@ export async function GET(request: NextRequest) {
       targetUrl = ssoUrl
     }
 
-    const wantsJson =
-      request.headers.get("accept")?.includes("application/json") ||
-      request.nextUrl.searchParams.get("format") === "json"
-
     if (wantsJson) {
       return NextResponse.json({ url: targetUrl.toString() })
     }
@@ -80,6 +112,17 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Webmail SSO is unavailable."
+    if (wantsJson) {
+      return NextResponse.json({ error: message }, { status: 503 })
+    }
     return new NextResponse(message, { status: 503 })
   }
+}
+
+export async function GET(request: NextRequest) {
+  return handleWebmailSso(request)
+}
+
+export async function POST(request: NextRequest) {
+  return handleWebmailSso(request)
 }
