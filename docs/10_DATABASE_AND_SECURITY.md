@@ -1,28 +1,60 @@
-# 10 — Database, Security & Deployment
+# 10 - Database, Security & Deployment
 
 ## 1. PostgreSQL Relational Schema (`src/lib/db/index.ts`)
 
 Mailwart utilizes **PostgreSQL 16** (`mailwart-postgres`) for persistent state, role-based access control, audit trails, and user management.
 
-```
-┌──────────────────┐       1:N       ┌──────────────────┐
-│      users       │ ───────────────►│     domains      │
-│  (Console Users) │                 │(Managed Domains) │
-└────────┬─────────┘                 └────────┬─────────┘
-         │                                    │
-         │ 1:N                                │ 1:N
-         ▼                                    ▼
-┌──────────────────┐                 ┌──────────────────┐
-│cloudflare_account│                 │    mailboxes     │
-│(API Tokens Pool) │                 │ (Account Mirror) │
-└──────────────────┘                 └──────────────────┘
-         │
-         │ 1:N
-         ▼
-┌──────────────────┐       1:N       ┌──────────────────┐
-│copilot_conversat.│ ───────────────►│deliverability_rep│
-│(Chat Transcripts)│                 │ (Audit History)  │
-└──────────────────┘                 └──────────────────┘
+```mermaid
+erDiagram
+    users ||--o{ domains : "owns (1:N)"
+    users ||--o{ cloudflare_accounts : "configures (1:N)"
+    users ||--o{ copilot_conversations : "holds (1:N)"
+    users ||--o{ audit_logs : "initiates (1:N)"
+    domains ||--o{ mailboxes : "contains (1:N)"
+    domains ||--o{ deliverability_reports : "audited by (1:N)"
+
+    users {
+        varchar id PK
+        varchar username UK
+        varchar email UK
+        text password_hash
+        varchar role "admin | user"
+    }
+    domains {
+        varchar id PK
+        varchar name UK
+        varchar owner_id FK
+        text description
+    }
+    mailboxes {
+        varchar id PK
+        varchar email UK
+        varchar domain_id FK
+        varchar owner_id FK
+        bigint quota_bytes
+        varchar status
+    }
+    audit_logs {
+        varchar id PK
+        timestamptz timestamp
+        varchar actor
+        varchar action
+        text target
+        jsonb meta
+    }
+    cloudflare_accounts {
+        varchar id PK
+        varchar user_id FK
+        varchar account_name
+        text api_token
+        varchar status
+    }
+    deliverability_reports {
+        varchar id PK
+        varchar domain_id FK
+        numeric score
+        jsonb check_results
+    }
 ```
 
 ### Table Definitions
@@ -92,19 +124,23 @@ Key-value store holding global configurations, including system outbound SMTP ma
 
 ## 2. Authentication & Session Security
 
-```
-┌─────────────────┐       1. POST /api/auth/login        ┌─────────────────┐
-│ Operator Browser│ ───────────────────────────────────► │   mailwart      │
-│                 │                                      │ (Next.js Server)│
-│                 │ ◄─────────────────────────────────── │                 │
-│                 │   2. Set-Cookie: mailwart_session    └─────────────────┘
-│                 │      (iron-session AES-256-GCM)               │
-│                 │                                               │ 3. Database
-│                 │       3. Authenticated Requests               ▼
-│                 │          Cookie sent automatically   ┌─────────────────┐
-│                 │ ───────────────────────────────────► │ mailwart-pg     │
-└─────────────────┘                                      │ (PostgreSQL 16) │
-                                                         └─────────────────┘
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Operator as Operator Browser
+    participant Server as mailwart (Next.js Server)
+    participant DB as mailwart-pg (PostgreSQL 16)
+
+    Operator->>Server: 1. POST /api/auth/login (username + password)
+    Server->>DB: Query user by username
+    DB-->>Server: User record (salt + password_hash)
+    Note over Server: Verify SHA-256(password + salt) == password_hash
+    Server->>Server: Seal iron-session cookie (AES-256-GCM)
+    Server-->>Operator: 2. Set-Cookie: mailwart_session (HttpOnly, Secure, SameSite=Lax)
+    Operator->>Server: 3. Subsequent Authenticated Requests (Cookie sent automatically)
+    Server->>DB: Query tenant-scoped domains & mailboxes
+    DB-->>Server: Records
+    Server-->>Operator: Rendered Dashboard UI
 ```
 
 ### 1. `iron-session` Sealed Cookies

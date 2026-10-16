@@ -1,4 +1,4 @@
-# 07 — Cloudflare DNS Automation
+# 07 - Cloudflare DNS Automation
 
 ## 1. Overview & Capabilities
 
@@ -49,22 +49,29 @@ When a domain (e.g. `sub.example.com` or `example.com`) is added:
 
 ## 4. One-Click Provisioning Engine (`provisionDomainDns`)
 
+```mermaid
+flowchart TD
+    Start([1-Click DNS Provisioning]) --> Detect[Query Cloudflare API for Apex Zone]
+    Detect --> CheckExisting{Inspect Existing Records}
+    CheckExisting -->|Duplicate or Legacy| Reconcile[Detect SPF Conflicts & Stale MX]
+    CheckExisting -->|Clean Zone| Provision[Generate Optimal DNS Record Set]
+    Reconcile --> MergeSPF[Intelligently Merge SPF: include + mx + ip4]
+    MergeSPF --> Provision
+    Provision --> Upsert["Upsert Records (MX, A, CNAME, SPF, DKIM, DMARC)"]
+    Upsert --> Verify[Verify Live Resolution via 1.1.1.1]
+    Verify --> Done([Domain Ready & Protected])
+```
+
 When an operator provisions a domain, mailwart automatically synchronizes 6 critical DNS records:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                       Automated DNS Records Provisioned                     │
-├───────┬───────────────────────────────┬──────────┬──────────────────────────┤
-│ Type  │ Record Name                   │ TTL / Prio│ Record Content          │
-├───────┼───────────────────────────────┼──────────┼──────────────────────────┤
-│ MX    │ example.com                   │ Prio: 10 │ mail.example.com         │
-│ A     │ mail.example.com              │ DNS-only │ <VPS_PUBLIC_IP> (23.94...)│
-│ CNAME │ webmail.example.com           │ Proxied  │ email.yehia.dev          │
-│ TXT   │ example.com (SPF)             │ Auto     │ v=spf1 mx ip4:... ~all   │
-│ TXT   │ <selector>._domainkey.example │ Auto     │ v=DKIM1; k=rsa; p=MII... │
-│ TXT   │ _dmarc.example.com            │ Auto     │ v=DMARC1; p=reject; ...  │
-└───────┴───────────────────────────────┴──────────┴──────────────────────────┘
-```
+| Record Type | Record Name | TTL / Priority | Record Content | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| `MX` | `example.com` | Priority: 10 | `mail.example.com` | Mail Exchanger routing |
+| `A` | `mail.example.com` | DNS-only (Auto) | `<VPS_PUBLIC_IP>` (23.94...) | Direct SMTP / IMAP socket |
+| `CNAME` | `webmail.example.com` | Proxied | `email.yehia.dev` | Ingress for user webmail |
+| `TXT` | `example.com` (SPF) | Auto | `v=spf1 mx ip4:<SERVER_IP> ~all` | Sender Policy Framework |
+| `TXT` | `<selector>._domainkey.example` | Auto | `v=DKIM1; k=rsa; p=MII...` | 2048-bit DKIM signature key |
+| `TXT` | `_dmarc.example.com` | Auto | `v=DMARC1; p=reject; rua=mailto:...` | Domain authentication policy |
 
 ### 1. Mail Exchanger (MX)
 - Points to `mail.<domain>` with priority `10`.

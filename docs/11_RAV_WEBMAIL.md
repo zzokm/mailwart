@@ -1,4 +1,4 @@
-# 11 — Rav Webmail & Dual-Engine Architecture
+# 11 - Rav Webmail & Dual-Engine Architecture
 
 ## 1. Overview & Dual-Engine Architecture
 
@@ -6,39 +6,28 @@
 
 Rather than forcing an immediate breaking migration, mailwart runs a **dual-container topology**: both Rav and Roundcube run simultaneously on Docker Compose and Dokploy. Each user can independently select their preferred webmail client in **Settings &rarr; Webmail**, customize features specific to their chosen engine, and launch zero-password Single Sign-On (SSO) sessions in a single click.
 
-```
-┌────────────────────────────────────────────────────────┐
-│                   Operator Browser                     │
-│  Clicks "Open Webmail" on mailbox alice@example.com    │
-└───────────────────────────┬────────────────────────────┘
-                            │ 1. GET /api/webmail/sso?email=alice@...
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│               mailwart (Next.js 16)                    │
-│  - Inspects user settings: client = "rav"              │
-│  - Generates signed HMAC SHA-256 session token         │
-│  - Records audit event: webmail.sso                    │
-└───────────────┬────────────────────────┬───────────────┘
-                │                        │
-  2a. In-cluster handshake               │ 2b. Fallback redirect
-      (Direct cookie injection)          │     (?email=...&_em_sso=...)
-                ▼                        ▼
-┌────────────────────────────────────────────────────────┐
-│                 Rav Webmail Engine                     │
-│   ghcr.io/naust-mail/rav:latest (Port 3001)           │
-│  - Axum / Tokio asynchronous Rust backend              │
-│  - SessionStore authentication & cookie issuance       │
-│  - Tantivy local full-text search indexer              │
-│  - WebSocket live push server                          │
-└───────────────┬────────────────────────────────────────┘
-                │ 3. Secure IMAP / SMTP
-                ▼
-┌────────────────────────────────────────────────────────┐
-│              Stalwart Mail Server                      │
-│  - IMAP SSL (Port 993)                                 │
-│  - SMTP Submission TLS (Port 587)                      │
-│  - ManageSieve (Port 4190)                             │
-└────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Operator as Operator Browser
+    participant Console as mailwart (Next.js 16)
+    participant Rav as Rav Engine (Axum + React 19 :3001)
+    participant Stalwart as Stalwart Mail Server
+
+    Operator->>Console: Click "Open Webmail" (GET /api/webmail/sso?email=alice@example.com)
+    Note over Console: 1. Reads client setting: "rav"<br/>2. Mints signed HMAC SHA-256 session token<br/>3. Records audit event: webmail.sso
+    alt In-cluster direct handshake
+        Console->>Rav: POST /api/auth/sso-handshake (signed payload)
+        Rav-->>Console: Session cookie token
+        Console-->>Operator: 302 Redirect with authenticated session
+    else Fallback URL token
+        Console-->>Operator: 302 Redirect (/rav/?email=alice@...&_em_sso=token)
+        Operator->>Rav: GET /rav/?email=alice@...&_em_sso=token
+        Rav->>Rav: Verify HMAC token in SessionStore
+    end
+    Rav->>Stalwart: Connect IMAP (993) / SMTP (587) via Master SASL
+    Stalwart-->>Rav: Mailbox stream authenticated
+    Rav-->>Operator: Instant mailbox view with live WebSocket push
 ```
 
 ---

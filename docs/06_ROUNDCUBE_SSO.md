@@ -1,4 +1,4 @@
-# 06 — Roundcube Webmail & Single Sign-On (SSO)
+# 06 - Roundcube Webmail & Single Sign-On (SSO)
 
 ## 1. Overview & Architecture
 
@@ -6,39 +6,23 @@
 
 An operator clicks "Webmail" anywhere in mailwart, and Roundcube opens authenticated as that mailbox in under two seconds.
 
-```
-┌─────────────────────────────────┐
-│        Operator Browser         │
-│  Clicks "Open Webmail" on       │
-│  mailbox ops@example.com        │
-└────────────────┬────────────────┘
-                 │ 1. GET /api/webmail/sso?email=ops@example.com
-                 ▼
-┌─────────────────────────────────┐
-│     mailwart (Next.js)          │
-│  - Verifies admin session       │
-│  - Mints HMAC SHA-256 token     │
-│  - Records audit log event      │
-└────────────────┬────────────────┘
-                 │ 2. HTTP 302 Redirect
-                 │    Location: /webmail/?_task=login&_em_sso=<token>
-                 ▼
-┌─────────────────────────────────┐
-│  Roundcube Container (PHP)      │
-│  - Plugin: em_sso.php           │
-│  - Verifies HMAC signature      │
-│  - Extracts target: ops@...     │
-└────────────────┬────────────────┘
-                 │ 3. SASL PLAIN Master Impersonation
-                 │    User: ops@example.com%admin@example.com
-                 │    Pass: STALWART_ADMIN_PASSWORD
-                 ▼
-┌─────────────────────────────────┐
-│     Stalwart Mail Server        │
-│  - Verifies admin privilege     │
-│  - Grants IMAP access to ops@   │
-│  - Injects ops@ identities      │
-└─────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Operator as Operator Browser
+    participant Console as mailwart (Next.js 16)
+    participant Roundcube as Roundcube Container (PHP em_sso)
+    participant Stalwart as Stalwart Mail Server
+
+    Operator->>Console: Click "Open Webmail" (GET /api/webmail/sso?email=ops@example.com)
+    Note over Console: 1. Verifies session<br/>2. Mints HMAC SHA-256 token (2m exp)<br/>3. Records audit log event
+    Console-->>Operator: HTTP 302 Redirect (/webmail/?_task=login&_em_sso=token)
+    Operator->>Roundcube: GET /webmail/?_task=login&_em_sso=token
+    Note over Roundcube: em_sso plugin verifies HMAC signature<br/>Extracts target mailbox: ops@example.com
+    Roundcube->>Stalwart: SASL PLAIN Master Impersonation<br/>User: ops@example.com%admin<br/>Pass: STALWART_ADMIN_PASSWORD
+    Note over Stalwart: Verifies master credentials<br/>Grants IMAP access to ops@
+    Stalwart-->>Roundcube: IMAP Authenticated OK
+    Roundcube-->>Operator: 302 Redirect to Roundcube Inbox (/webmail/?_task=mail)
 ```
 
 ---

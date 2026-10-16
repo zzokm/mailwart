@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Hash, Info, AlertTriangle, Lightbulb, ShieldAlert } from "lucide-react"
 import { CodeBlock } from "@/components/docs/code-block"
+import { MermaidDiagram } from "@/components/docs/mermaid-diagram"
 import { cn } from "@/lib/utils"
 
 import { FILE_TO_DOC_MAP } from "@/lib/docs-config"
@@ -205,12 +206,18 @@ export function MarkdownRenderer({ content }: { content: string }) {
           ),
           code: ({ className, children, ...props }) => {
             const match = /language-(\w+)/.exec(className || "")
+            const lang = match ? match[1]?.toLowerCase() : undefined
+
+            if (lang === "mermaid") {
+              return <MermaidDiagram chart={String(children).replace(/\n$/, "")} />
+            }
+
             const isMultiline = String(children).includes("\n")
 
             if (match || isMultiline) {
               return (
                 <CodeBlock
-                  language={match ? match[1] : undefined}
+                  language={lang}
                   value={String(children).replace(/\n$/, "")}
                 />
               )
@@ -247,7 +254,7 @@ export function MarkdownRenderer({ content }: { content: string }) {
             }
 
             // Check if link points to a markdown document (.md)
-            const mdMatch = href.match(/(?:^|\/|\.\/)(0\d_\w+\.md|10_\w+\.md|README\.md)(?:#(.+))?$/i)
+            const mdMatch = href.match(/(?:^|\/|\.\/)(0\d_\w+\.md|1\d_\w+\.md|README\.md)(?:#(.+))?$/i)
             if (mdMatch) {
               const filename = mdMatch[1]
               const hash = mdMatch[2] ? `#${mdMatch[2]}` : ""

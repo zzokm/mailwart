@@ -1,4 +1,4 @@
-# 05 — Stalwart Mail Server Integration
+# 05 - Stalwart Mail Server Integration
 
 ## 1. Overview & Protocol Specification
 
@@ -13,6 +13,22 @@ All management requests declare two JMAP capabilities:
 ---
 
 ## 2. JMAP Client Architecture (`src/lib/stalwart/client.ts`)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as Next.js Server Action
+    participant Client as Stalwart JMAP Client (client.ts)
+    participant Stalwart as Stalwart Server (:8080/jmap)
+
+    App->>Client: jmapCall([["x:Domain/get", {ids: ["dom_example_com"]}, "c0"]])
+    Note over Client: 1. Basic Auth: base64(adminUser:adminPassword)<br/>2. Capabilities: urn:ietf:params:jmap:core, urn:stalwart:jmap<br/>3. Timeout signal (AbortController 10s)
+    Client->>Stalwart: POST /jmap (JSON Payload)
+    Note over Stalwart: Process methodCalls batch
+    Stalwart-->>Client: 200 OK ({methodResponses: [["x:Domain/get", {...}, "c0"]]})
+    Client->>Client: responseById(res, "c0")
+    Client-->>App: Typed domain entity record
+```
 
 JMAP calls are executed server-side via `jmapCall()` using Node's native `fetch` with strict timeout controls:
 

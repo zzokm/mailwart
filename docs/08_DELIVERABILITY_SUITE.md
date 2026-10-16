@@ -1,4 +1,4 @@
-# 08 — Email Deliverability Suite
+# 08 - Email Deliverability Suite
 
 ## 1. Overview & Purpose
 
@@ -10,45 +10,53 @@ Ensuring that outbound email reaches the inbox rather than the spam folder requi
 
 ## 2. The 10-Point Deliverability Inspection Engine
 
+```mermaid
+flowchart TD
+    Trigger([Trigger Deliverability Checkup]) --> Parallel[Run 10 Parallel Audit Probes]
+    
+    subgraph DnsLayer["Layer 1: DNS Authentication"]
+        SPF["1. SPF Syntax & Mechanism"]
+        DKIM["2. DKIM Key & Stalwart Match"]
+        DMARC["3. DMARC Syntax & Policy"]
+        MX["4. MX Host & Priority"]
+        RDNS["5. Reverse DNS (rDNS/PTR)"]
+    end
+
+    subgraph NetworkLayer["Layer 2: Network & Socket Health"]
+        TLS["6. SSL/TLS Handshake (993, 465, 587)"]
+        RBL["7. DNSBL / Blacklists (Spamhaus, Barracuda, SpamCop)"]
+        EHLO["8. SMTP Banner & EHLO Hostname"]
+        AUTH["9. Outbound Relay Authentication"]
+    end
+
+    subgraph ScoringLayer["Layer 3: Live Scoring"]
+        MT["10. mail-tester.com Score (Target: >= 9.5/10)"]
+    end
+
+    Parallel --> DnsLayer
+    Parallel --> NetworkLayer
+    Parallel --> ScoringLayer
+
+    DnsLayer --> Aggregate[Aggregate Scores & Generate Fix Recommendations]
+    NetworkLayer --> Aggregate
+    ScoringLayer --> Aggregate
+    Aggregate --> Report([Deliverability Health Report & Badges])
+```
+
 When an operator triggers a deliverability checkup from the dashboard or API, the engine runs ten parallel audits across all managed domains:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                       10-Point Deliverability Test Matrix                   │
-├────┬────────────────────────────┬──────────────────┬────────────────────────┤
-│ #  │ Inspection Target          │ Evaluation Method│ Passing Criteria       │
-├────┼────────────────────────────┼──────────────────┼────────────────────────┤
-│ 1  │ SPF Record Syntax          │ Public DNS TXT   │ Single record, valid   │
-│    │                            │ query            │ mechanisms, ~all/-all  │
-├────┼────────────────────────────┼──────────────────┼────────────────────────┤
-│ 2  │ DKIM Cryptographic Key     │ Selector DNS TXT │ 2048-bit RSA/Ed25519   │
-│    │                            │ + Stalwart match │ public key published   │
-├────┼────────────────────────────┼──────────────────┼────────────────────────┤
-│ 3  │ DMARC Compliance           │ _dmarc DNS query │ Valid syntax, p=reject │
-│    │                            │                  │ or quarantine, rua set │
-├────┼────────────────────────────┼──────────────────┼────────────────────────┤
-│ 4  │ MX Host Validation         │ DNS MX query     │ Resolves to valid FQDN,│
-│    │                            │                  │ priority >= 10         │
-├────┼────────────────────────────┼──────────────────┼────────────────────────┤
-│ 5  │ Reverse DNS (rDNS / PTR)   │ Reverse IP query │ PTR record matches     │
-│    │                            │ (.in-addr.arpa)  │ outgoing mail FQDN     │
-├────┼────────────────────────────┼──────────────────┼────────────────────────┤
-│ 6  │ SSL / TLS Handshake        │ Native TLS probe │ Valid unexpired cert on│
-│    │                            │ (993, 465, 587)  │ IMAP & SMTP ports      │
-├────┼────────────────────────────┼──────────────────┼────────────────────────┤
-│ 7  │ DNSBL / RBL Blacklists     │ Reverse IP query │ Not listed on Spamhaus,│
-│    │                            │ on 3+ RBLs       │ Barracuda, or SpamCop  │
-├────┼────────────────────────────┼──────────────────┼────────────────────────┤
-│ 8  │ SMTP Banner & EHLO         │ Raw TCP probe    │ Clean 220 banner,      │
-│    │                            │ on port 25/587   │ FQDN matches hostname  │
-├────┼────────────────────────────┼──────────────────┼────────────────────────┤
-│ 9  │ Outbound Relay Auth        │ SMTP AUTH test   │ Requires authentication│
-│    │                            │                  │ for non-local relaying │
-├────┼────────────────────────────┼──────────────────┼────────────────────────┤
-│ 10 │ Third-Party Spam Score     │ mail-tester API  │ Scored >= 9.5 / 10 on  │
-│    │                            │ & HTML scraper   │ live test messages     │
-└────┴────────────────────────────┴──────────────────┴────────────────────────┘
-```
+| # | Inspection Target | Evaluation Method | Passing Criteria |
+| :-: | :--- | :--- | :--- |
+| **1** | **SPF Record Syntax** | Public DNS TXT query | Single record, valid mechanisms, `~all` or `-all` qualifier |
+| **2** | **DKIM Cryptographic Key** | Selector DNS TXT + Stalwart match | 2048-bit RSA/Ed25519 public key published and valid |
+| **3** | **DMARC Compliance** | `_dmarc` DNS query | Valid syntax, `p=reject` or `p=quarantine`, `rua` mailbox set |
+| **4** | **MX Host Validation** | DNS MX query | Resolves to valid FQDN, priority >= 10 |
+| **5** | **Reverse DNS (rDNS / PTR)** | Reverse IP query (`.in-addr.arpa`) | PTR record matches outgoing mail server FQDN |
+| **6** | **SSL / TLS Handshake** | Native TLS probe (993, 465, 587) | Valid unexpired TLS certificate on IMAP & SMTP ports |
+| **7** | **DNSBL / RBL Blacklists** | Reverse IP query on 3+ RBLs | Not listed on Spamhaus, Barracuda, or SpamCop |
+| **8** | **SMTP Banner & EHLO** | Raw TCP probe on port 25/587 | Clean 220 banner, FQDN matches mail server hostname |
+| **9** | **Outbound Relay Auth** | SMTP AUTH test | Requires authentication for non-local relaying |
+| **10** | **Third-Party Spam Score** | mail-tester API & scraper | Scored >= 9.5 / 10 on live test messages |
 
 ---
 

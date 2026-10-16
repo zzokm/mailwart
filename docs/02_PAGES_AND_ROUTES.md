@@ -1,4 +1,4 @@
-# 02 — Frontend Pages, Navigation & UX Workflows
+# 02 - Frontend Pages, Navigation & UX Workflows
 
 ## 1. Overview & Navigation System
 
@@ -13,26 +13,34 @@
 
 Every route under `/dashboard/*` is wrapped by `AppShell`, providing persistent layout chrome:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Exit Impersonation Banner (Visible only when administrator impersonates a user) │
-├──────────────┬──────────────────────────────────────────────────────────────┤
-│              │ [Toggle]  Breadcrumbs: Dashboard › Domains › example.com    │
-│              │ [JMAP Health Pill]  [Webmail Health Pill]  [Theme]  [Copilot]│
-│  Navigation  ├──────────────────────────────────────────────────────────────┤
-│   Sidebar    │                                                              │
-│              │                                                              │
-│  - Overview  │                                                              │
-│  - Domains   │                     Page Main Content Area                   │
-│  - Mailboxes │                                                              │
-│  - Routing   │                                                              │
-│  - Filters   │                                                              │
-│  - Bulk CSV  │                                                              │
-│  - Logs      │                                                              │
-│  - Settings  │                                                              │
-│              ├──────────────────────────────────────────────────────────────┤
-│  [Sign out]  │ Copilot Slide-out Rail (Desktop: right dock; Mobile: sheet)  │
-└──────────────┴──────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph ImpersonationBanner["Exit Impersonation Banner (Visible when admin impersonates a user)"]
+        BannerText["⚠️ Active Impersonation Session: ops@example.com · [Exit Impersonation]"]
+    end
+
+    subgraph Header["Top Header & Utility Bar"]
+        Toggle["[Sidebar Toggle]"]
+        Crumbs["Breadcrumbs: Dashboard › Domains › example.com"]
+        Health["[JMAP Health] [Webmail Health] [Theme Toggle] [Copilot Toggle]"]
+    end
+
+    subgraph Workspace["Main Workspace Grid"]
+        subgraph NavSidebar["Navigation Sidebar"]
+            NavItems["• Overview<br/>• Domains<br/>• Mailboxes<br/>• Routing<br/>• Filters<br/>• Bulk CSV<br/>• Deliverability<br/>• Audit Logs<br/>• Settings<br/><br/>[Sign Out]"]
+        end
+
+        subgraph MainContent["Page Main Content Area"]
+            PageContent["Server-Rendered Page Content<br/>(Metrics, Datatables, Forms, Detail Views)"]
+        end
+
+        subgraph CopilotRail["Copilot Panel"]
+            CopilotContent["AI Assistant Slide-out Drawer<br/>(Streaming Chat, Tool Confirmations)"]
+        end
+    end
+
+    ImpersonationBanner --> Header
+    Header --> Workspace
 ```
 
 ### Components in AppShell:

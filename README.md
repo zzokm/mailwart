@@ -65,26 +65,17 @@ Equipped with an **embedded AI Copilot**, **1-Click Cloudflare DNS Sync**, a **f
 
 ## 🏗️ Architecture
 
-```
-                       ┌───────────────────────────────┐
-                       │          mailwart UI          │
-                       │   Next.js 16 App Router       │
-                       │   (Tailwind, React 19, Auth)  │
-                       └───────┬───────────────┬───────┘
-                               │               │
-                     REST/JMAP │               │ Cloudflare API
-                               ▼               ▼
-        ┌─────────────────────────────┐   ┌───────────────────────────┐
-        │    Stalwart Mail Server     │   │      Cloudflare DNS       │
-        │   (SMTP, IMAP, JMAP, MTA)   │   │ (Auto SPF/DKIM/DMARC/MX)  │
-        └──────────────┬──────────────┘   └───────────────────────────┘
-                       │
-             IMAP/SSL  │ Signed Token SSO
-                       ▼
-        ┌─────────────────────────────┐
-        │     Roundcube Webmail       │
-        │       (em_sso plugin)       │
-        └─────────────────────────────┘
+```mermaid
+graph TD
+    UI["mailwart UI<br/><b>Next.js 16 App Router</b><br/>Tailwind, React 19, Auth"]
+    Stalwart["Stalwart Mail Server<br/><b>SMTP, IMAP, JMAP, MTA</b>"]
+    Cloudflare["Cloudflare DNS<br/><b>Auto SPF / DKIM / DMARC / MX</b>"]
+    Webmail["Roundcube & Rav Webmail<br/><b>Signed Token SSO</b>"]
+
+    UI -->|"REST / JMAP"| Stalwart
+    UI -->|"Cloudflare API"| Cloudflare
+    Stalwart -->|"IMAP / SSL (SASL Impersonation)"| Webmail
+    UI -.->|"One-Click SSO Handshake"| Webmail
 ```
 
 ---

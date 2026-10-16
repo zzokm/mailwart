@@ -1,4 +1,4 @@
-# 09 — AI Copilot & Tool Registry
+# 09 - AI Copilot & Tool Registry
 
 ## 1. Overview & Architecture
 
@@ -6,37 +6,32 @@
 
 Operators can manage their mail server using natural language (e.g. *"Create 5 mailboxes for the marketing team with 2GB quotas"* or *"Check why example.com is failing SPF"*).
 
-```
-┌─────────────────────────────────┐
-│       Operator Browser          │
-│   Copilot Chat Panel Drawer     │
-│   (useChat hook from @ai-sdk)   │
-└────────────────┬────────────────┘
-                 │ 1. POST /api/copilot/chat (UI Message Stream)
-                 ▼
-┌─────────────────────────────────┐
-│     Next.js AI Runtime          │
-│   - Rate Limit Verification     │
-│   - Provider Resolver           │
-│   - Model Instantiation         │
-│   - System Prompt Injection     │
-└────────────────┬────────────────┘
-                 │ 2. Streaming LLM Request (OpenAI, Claude, Gemini, etc.)
-                 ▼
-┌─────────────────────────────────┐
-│      AI Model (External)        │
-│   - Analyzes user request       │
-│   - Selects Tools from Registry │
-└────────────────┬────────────────┘
-                 │ 3. Tool Calls (e.g. `create_mailbox`, `generate_dkim`)
-                 ▼
-┌─────────────────────────────────┐
-│    mailwart Tool Executor       │
-│  - Parameter Zod Validation     │
-│  - Human-in-the-Loop Check      │
-│  - Runs Server Action           │
-│  - Records Audit Event          │
-└─────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Operator as Operator Browser
+    participant Drawer as Copilot Chat Drawer (useChat)
+    participant NextAI as Next.js AI Runtime (/api/copilot/chat)
+    participant Model as External LLM (OpenAI / Claude / Gemini)
+    participant Registry as Tool Registry & Executor (48 Tools)
+    participant Stalwart as Stalwart / Postgres / Cloudflare
+
+    Operator->>Drawer: Enters natural language command
+    Drawer->>NextAI: POST /api/copilot/chat (UI Message Stream)
+    Note over NextAI: Rate limit verification · Provider resolver<br/>Model instantiation · System prompt injection
+    NextAI->>Model: Streaming request with Tool Definitions
+    Model-->>NextAI: Model selects tool (e.g. create_mailbox)
+    NextAI->>Registry: Parameter validation via Zod
+    alt Destructive Tool (Requires Confirmation)
+        Registry-->>Operator: Render confirmation card in chat UI
+        Operator->>Registry: Click "Approve & Execute"
+    end
+    Registry->>Stalwart: Run Server Action / Mutation
+    Stalwart-->>Registry: Result payload (ActionResult)
+    Registry-->>NextAI: Tool execution output
+    NextAI->>Model: Tool result data
+    Model-->>NextAI: Natural language commentary & suggestions
+    NextAI-->>Drawer: Stream response back to operator chat
 ```
 
 ---
@@ -133,21 +128,21 @@ Copilot has access to 48 strongly-typed administrative tools that map directly t
 
 Destructive tools (deleting domains, destroying mailboxes, mass password resets) are protected by a mandatory confirmation gate:
 
-```
-┌────────────────────────────────────────────────────────┐
-│                   AI Copilot Chat UI                   │
-│                                                        │
-│  Copilot: "I'm ready to delete the mailbox             │
-│            test@example.com. Please confirm:"          │
-│                                                        │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │ ⚠️ Confirm Action: destroy_mailbox               │  │
-│  │ Target: test@example.com                         │  │
-│  │ Effect: All stored emails and data will be lost. │  │
-│  │                                                  │  │
-│  │    [ Cancel ]         [ Approve & Execute ]      │  │
-│  └──────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    OperatorPrompt[Operator prompts Copilot in chat] --> LLMDecision[LLM selects tool e.g. destroy_mailbox]
+    LLMDecision --> Classification{Tool Risk Classification}
+    
+    Classification -->|Read-Only e.g. get_health| AutoRun[Execute Server Action immediately]
+    Classification -->|Destructive e.g. destroy_mailbox| ApprovalGate[Render Interactive Approval Card in Chat]
+    
+    ApprovalGate --> UserChoice{Operator Decision}
+    UserChoice -->|Click Cancel| Abort[Reject Execution & Notify Operator]
+    UserChoice -->|Click Approve & Execute| Authorize[Execute Server Action with verified payload]
+    
+    Authorize --> AuditLog[Record Audit Event: actor=copilot:username]
+    AutoRun --> StreamBack[Stream Markdown Result to Chat]
+    AuditLog --> StreamBack
 ```
 
 1. **Read-Only Tools:** (e.g. `get_health`, `list_domains`, `get_mailbox`) execute immediately without user interruption.

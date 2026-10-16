@@ -1,4 +1,4 @@
-# 04 — Server Actions Catalog
+# 04 - Server Actions Catalog
 
 ## 1. Overview & Action Contract
 

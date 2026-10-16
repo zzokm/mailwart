@@ -1,4 +1,4 @@
-# 01 — System Architecture & Infrastructure
+# 01 - System Architecture & Infrastructure
 
 ## 1. Overview & Purpose
 
@@ -22,32 +22,28 @@
 
 The production deployment consists of three co-located containers managed via Dokploy Docker Compose, interfacing with external Traefik and Stalwart services.
 
-```
-                           ┌────────────────────────────────────────┐
-                           │          Host / VPS Environment        │
-                           │                                        │
-                           │   ┌────────────────────────────────┐   │
-                           │   │         Traefik Proxy          │   │
-                           │   │    (dokploy-network bridge)    │   │
-                           │   └───────────────┬────────────────┘   │
-                           │                   │                    │
-        ┌──────────────────┼───────────────────┼────────────────────┼──────────────────┐
-        │                  │                   │                    │                  │
-        ▼                  ▼                   ▼                    ▼                  ▼
-┌───────────────┐  ┌───────────────┐   ┌───────────────┐    ┌───────────────┐  ┌───────────────┐
-│ email-manager │  │   roundcube   │   │ mailwart-pg   │    │ stalwart-mail │  │ Other Compose │
-│ (Next.js 16)  │  │ (Apache+PHP)  │   │ (Postgres 16) │    │ (Mail Server) │  │  Deployments  │
-│ Port 3000     │  │ Port 80       │   │ Port 5432     │    │ JMAP: 8080    │  │               │
-│               │  │               │   │               │    │ IMAP: 993     │  │               │
-│               │  │               │   │               │    │ SMTP: 587     │  │               │
-└───────┬───────┘  └───────┬───────┘   └───────┬───────┘    └───────┬───────┘  └───────────────┘
-        │                  │                   │                    │
-        └──────────────────┴─────────┬─────────┴────────────────────┘
-                                     │
-                        Docker Network Connections:
-                        - default (internal bridge)
-                        - dokploy-network (ingress from Traefik)
-                        - stalwart-net (communication with Stalwart)
+```mermaid
+graph TD
+    subgraph Host["Host / VPS Environment"]
+        Traefik["Traefik Reverse Proxy<br/><code>dokploy-network bridge</code>"]
+    end
+
+    subgraph InternalCompose["Dokploy Docker Compose Stack (default network)"]
+        NextApp["email-manager<br/><b>Next.js 16</b><br/>Port 3000"]
+        Roundcube["roundcube<br/><b>Apache + PHP 8</b><br/>Port 80"]
+        Postgres["mailwart-pg<br/><b>PostgreSQL 16</b><br/>Port 5432"]
+    end
+
+    subgraph ExternalServices["External Co-Located Containers"]
+        Stalwart["stalwart-mail<br/><b>Mail Server</b><br/>JMAP 8080 · IMAP 993 · SMTP 587"]
+        OtherApps["Other Compose<br/>Deployments"]
+    end
+
+    Traefik -->|":3000 (Console UI)"| NextApp
+    Traefik -->|":80 (/webmail or direct)"| Roundcube
+    NextApp -->|"Internal Bridge"| Postgres
+    NextApp -->|"stalwart-net (JMAP)"| Stalwart
+    Roundcube -->|"stalwart-net (IMAP/SMTP/SASL)"| Stalwart
 ```
 
 ### Container Specifications
@@ -83,35 +79,35 @@ The production deployment consists of three co-located containers managed via Do
 
 Mailwart strictly enforces Next.js App Router boundaries to ensure server security and performance:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                       React Server Components (RSC)                         │
-│ - First paint of authenticated layouts and page shells.                     │
-│ - Direct database queries (`src/lib/db/*`) and JMAP queries.                │
-│ - Zero bundle footprint sent to the browser.                                │
-│ - Never exposes API keys, Stalwart passwords, or database credentials.      │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                         Hydrates Client Islands & Forms
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           Client Components ("use client")                  │
-│ - Interactive UI: Datatables, search inputs, dialogs, sheets, tabs.         │
-│ - Form state handling (React Hook Form + Zod resolvers).                   │
-│ - Theme switching (`next-themes`) and Copilot chat sliding drawer.         │
-│ - Triggers Server Actions via React Server Transitions (`startTransition`). │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                       Calls Server Actions & API Handlers
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           Server Actions ("use server")                     │
-│ - All mutations (create/update/delete domains, mailboxes, routing rules).   │
-│ - Cryptographic operations (HMAC SSO token generation, password hashing).   │
-│ - Validates all inputs using Zod schemas (`src/lib/validations/*`).         │
-│ - Records structured audit events in PostgreSQL and disk JSONL.             │
-│ - Returns standardized `ActionResult<T>`: `{ ok: true, data }` or error.    │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph RSC["React Server Components (RSC)"]
+        direction TB
+        RSC1["- First paint of authenticated layouts and page shells"]
+        RSC2["- Direct database queries (src/lib/db/*) and JMAP queries"]
+        RSC3["- Zero client bundle footprint"]
+        RSC4["- Never exposes API keys, Stalwart passwords, or DB secrets"]
+    end
+
+    subgraph ClientComp["Client Components ('use client')"]
+        direction TB
+        CC1["- Interactive UI: Datatables, search inputs, dialogs, sheets, tabs"]
+        CC2["- Form state handling (React Hook Form + Zod resolvers)"]
+        CC3["- Theme switching (next-themes) and Copilot chat drawer"]
+        CC4["- Triggers Server Actions via React Transitions (startTransition)"]
+    end
+
+    subgraph ServerActions["Server Actions ('use server')"]
+        direction TB
+        SA1["- Mutations: Create/update/delete domains, mailboxes, routing rules"]
+        SA2["- Cryptographic ops: HMAC SSO tokens, password hashing"]
+        SA3["- Validates all inputs using Zod schemas (src/lib/validations/*)"]
+        SA4["- Records structured audit events in PostgreSQL and JSONL"]
+        SA5["- Returns standardized ActionResult: { ok: true, data } or error"]
+    end
+
+    RSC -->|"Hydrates Client Islands & Forms"| ClientComp
+    ClientComp -->|"Calls Server Actions & API Handlers"| ServerActions
 ```
 
 ---

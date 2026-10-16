@@ -1,4 +1,4 @@
-# 03 — HTTP API Endpoints Reference
+# 03 - HTTP API Endpoints Reference
 
 ## 1. Overview
 

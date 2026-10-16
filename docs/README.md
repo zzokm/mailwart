@@ -1,4 +1,4 @@
-# mailwart — Technical Documentation
+# mailwart - Technical Documentation
 
 Welcome to the comprehensive technical documentation for **mailwart**, a modern, cPanel-grade Stalwart Mail Server & Roundcube Webmail management console with an integrated AI Copilot.
 
@@ -29,47 +29,26 @@ This documentation directory is organized into modular guides covering every lay
 
 ## High-Level System Architecture
 
-```
-                                  HTTPS (Port 443)
-                                          │
-                                          ▼
-                            ┌───────────────────────────┐
-                            │      Traefik Ingress      │
-                            │  (Dokploy Reverse Proxy)  │
-                            └─────────────┬─────────────┘
-                                          │
-            ┌─────────────────────────────┼─────────────────────────────┐
-            │                             │                             │
-    Host: email.domain.com        Path: /webmail                Direct Webmail
-            │                             │               webmail.* / mail.*
-            ▼                             ▼                             ▼
-┌───────────────────────┐     ┌───────────────────────┐                 │
-│     email-manager     │     │  Roundcube Container  │ ◄───────────────┘
-│   (Next.js 16 App)    │     │    (PHP 8 + Apache)   │
-│  - React Server Comp. │     │  - Elastic Skin       │
-│  - Server Actions     │     │  - em_sso Plugin      │
-│  - Copilot Engine     │     │  - ManageSieve        │
-└───────────┬───────────┘     └───────────┬───────────┘
-            │                             │
-            │ JMAP (Port 8080)            │ IMAP (993) / SMTP (587)
-            │ Basic Auth + JSON           │ Master Impersonation (user%admin)
-            ▼                             ▼
-┌─────────────────────────────────────────────────────┐
-│                 Stalwart Mail Server                │
-│    Directory, MTA, IMAP, SMTP, Sieve, JMAP Server   │
-└─────────────────────────────────────────────────────┘
-            │
-            │ PostgreSQL Connection
-            ▼
-┌───────────────────────┐
-│   mailwart-postgres   │
-│   (PostgreSQL 16)     │
-│  - Users & RBAC       │
-│  - Audit Logs         │
-│  - Delivery Logs      │
-│  - Copilot History    │
-│  - System Settings    │
-└───────────────────────┘
+```mermaid
+graph TD
+    Inbound["HTTPS Inbound Traffic (Port 443)"] --> Traefik["Traefik Reverse Proxy<br/><b>Dokploy Ingress</b>"]
+
+    subgraph ComposeStack["Dokploy Compose Stack"]
+        Traefik -->|"Host: email.domain.com"| NextApp["email-manager<br/><b>Next.js 16 App Router</b><br/>• React 19 RSC & Server Actions<br/>• AI Copilot & Tool Registry<br/>• Cloudflare DNS & Health Engine"]
+        Traefik -->|"Path: /webmail/ or webmail.*"| Roundcube["Roundcube Webmail<br/><b>PHP 8.2 + Apache</b><br/>• Elastic Skin<br/>• em_sso Plugin<br/>• ManageSieve"]
+        Traefik -->|"Path: /rav/ or rav.*"| Rav["Rav Webmail<br/><b>Rust Axum + React 19</b><br/>• Tantivy Search<br/>• Live WebSockets"]
+
+        NextApp -->|"PostgreSQL (Port 5432)"| Postgres[("mailwart-postgres<br/><b>PostgreSQL 16</b><br/>Users, RBAC, Audit & Delivery Logs")]
+    end
+
+    subgraph MailInfra["Co-Located Mail Infrastructure"]
+        Stalwart["Stalwart Mail Server<br/><b>MTA, JMAP, IMAP, SMTP, Sieve</b>"]
+    end
+
+    NextApp -->|"JMAP Protocol (Port 8080)<br/>Basic Auth + JSON API"| Stalwart
+    Roundcube -->|"IMAP (993) / SMTP (587)<br/>SASL Master Impersonation"| Stalwart
+    Rav -->|"IMAP (993) / SMTP (587)<br/>SASL Master Impersonation"| Stalwart
+    Stalwart -->|"Database Connection"| Postgres
 ```
 
 ---
@@ -77,7 +56,7 @@ This documentation directory is organized into modular guides covering every lay
 ## Core Product Principles
 
 1. **Stalwart is the Source of Truth:** Mailbox existence, domain states, catch-all configurations, and email routing are always verified against Stalwart JMAP. The local PostgreSQL database mirrors directory state to power RBAC domain ownership and cached analytics without desynchronizing from the server.
-2. **Zero Plaintext Mailbox Passwords in Browser:** User mailbox passwords are generated or reset in single-flight operations. When opening webmail, administrators never enter or view the mailbox password—short-lived signed HMAC tokens and Stalwart SASL PLAIN master impersonation handle authentication transparently.
+2. **Zero Plaintext Mailbox Passwords in Browser:** User mailbox passwords are generated or reset in single-flight operations. When opening webmail, administrators never enter or view the mailbox password - short-lived signed HMAC tokens and Stalwart SASL PLAIN master impersonation handle authentication transparently.
 3. **Graceful Fallback & Mock Runtime:** If Stalwart or PostgreSQL credentials are unset (e.g. during local frontend development or automated testing), the application boots cleanly in `mock` mode with a stateful in-memory directory store.
 4. **Strict Isolation & Safe Operations:** Destructive actions (deleting domains, removing mailboxes, mass password resets) require explicit typed confirmations or operator approval modals in the AI Copilot.
 
