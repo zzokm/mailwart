@@ -23,11 +23,7 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import {
-  saveWebmailSettingsAction,
-  testWebmailEndpointsAction,
-} from "@/lib/actions/webmail"
-import { buildWebmailUrl } from "@/lib/webmail-client"
+import { saveWebmailSettingsAction } from "@/lib/actions/webmail"
 import {
   WebmailClientType,
   WebmailSettings,
@@ -37,24 +33,17 @@ import { cn } from "@/lib/utils"
 
 interface WebmailSettingsClientProps {
   initialSettings?: WebmailSettings | null
-  roundcubeUrl: string
-  ravUrl: string
+  roundcubeUrl?: string
+  ravUrl?: string
 }
 
 export function WebmailSettingsClient({
   initialSettings,
-  roundcubeUrl,
-  ravUrl,
 }: WebmailSettingsClientProps) {
   const [settings, setSettings] = useState<WebmailSettings>(
     initialSettings || DEFAULT_WEBMAIL_SETTINGS
   )
   const [isPending, startTransition] = useTransition()
-  const [isTesting, setIsTesting] = useState(false)
-  const [endpointStatus, setEndpointStatus] = useState<{
-    rav?: { ok: boolean; host: string; error?: string }
-    roundcube?: { ok: boolean; host: string; error?: string }
-  } | null>(null)
 
   function handleClientSelect(client: WebmailClientType) {
     setSettings((prev) => ({ ...prev, client }))
@@ -97,31 +86,6 @@ export function WebmailSettingsClient({
         toast.error(res.error || "Failed to save webmail preferences.")
       }
     })
-  }
-
-  async function handleTestEndpoints() {
-    setIsTesting(true)
-    try {
-      const res = await testWebmailEndpointsAction()
-      if (res.ok) {
-        setEndpointStatus(res.data)
-        const ravOk = res.data.rav.ok
-        const rcOk = res.data.roundcube.ok
-        if (ravOk && rcOk) {
-          toast.success("Both Rav and Roundcube webmail endpoints are healthy!")
-        } else if (ravOk) {
-          toast.info("Rav webmail is online. Roundcube did not respond.")
-        } else if (rcOk) {
-          toast.info("Roundcube webmail is online. Rav did not respond.")
-        } else {
-          toast.warning("Endpoints probed (in-cluster checks pending).")
-        }
-      }
-    } catch {
-      toast.error("Failed to test webmail endpoints.")
-    } finally {
-      setIsTesting(false)
-    }
   }
 
   const isRav = settings.client === "rav"
@@ -504,100 +468,6 @@ export function WebmailSettingsClient({
               checked={settings.openInNewTab}
               onCheckedChange={(c) => setSettings((prev) => ({ ...prev, openInNewTab: c }))}
             />
-          </div>
-        </div>
-      </div>
-
-      {/* Endpoints & Status Card */}
-      <div className="rounded-xl border border-border/80 bg-card/40 p-5 sm:p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-medium text-foreground">Container Service Endpoints</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Status and direct endpoints for both active compose containers.
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs gap-1.5 h-8 self-start sm:self-auto"
-            onClick={handleTestEndpoints}
-            disabled={isTesting}
-          >
-            <RefreshCw className={cn("size-3.5", isTesting && "animate-spin")} />
-            Test Endpoints
-          </Button>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          {/* Rav Endpoint */}
-          <div className="rounded-lg border border-border/70 bg-background/60 p-4 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Zap className="size-4 text-emerald-500" />
-                <span className="text-xs font-semibold text-foreground">Rav Webmail</span>
-              </div>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "font-mono text-[10px]",
-                  endpointStatus?.rav?.ok
-                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-500"
-                    : "border-border text-muted-foreground"
-                )}
-              >
-                {endpointStatus?.rav ? (endpointStatus.rav.ok ? "Healthy" : "Offline") : "Port 3001"}
-              </Badge>
-            </div>
-            <div className="font-mono text-xs text-foreground/80 truncate">{ravUrl}</div>
-            <p className="text-[11px] text-muted-foreground">
-              Internal: <code className="font-mono">email-manager-rav:3001</code> &bull; Public: <code className="font-mono">/rav/</code>
-            </p>
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full text-xs gap-1.5 h-8 mt-1"
-              nativeButton={false}
-              render={<a href={buildWebmailUrl(undefined, "rav")} target="_blank" rel="noreferrer" />}
-            >
-              <ExternalLink className="size-3" />
-              Launch Rav (SSO)
-            </Button>
-          </div>
-
-          {/* Roundcube Endpoint */}
-          <div className="rounded-lg border border-border/70 bg-background/60 p-4 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Inbox className="size-4 text-blue-500" />
-                <span className="text-xs font-semibold text-foreground">Roundcube Webmail</span>
-              </div>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "font-mono text-[10px]",
-                  endpointStatus?.roundcube?.ok
-                    ? "border-blue-500/40 bg-blue-500/10 text-blue-500"
-                    : "border-border text-muted-foreground"
-                )}
-              >
-                {endpointStatus?.roundcube ? (endpointStatus.roundcube.ok ? "Healthy" : "Offline") : "Port 80"}
-              </Badge>
-            </div>
-            <div className="font-mono text-xs text-foreground/80 truncate">{roundcubeUrl}</div>
-            <p className="text-[11px] text-muted-foreground">
-              Internal: <code className="font-mono">roundcube:80</code> &bull; Public: <code className="font-mono">/webmail/</code>
-            </p>
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full text-xs gap-1.5 h-8 mt-1"
-              nativeButton={false}
-              render={<a href={buildWebmailUrl(undefined, "roundcube")} target="_blank" rel="noreferrer" />}
-            >
-              <ExternalLink className="size-3" />
-              Launch Roundcube (SSO)
-            </Button>
           </div>
         </div>
       </div>
