@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
     request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
     request.nextUrl.protocol?.replace(":", "") ||
     "https"
-  const redirectUrl = new URL("/mail", `${proto}://${host}`)
+  const redirectUrl = new URL("/mail/", `${proto}://${host}`)
   const response = NextResponse.redirect(redirectUrl, 302)
 
   for (const cookieStr of setCookies) {

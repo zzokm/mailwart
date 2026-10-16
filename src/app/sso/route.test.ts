@@ -73,7 +73,7 @@ describe("Rav Webmail SSO Endpoint (/sso)", () => {
     const res = await GET(req)
 
     expect(res.status).toBe(302)
-    expect(res.headers.get("location")).toBe("https://webmail.example.com/mail")
+    expect(res.headers.get("location")).toBe("https://webmail.example.com/mail/")
 
     // Verify cookies converted to SameSite=Lax
     const setCookieHeaders =
@@ -122,6 +122,6 @@ describe("Rav Webmail SSO Endpoint (/sso)", () => {
 
     const res = await GET(req)
     expect(res.status).toBe(302)
-    expect(res.headers.get("location")).toBe("https://webmail.lebasko.com/mail")
+    expect(res.headers.get("location")).toBe("https://webmail.lebasko.com/mail/")
   })
 })
