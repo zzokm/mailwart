@@ -17,7 +17,8 @@ WORKDIR /app
 RUN curl -fSL "https://github.com/naust-mail/rav/releases/download/${RAV_VERSION}/${RAV_TARBALL}" -o /tmp/rav.tar.gz \
     && tar -xzf /tmp/rav.tar.gz -C /app \
     && rm -f /tmp/rav.tar.gz \
-    && chmod +x /app/rav-email-server
+    && chmod +x /app/rav-email-server \
+    && cp /app/static/mail.html /app/static/mail/index.html
 
 # Apply Mailwart design palette override (matching dark & light theme tokens)
 COPY theme-override.css /app/theme-override.css
