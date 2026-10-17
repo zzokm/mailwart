@@ -157,6 +157,7 @@ def patch_frontend(static_dir: str):
                     content = content.replace("<title>Rav</title>", "<title>mailwart webmail</title>")
                     content = content.replace('{"children":"Rav"}', '{"children":"mailwart webmail"}')
                     content = content.replace('content="Rav"', 'content="mailwart webmail"')
+                    content = content.replace("?favicon.2vob68tjqpejf.ico", "?v=mailwart")
                     if content != orig:
                         meta_count += 1
                         with open(fpath, "w", encoding="utf-8") as f:

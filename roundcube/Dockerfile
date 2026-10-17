@@ -8,10 +8,22 @@ RUN ln -s /var/www/html /var/www/html/webmail
 
 COPY config/integration.inc.php /var/roundcube/config/integration.inc.php
 COPY plugins/em_sso /var/www/html/plugins/em_sso
+COPY plugins/em_sso /usr/src/roundcubemail/plugins/em_sso
 
-# Whitelabel branding: Mailwart logo, favicon, and theme styles
+# Whitelabel branding: Mailwart logo, favicon, and theme styles in both /usr/src and /var/www
+COPY logo.svg /usr/src/roundcubemail/skins/elastic/images/logo.svg
 COPY logo.svg /var/www/html/skins/elastic/images/logo.svg
+COPY favicon.ico /usr/src/roundcubemail/skins/elastic/images/favicon.ico
 COPY favicon.ico /var/www/html/skins/elastic/images/favicon.ico
+COPY favicon.ico /var/www/html/favicon.ico
+COPY theme-override.css /usr/src/roundcubemail/skins/elastic/styles/theme-override.css
 COPY theme-override.css /var/www/html/skins/elastic/styles/theme-override.css
-RUN cat /var/www/html/skins/elastic/styles/theme-override.css >> /var/www/html/skins/elastic/styles/styles.min.css \
+
+RUN cat /usr/src/roundcubemail/skins/elastic/styles/theme-override.css >> /usr/src/roundcubemail/skins/elastic/styles/styles.min.css \
+    && cat /usr/src/roundcubemail/skins/elastic/styles/theme-override.css >> /usr/src/roundcubemail/skins/elastic/styles/styles.css \
+    && cat /var/www/html/skins/elastic/styles/theme-override.css >> /var/www/html/skins/elastic/styles/styles.min.css \
     && cat /var/www/html/skins/elastic/styles/theme-override.css >> /var/www/html/skins/elastic/styles/styles.css
+
+# Entrypoint task hook to re-apply whitelabel branding on container startup
+COPY whitelabel.sh /entrypoint-tasks/post-setup/10-whitelabel.sh
+RUN chmod +x /entrypoint-tasks/post-setup/10-whitelabel.sh
