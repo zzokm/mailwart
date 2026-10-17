@@ -403,12 +403,18 @@ input[type="radio"],
 
 .task-login #login-form,
 .task-login .clean-login-form {
+  position: static !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  margin: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
-  margin: 0 !important;
-  width: 100% !important;
   display: flex !important;
   flex-direction: column !important;
   gap: 16px !important;
@@ -417,6 +423,8 @@ input[type="radio"],
 .task-login .form-group {
   display: flex !important;
   flex-direction: column !important;
+  align-items: flex-start !important;
+  text-align: left !important;
   gap: 6px !important;
   width: 100% !important;
   margin: 0 !important;
@@ -428,6 +436,7 @@ input[type="radio"],
   font-weight: 500 !important;
   color: #ededed !important;
   margin: 0 !important;
+  text-align: left !important;
 }
 
 .task-login .form-input,
@@ -443,6 +452,7 @@ input[type="radio"],
   width: 100% !important;
   outline: none !important;
   box-sizing: border-box !important;
+  text-align: left !important;
   transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
 }
 
@@ -470,6 +480,8 @@ input[type="radio"],
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
 }
 
 .task-login .form-submit-btn:hover,
@@ -570,61 +582,61 @@ input[type="radio"],
 /* ==========================================================================
    LIGHT MODE (Only active if user explicitly toggles theme to light mode)
    ========================================================================== */
-html:not(.dark-mode) body,
-html:not(.dark-mode) #layout,
-html:not(.dark-mode) #layout-content {
+html.light-mode body,
+html.light-mode #layout,
+html.light-mode #layout-content {
   background-color: #faf9f5 !important;
   color: #2c2b29 !important;
 }
-html:not(.dark-mode) #layout-sidebar {
+html.light-mode #layout-sidebar {
   background-color: #f5f3ee !important;
   border-right-color: #e2dfd8 !important;
 }
-html:not(.dark-mode) #layout-list {
+html.light-mode #layout-list {
   background-color: #fffcf9 !important;
   border-right-color: #e2dfd8 !important;
 }
-html:not(.dark-mode) .treelist li.selected > a,
-html:not(.dark-mode) .messagelist tr.selected td,
-html:not(.dark-mode) .listing li.selected {
+html.light-mode .treelist li.selected > a,
+html.light-mode .messagelist tr.selected td,
+html.light-mode .listing li.selected {
   background-color: #edeae4 !important;
   color: #000000 !important;
 }
-html:not(.dark-mode) .btn-primary,
-html:not(.dark-mode) .button.mainaction,
-html:not(.dark-mode) button.mainaction {
+html.light-mode .btn-primary,
+html.light-mode .button.mainaction,
+html.light-mode button.mainaction {
   background-color: #31302e !important;
   border-color: #31302e !important;
   color: #faf9f6 !important;
 }
-html:not(.dark-mode) .btn-primary:hover,
-html:not(.dark-mode) .button.mainaction:hover,
-html:not(.dark-mode) button.mainaction:hover {
+html.light-mode .btn-primary:hover,
+html.light-mode .button.mainaction:hover,
+html.light-mode button.mainaction:hover {
   background-color: #1a1918 !important;
   color: #ffffff !important;
 }
-html:not(.dark-mode) a,
-html:not(.dark-mode) .btn-link {
+html.light-mode a,
+html.light-mode .btn-link {
   color: #31302e !important;
 }
-html:not(.dark-mode).task-login #layout-content {
+html.light-mode.task-login #layout-content {
   background-color: #faf9f5 !important;
 }
-html:not(.dark-mode).task-login .brand-wordmark {
+html.light-mode.task-login .brand-wordmark {
   color: #2c2b29 !important;
 }
-html:not(.dark-mode).task-login .brand-subtitle {
+html.light-mode.task-login .brand-subtitle {
   color: #726f69 !important;
 }
-html:not(.dark-mode).task-login .login-card {
+html.light-mode.task-login .login-card {
   background-color: #fffcf9 !important;
   border-color: #e2dfd8 !important;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05) !important;
 }
-html:not(.dark-mode).task-login #login-form td.title label {
+html.light-mode.task-login #login-form td.title label {
   color: #2c2b29 !important;
 }
-html:not(.dark-mode).task-login #login-form .form-control {
+html.light-mode.task-login #login-form .form-control {
   background-color: #ffffff !important;
   border-color: #e2dfd8 !important;
   color: #2c2b29 !important;

@@ -2,7 +2,9 @@
 <html class="dark-mode">
 <head>
 <meta charset="UTF-8">
-<title></title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap">
 <style type="text/css">
 html, body { 
@@ -42,24 +44,24 @@ html, body {
   color: #9e9e9e;
   letter-spacing: 0.01em;
 }
-html:not(.dark-mode) {
+html.light-mode {
   background-color: #faf9f5;
 }
-html:not(.dark-mode) body {
+html.light-mode body {
   background-color: #faf9f5;
   color: #726f69;
 }
-html:not(.dark-mode) .brand-mark {
+html.light-mode .brand-mark {
   color: #2c2b29;
 }
-html:not(.dark-mode) .watermark-text {
+html.light-mode .watermark-text {
   color: #726f69;
 }
 </style>
 <script>
   try {
     if (document.cookie.indexOf('colorMode=light') > -1) {
-      document.documentElement.className = '';
+      document.documentElement.className = 'light-mode';
     } else {
       document.documentElement.className = 'dark-mode';
     }

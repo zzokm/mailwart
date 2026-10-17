@@ -1,6 +1,13 @@
 <roundcube:include file="includes/layout.html" />
 
-<script>document.title = "Webmail";</script>
+<script>
+document.title = "Webmail";
+try {
+    if (document.cookie.indexOf('colorMode=light') === -1) {
+        document.documentElement.classList.add('dark-mode');
+    }
+} catch(e) {}
+</script>
 
 <div id="layout-content" class="selected no-navbar" role="main">
     <div class="login-wrapper">

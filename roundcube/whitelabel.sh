@@ -14,6 +14,13 @@ if [ -f /usr/src/roundcubemail/skins/elastic/templates/includes/menu.html ]; the
     cp -f /usr/src/roundcubemail/skins/elastic/templates/includes/menu.html /var/www/html/skins/elastic/templates/includes/menu.html
 fi
 
+# Cache-bust watermark.html in templates and code
+for f in /var/www/html/skins/elastic/templates/*.html /usr/src/roundcubemail/skins/elastic/templates/*.html /var/www/html/skins/elastic/templates/includes/*.html /usr/src/roundcubemail/skins/elastic/templates/includes/*.html /var/www/html/program/include/*.php /usr/src/roundcubemail/program/include/*.php; do
+    if [ -f "$f" ]; then
+        sed -i 's/watermark\.html/watermark.html?v=mailwart/g' "$f" 2>/dev/null || true
+    fi
+done
+
 # 2. Enforce clean tab name "Webmail" everywhere across PHP server and client JS
 for php_file in /var/www/html/program/include/rcmail_output_html.php /usr/src/roundcubemail/program/include/rcmail_output_html.php; do
     if [ -f "$php_file" ]; then
