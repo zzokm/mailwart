@@ -401,14 +401,91 @@ input[type="radio"],
   box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.5) !important;
 }
 
-.task-login #login-form {
+.task-login #login-form,
+.task-login .clean-login-form {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
   margin: 0 !important;
   width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
 }
+
+.task-login .form-group {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+.task-login .form-label {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #ededed !important;
+  margin: 0 !important;
+}
+
+.task-login .form-input,
+.task-login #login-form .form-control {
+  background-color: #1a1a1a !important;
+  border: 1px solid #3b3b3b !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  padding: 0 14px !important;
+  height: 42px !important;
+  font-size: 14px !important;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
+  width: 100% !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.task-login .form-input:focus,
+.task-login #login-form .form-control:focus {
+  border-color: #71717a !important;
+  box-shadow: 0 0 0 1px #71717a !important;
+}
+
+.task-login .form-submit-btn,
+.task-login #login-form button.mainaction,
+.task-login #rcmloginsubmit {
+  margin-top: 8px !important;
+  width: 100% !important;
+  height: 42px !important;
+  background-color: #ffffff !important;
+  border: 1px solid #ffffff !important;
+  color: #09090b !important;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
+  font-weight: 500 !important;
+  font-size: 14px !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.task-login .form-submit-btn:hover,
+.task-login #login-form button.mainaction:hover,
+.task-login #rcmloginsubmit:hover {
+  background-color: #f4f4f5 !important;
+  border-color: #f4f4f5 !important;
+}
+
+.task-login .form-submit-btn:active,
+.task-login #login-form button.mainaction:active,
+.task-login #rcmloginsubmit:active {
+  transform: scale(0.99) !important;
+}
+
+/* Fallback table styling if rendered */
 .task-login #login-form table,
 .task-login #login-form tbody {
   display: block !important;
@@ -418,7 +495,7 @@ input[type="radio"],
   display: flex !important;
   flex-direction: column !important;
   width: 100% !important;
-  margin-bottom: 16px !important;
+  margin-bottom: 14px !important;
 }
 .task-login #login-form td {
   display: block !important;
@@ -430,45 +507,56 @@ input[type="radio"],
   margin-bottom: 6px !important;
 }
 .task-login #login-form td.title label {
-  color: #f2f2f2 !important;
+  color: #ededed !important;
   font-size: 13px !important;
   font-weight: 500 !important;
 }
-.task-login #login-form .form-control {
-  background-color: #1f1f1f !important;
-  border: 1px solid #3b3b3b !important;
-  color: #f2f2f2 !important;
-  border-radius: 8px !important;
-  padding: 10px 14px !important;
-  height: 42px !important;
-  font-size: 14px !important;
+
+/* Inside Webmail Brand Links */
+.taskmenu-brand {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 12px 0 16px 0 !important;
   width: 100% !important;
 }
-.task-login #login-form .form-control:focus {
-  border-color: #808080 !important;
-  box-shadow: 0 0 0 2px rgba(128, 128, 128, 0.25) !important;
-}
-.task-login #login-form .formbuttons {
-  margin-top: 20px !important;
-  margin-bottom: 0 !important;
-}
-.task-login #login-form button.mainaction,
-.task-login #rcmloginsubmit {
-  width: 100% !important;
-  height: 42px !important;
-  background-color: #f2f2f2 !important;
-  border: none !important;
-  color: #141414 !important;
-  font-weight: 600 !important;
-  font-size: 14px !important;
-  border-radius: 8px !important;
-  cursor: pointer !important;
+.taskmenu-brand .rail-brand-link {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-decoration: none !important;
   transition: opacity 0.15s ease !important;
 }
-.task-login #login-form button.mainaction:hover,
-.task-login #rcmloginsubmit:hover {
-  background-color: #ffffff !important;
-  opacity: 0.95 !important;
+.taskmenu-brand .rail-brand-link:hover {
+  opacity: 0.8 !important;
+}
+.taskmenu-brand .rail-brand-logo {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 8px !important;
+}
+.taskmenu-brand .rail-brand-text {
+  display: none !important;
+}
+#layout-menu.expanded .taskmenu-brand .rail-brand-text,
+.popover-header .brand-wordmark {
+  display: inline-block !important;
+  font-family: 'Bricolage Grotesque', sans-serif !important;
+  font-size: 22px !important;
+  font-weight: 200 !important;
+  color: #f2f2f2 !important;
+  letter-spacing: -0.015em !important;
+  line-height: 1 !important;
+}
+.popover-header .brand-link {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  text-decoration: none !important;
+}
+.popover-header .brand-link #logo {
+  width: 28px !important;
+  height: 28px !important;
 }
 
 .task-login .login-secure-footer {

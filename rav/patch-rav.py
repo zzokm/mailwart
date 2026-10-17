@@ -163,7 +163,7 @@ def patch_frontend(static_dir: str):
         print("[patch-rav] Notice: Mail client target already patched or chunk not found.")
 
     # --- 3. Patch All HTML and TXT files for Title, Metadata and Font Preconnect ---
-    font_links = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap"><script>document.title="Webmail";try{if(document.cookie.indexOf("rav-theme=light")===-1){document.documentElement.classList.add("dark");}}catch(e){}</script>'
+    font_links = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap"><script>document.title="Webmail";try{if(document.cookie.indexOf("rav-theme=light")===-1){document.documentElement.classList.add("dark");}}catch(e){}try{new MutationObserver(function(){if(document.title&&!document.title.endsWith("Webmail")){document.title="Webmail";}}).observe(document.head,{subtree:true,characterData:true,childList:true});}catch(e){}</script>'
 
     meta_count = 0
     for root, dirs, files in os.walk(root_static):

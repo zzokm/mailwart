@@ -1,18 +1,36 @@
 <roundcube:include file="includes/layout.html" />
 
-<h1 class="voice"><roundcube:object name="productname" /> <roundcube:label name="login" /></h1>
+<script>document.title = "Webmail";</script>
 
 <div id="layout-content" class="selected no-navbar" role="main">
     <div class="login-wrapper">
-        <a href="https://email.yehia.dev" class="brand-link" title="mailwart">
-            <roundcube:object name="logo" src="/images/logo.svg" id="logo" alt="mailwart" />
-            <span class="brand-wordmark">mailwart</span>
-        </a>
-        <p class="brand-subtitle">Sign in to your account</p>
+        <div class="login-header">
+            <a href="https://email.yehia.dev" class="brand-link" title="mailwart">
+                <img src="skins/elastic/images/logo.svg" id="logo" alt="mailwart" class="brand-logo" />
+                <span class="brand-wordmark">mailwart</span>
+            </a>
+            <p class="brand-subtitle">Sign in to your account</p>
+        </div>
 
         <div class="login-card">
-            <roundcube:form id="login-form" name="login-form" method="post" class="propform">
-                <roundcube:object name="loginform" form="login-form" size="40" submit="true" class="form-control" />
+            <roundcube:object name="message" id="messagestack" class="login-alerts" />
+            <roundcube:form id="login-form" name="login-form" method="post" class="clean-login-form">
+                <input type="hidden" name="_task" value="login">
+                <input type="hidden" name="_action" value="login">
+                <input type="hidden" name="_timezone" id="rcmlogintz" value="_default_">
+                <input type="hidden" name="_url" id="rcmloginurl" value="">
+
+                <div class="form-group">
+                    <label for="rcmloginuser" class="form-label">Email</label>
+                    <input name="_user" id="rcmloginuser" type="text" placeholder="you@example.com" class="form-input" required autofocus autocapitalize="off" autocomplete="email">
+                </div>
+
+                <div class="form-group">
+                    <label for="rcmloginpwd" class="form-label">Password</label>
+                    <input name="_pass" id="rcmloginpwd" type="password" placeholder="Enter your password" class="form-input" required autocapitalize="off" autocomplete="current-password">
+                </div>
+
+                <button type="submit" id="rcmloginsubmit" class="form-submit-btn">Sign in</button>
             </roundcube:form>
         </div>
 
@@ -20,8 +38,23 @@
     </div>
 </div>
 
+<script>
+try {
+    document.title = "Webmail";
+    var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && document.getElementById('rcmlogintz')) {
+        document.getElementById('rcmlogintz').value = tz;
+    }
+    new MutationObserver(function() {
+        if (document.title && !document.title.endsWith("Webmail")) {
+            document.title = "Webmail";
+        }
+    }).observe(document.head, { subtree: true, characterData: true, childList: true });
+} catch(e) {}
+</script>
+
 <noscript>
-	<p class="noscriptwarning"><roundcube:label name="noscriptwarning" /></p>
+    <p class="noscriptwarning"><roundcube:label name="noscriptwarning" /></p>
 </noscript>
 
 <roundcube:include file="includes/footer.html" />
