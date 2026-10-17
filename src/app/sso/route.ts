@@ -48,8 +48,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const domain = targetEmail.split("@")[1]
-  const mailHost = domain ? `mail.${domain}` : "mail.yehia.dev"
+  const clusterMailHost =
+    process.env.STALWART_IMAP_HOST?.trim() || "mail.yehia.dev"
 
   let lastStatus = 401
   let setCookies: string[] = []
@@ -65,8 +65,8 @@ export async function GET(request: NextRequest) {
         body: JSON.stringify({
           email: username,
           password: config.adminPassword,
-          imap_host: mailHost,
-          smtp_host: mailHost,
+          imap_host: clusterMailHost,
+          smtp_host: clusterMailHost,
         }),
       })
 
