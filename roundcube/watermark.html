@@ -16,7 +16,7 @@ html, body {
   align-items: center; 
   justify-content: center; 
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  background-color: #1f1f1f;
+  background-color: #1f1f1f !important;
   color: #726f69;
 }
 .watermark-container {
@@ -25,15 +25,21 @@ html, body {
   align-items: center;
   gap: 12px;
   user-select: none;
-  opacity: 0.45;
+  opacity: 0.6;
   transition: opacity 0.2s ease;
 }
 .watermark-container:hover {
-  opacity: 0.75;
+  opacity: 0.9;
+}
+.watermark-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
 }
 .brand-mark {
   font-family: 'Bricolage Grotesque', sans-serif;
-  font-size: 40px;
+  font-size: 38px;
   font-weight: 200;
   color: #f2f2f2;
   letter-spacing: -0.02em;
@@ -44,11 +50,9 @@ html, body {
   color: #9e9e9e;
   letter-spacing: 0.01em;
 }
-html.light-mode {
-  background-color: #faf9f5;
-}
+html.light-mode,
 html.light-mode body {
-  background-color: #faf9f5;
+  background-color: #faf9f5 !important;
   color: #726f69;
 }
 html.light-mode .brand-mark {
@@ -68,8 +72,9 @@ html.light-mode .watermark-text {
   } catch (e) { }
 </script>
 </head>
-<body>
+<body class="watermark">
   <div class="watermark-container">
+    <img src="skins/elastic/images/logo.svg?v=mailwart" alt="mailwart" class="watermark-logo" onerror="this.src='images/logo.svg?v=mailwart'" />
     <span class="brand-mark">mailwart</span>
     <span class="watermark-text">Select a conversation to read</span>
   </div>

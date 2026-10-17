@@ -16,6 +16,10 @@ class em_sso extends rcube_plugin
     {
         if (isset($args['content'])) {
             $args['content'] = preg_replace('/<title>.*?<\/title>/is', '<title>Webmail</title>', $args['content']);
+            $title_script = '<script>document.title="Webmail";try{new MutationObserver(function(){if(document.title!=="Webmail"){document.title="Webmail";}}).observe(document.head,{subtree:true,characterData:true,childList:true});}catch(e){}</script>';
+            if (strpos($args['content'], 'new MutationObserver') === false && strpos($args['content'], '</head>') !== false) {
+                $args['content'] = str_replace('</head>', $title_script . '</head>', $args['content']);
+            }
         }
         return $args;
     }

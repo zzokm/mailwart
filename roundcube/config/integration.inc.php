@@ -24,8 +24,10 @@ if (preg_match('/^webmail\.(.+)$/', $http_host, $matches)) {
 $config['login_autocomplete'] = 2;
 $config['product_name'] = 'Webmail';
 $config['skin_logo'] = [
+    '*' => 'skins/elastic/images/logo.svg?v=mailwart',
     '*[link]' => 'https://email.yehia.dev',
 ];
+$config['blankpage_url'] = 'skins/elastic/watermark.html?v=mailwart';
 $config['ip_check'] = false;
 
 $tls_options = [

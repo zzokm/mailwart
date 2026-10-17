@@ -20,6 +20,8 @@ COPY login.html /usr/src/roundcubemail/skins/elastic/templates/login.html
 COPY login.html /var/www/html/skins/elastic/templates/login.html
 COPY watermark.html /usr/src/roundcubemail/skins/elastic/watermark.html
 COPY watermark.html /var/www/html/skins/elastic/watermark.html
+COPY watermark.html /usr/src/roundcubemail/watermark.html
+COPY watermark.html /var/www/html/watermark.html
 COPY menu.html /usr/src/roundcubemail/skins/elastic/templates/includes/menu.html
 COPY menu.html /var/www/html/skins/elastic/templates/includes/menu.html
 COPY theme-override.css /usr/src/roundcubemail/skins/elastic/styles/theme-override.css

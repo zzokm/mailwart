@@ -9,15 +9,16 @@ if [ -f /usr/src/roundcubemail/skins/elastic/templates/login.html ]; then
 fi
 if [ -f /usr/src/roundcubemail/skins/elastic/watermark.html ]; then
     cp -f /usr/src/roundcubemail/skins/elastic/watermark.html /var/www/html/skins/elastic/watermark.html
+    cp -f /usr/src/roundcubemail/skins/elastic/watermark.html /var/www/html/watermark.html
 fi
 if [ -f /usr/src/roundcubemail/skins/elastic/templates/includes/menu.html ]; then
     cp -f /usr/src/roundcubemail/skins/elastic/templates/includes/menu.html /var/www/html/skins/elastic/templates/includes/menu.html
 fi
 
-# Cache-bust watermark.html in templates and code
-for f in /var/www/html/skins/elastic/templates/*.html /usr/src/roundcubemail/skins/elastic/templates/*.html /var/www/html/skins/elastic/templates/includes/*.html /usr/src/roundcubemail/skins/elastic/templates/includes/*.html /var/www/html/program/include/*.php /usr/src/roundcubemail/program/include/*.php; do
+# Cache-bust logo.svg in templates to avoid Cloudflare/browser stale caching
+for f in /var/www/html/skins/elastic/templates/*.html /usr/src/roundcubemail/skins/elastic/templates/*.html /var/www/html/skins/elastic/templates/includes/*.html /usr/src/roundcubemail/skins/elastic/templates/includes/*.html; do
     if [ -f "$f" ]; then
-        sed -i 's/watermark\.html/watermark.html?v=mailwart/g' "$f" 2>/dev/null || true
+        sed -i 's/logo\.svg/logo.svg?v=mailwart/g' "$f" 2>/dev/null || true
     fi
 done
 
@@ -30,18 +31,21 @@ done
 
 for js_file in /var/www/html/program/js/app.js /usr/src/roundcubemail/program/js/app.js; do
     if [ -f "$js_file" ]; then
+        sed -i 's/document\.title\s*=\s*title;/document.title = "Webmail";/g' "$js_file" 2>/dev/null || true
         sed -i 's/if (title && document.title)\s*document.title = title;/document.title = "Webmail";/g' "$js_file" 2>/dev/null || true
     fi
 done
 
 for js_min in /var/www/html/program/js/app.min.js /usr/src/roundcubemail/program/js/app.min.js; do
     if [ -f "$js_min" ]; then
+        sed -i 's/document\.title=e/document.title="Webmail"/g' "$js_min" 2>/dev/null || true
+        sed -i 's/if(e&&document.title)(document.title=e)/document.title="Webmail"/g' "$js_min" 2>/dev/null || true
         sed -i 's/if(a&&document.title)document.title=a/document.title="Webmail"/g' "$js_min" 2>/dev/null || true
     fi
 done
 
-# 3. Default dark mode & font preconnect in layout.html
-FONT_TAGS='<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800\&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800\&display=swap"><script>document.title="Webmail";</script>'
+# 3. Default dark mode, font preconnect, and title lock in layout.html
+FONT_TAGS='<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800\&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800\&display=swap"><script>document.title="Webmail";try{new MutationObserver(function(){if(document.title!=="Webmail"){document.title="Webmail";}}).observe(document.head,{subtree:true,characterData:true,childList:true});}catch(e){}</script>'
 
 for layout in /var/www/html/skins/elastic/templates/includes/layout.html /usr/src/roundcubemail/skins/elastic/templates/includes/layout.html; do
     if [ -f "$layout" ]; then

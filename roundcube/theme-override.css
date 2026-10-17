@@ -134,9 +134,25 @@ html, body, #layout, #layout-content {
   color: #ffffff !important;
 }
 
-/* Content / Reader Pane */
-#layout-content {
+/* Content / Reader Pane & Watermark Empty State */
+#layout-content,
+.iframe-wrapper,
+#messagecontframe,
+iframe#messagecontframe {
   background-color: #1f1f1f !important;
+  border: none !important;
+}
+
+body.watermark,
+.watermark {
+  background-color: #1f1f1f !important;
+  color: #726f69 !important;
+}
+
+body.watermark #logo,
+.watermark #logo,
+.watermark img:not(.watermark-logo) {
+  display: none !important;
 }
 #layout-content .header,
 #layout-content .toolbar,
@@ -584,7 +600,12 @@ input[type="radio"],
    ========================================================================== */
 html.light-mode body,
 html.light-mode #layout,
-html.light-mode #layout-content {
+html.light-mode #layout-content,
+html.light-mode .iframe-wrapper,
+html.light-mode #messagecontframe,
+html.light-mode iframe#messagecontframe,
+html.light-mode body.watermark,
+html.light-mode .watermark {
   background-color: #faf9f5 !important;
   color: #2c2b29 !important;
 }
