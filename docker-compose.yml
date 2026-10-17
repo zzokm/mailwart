@@ -32,7 +32,7 @@ services:
       STALWART_ADMIN_PASSWORD: ${STALWART_ADMIN_PASSWORD}
       STALWART_ADMIN_UI_URL: ${STALWART_ADMIN_UI_URL:-https://mail.yehia.dev/admin}
       ROUNDCUBE_URL: ${ROUNDCUBE_URL:-https://email.yehia.dev/webmail/}
-      RAV_URL: ${RAV_URL:-https://webmail.hiy.me/}
+      RAV_URL: ${RAV_URL:-https://webmail.yehia.dev/}
       DEFAULT_WEBMAIL_CLIENT: ${DEFAULT_WEBMAIL_CLIENT:-rav}
       WEBMAIL_SSO_SECRET: ${WEBMAIL_SSO_SECRET}
       APP_ADMIN_USER: ${APP_ADMIN_USER:-yehia}
@@ -176,12 +176,13 @@ services:
       retries: 3
       start_period: 10s
     environment:
-      IMAP_HOST: ${STALWART_IMAP_HOST:-mail.hiy.me}
+      IMAP_HOST: ${STALWART_IMAP_HOST:-mail.yehia.dev}
       IMAP_CONNECT_HOST: stalwart-mail
       IMAP_PORT: "993"
-      SMTP_HOST: ${STALWART_SMTP_HOST:-mail.hiy.me}
+      SMTP_HOST: ${STALWART_SMTP_HOST:-mail.yehia.dev}
       SMTP_CONNECT_HOST: stalwart-mail
       SMTP_PORT: "465"
+      ALLOW_CUSTOM_MAIL_SERVERS: "true"
       TLS_ENABLED: "true"
       DATA_DIR: /data
       PORT: "3001"
@@ -199,7 +200,7 @@ services:
       - traefik.http.routers.email-manager-rav.priority=110
       - traefik.http.routers.email-manager-rav.middlewares=email-manager-rav-redirect
       - traefik.http.middlewares.email-manager-rav-redirect.redirectregex.regex=^https?://[^/]+/rav/?(.*)$$
-      - traefik.http.middlewares.email-manager-rav-redirect.redirectregex.replacement=https://webmail.hiy.me/$${1}
+      - traefik.http.middlewares.email-manager-rav-redirect.redirectregex.replacement=https://webmail.yehia.dev/$${1}
       - traefik.http.middlewares.email-manager-rav-redirect.redirectregex.permanent=false
       - traefik.http.routers.email-manager-rav.service=email-manager-rav
       # 2. Direct webmail on HTTP for rav.<domain>, webmail.<domain>, and mail.zokm.me

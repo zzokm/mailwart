@@ -55,20 +55,42 @@ describe("Rav Webmail SSO Endpoint (/sso)", () => {
       "rav_session_acc1=sess_abc; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400"
     )
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          account: {
-            id: "acc1",
-            email: "alice@example.com%admin",
-          },
-        }),
-        {
-          status: 201,
-          headers: fakeHeaders,
-        }
-      )
-    )
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const urlStr = url.toString()
+      if (urlStr.endsWith("/api/auth/login")) {
+        return new Response(
+          JSON.stringify({
+            account: {
+              id: "acc1",
+              email: "alice@example.com%admin",
+            },
+          }),
+          {
+            status: 201,
+            headers: fakeHeaders,
+          }
+        )
+      }
+      if (urlStr.endsWith("/api/identities")) {
+        return new Response(
+          JSON.stringify({
+            identities: [
+              {
+                id: "ident-1",
+                email: "alice@example.com%admin",
+                display_name: "Alice",
+                is_default: true,
+              },
+            ],
+          }),
+          { status: 200 }
+        )
+      }
+      if (urlStr.includes("/api/identities/")) {
+        return new Response(JSON.stringify({ success: true }), { status: 200 })
+      }
+      return new Response("Not Found", { status: 404 })
+    })
 
     const res = await GET(req)
 
@@ -85,6 +107,15 @@ describe("Rav Webmail SSO Endpoint (/sso)", () => {
     expect(joined).toContain("rav_browser=browser_123")
     expect(joined).toContain("rav_session_acc1=sess_abc")
     expect(joined).toContain("SameSite=Lax")
+
+    // Verify identity was updated to clean target email
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/identities/ident-1"),
+      expect.objectContaining({
+        method: "PUT",
+        body: expect.stringContaining('"email":"alice@example.com"'),
+      })
+    )
   })
 
   it("returns 502 when Rav login fails", async () => {
@@ -111,14 +142,21 @@ describe("Rav Webmail SSO Endpoint (/sso)", () => {
       },
     })
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ account: { id: "acc1" } }), {
-        status: 201,
-        headers: {
-          "set-cookie": "rav_browser=abc; Path=/; SameSite=Strict",
-        },
-      })
-    )
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const urlStr = url.toString()
+      if (urlStr.endsWith("/api/auth/login")) {
+        return new Response(JSON.stringify({ account: { id: "acc1" } }), {
+          status: 201,
+          headers: {
+            "set-cookie": "rav_browser=abc; Path=/; SameSite=Strict",
+          },
+        })
+      }
+      if (urlStr.endsWith("/api/identities")) {
+        return new Response(JSON.stringify({ identities: [] }), { status: 200 })
+      }
+      return new Response("Not Found", { status: 404 })
+    })
 
     const res = await GET(req)
     expect(res.status).toBe(302)

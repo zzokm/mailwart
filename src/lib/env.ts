@@ -5,7 +5,7 @@ const envSchema = z.object({
   STALWART_ADMIN_USER: z.string().optional(),
   STALWART_ADMIN_PASSWORD: z.string().optional(),
   ROUNDCUBE_URL: z.string().url().default("https://mail.example.com/webmail/"),
-  RAV_URL: z.string().url().default("https://webmail.hiy.me/"),
+  RAV_URL: z.string().url().default("https://webmail.yehia.dev/"),
   DEFAULT_WEBMAIL_CLIENT: z.enum(["rav", "roundcube"]).default("rav"),
   WEBMAIL_SSO_SECRET: z.string().min(32).optional(),
   STALWART_ADMIN_UI_URL: z
