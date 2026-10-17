@@ -17,13 +17,13 @@ WORKDIR /app
 RUN curl -fSL "https://github.com/naust-mail/rav/releases/download/${RAV_VERSION}/${RAV_TARBALL}" -o /tmp/rav.tar.gz \
     && tar -xzf /tmp/rav.tar.gz -C /app \
     && rm -f /tmp/rav.tar.gz \
-    && chmod +x /app/rav-email-server \
-    && cp /app/static/mail.html /app/static/mail/index.html
+    && chmod +x /app/rav-email-server
 
-# Apply binary UTF-8 fix and frontend server/identity display hardening
+# Apply binary UTF-8 fix and frontend server/identity display hardening (with cache busting)
 COPY patch-rav.py /app/patch-rav.py
-RUN python3 /app/patch-rav.py /app/rav-email-server /app/static/_next/static/chunks \
-    && rm -f /app/patch-rav.py
+RUN python3 /app/patch-rav.py /app/rav-email-server /app/static \
+    && rm -f /app/patch-rav.py \
+    && cp /app/static/mail.html /app/static/mail/index.html
 
 # Apply Mailwart design palette override (matching dark & light theme tokens)
 COPY theme-override.css /app/theme-override.css
