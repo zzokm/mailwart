@@ -1,0 +1,381 @@
+/* ==========================================================================
+   Mailwart Theme Integration for Roundcube Webmail (Elastic Skin)
+   Harmonizes Roundcube with Mailwart's palette in both Light & Dark modes.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap');
+
+/* Base Typography */
+body, button, input, select, textarea, .form-control, .btn, .popover, .ui-widget {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+/* --------------------------------------------------------------------------
+   LIGHT MODE PALETTE
+   -------------------------------------------------------------------------- */
+body, #layout, #layout-content {
+  background-color: #faf9f5 !important;
+  color: #2c2b29 !important;
+}
+
+/* Left Task Navigation Bar */
+#layout-menu {
+  background-color: #1f1f1f !important;
+  border-right: 1px solid #292929 !important;
+}
+#layout-menu .popover-header {
+  background-color: #1f1f1f !important;
+  border-bottom: 1px solid #292929 !important;
+}
+#taskmenu {
+  background-color: #1f1f1f !important;
+}
+#taskmenu a.button {
+  color: #a0a0a0 !important;
+}
+#taskmenu a.button:hover {
+  color: #ffffff !important;
+  background-color: #2c2c2c !important;
+}
+#taskmenu a.button.selected {
+  color: #ffffff !important;
+  background-color: #333333 !important;
+}
+#taskmenu a.button.compose {
+  color: #faf9f5 !important;
+  background-color: #383734 !important;
+}
+#taskmenu a.button.compose:hover {
+  background-color: #484643 !important;
+}
+
+/* Sidebar / Folders */
+#layout-sidebar {
+  background-color: #f5f3ee !important;
+  border-right: 1px solid #e2dfd8 !important;
+}
+#layout-sidebar .header {
+  background-color: #f5f3ee !important;
+  border-bottom: 1px solid #e2dfd8 !important;
+  color: #2c2b29 !important;
+}
+.treelist li a, .treelist li span {
+  color: #2c2b29 !important;
+}
+.treelist li:hover > a {
+  background-color: #edeae4 !important;
+}
+.treelist li.selected > a {
+  background-color: #edeae4 !important;
+  color: #000000 !important;
+  font-weight: 600 !important;
+}
+.treelist li.unread > a {
+  font-weight: 700 !important;
+}
+
+/* Message List / Table */
+#layout-list {
+  background-color: #fffcf9 !important;
+  border-right: 1px solid #e2dfd8 !important;
+}
+#layout-list .header, #layout-list .toolbar {
+  background-color: #faf9f5 !important;
+  border-bottom: 1px solid #e2dfd8 !important;
+  color: #2c2b29 !important;
+}
+.messagelist tr {
+  border-bottom: 1px solid #f1efea !important;
+}
+.messagelist tr:hover td {
+  background-color: #f5f3ee !important;
+}
+.messagelist tr.selected td {
+  background-color: #edeae4 !important;
+  color: #2c2b29 !important;
+}
+.messagelist tr.unseen td {
+  font-weight: 600 !important;
+}
+.badge-info, .badge-primary {
+  background-color: #31302e !important;
+  color: #faf9f6 !important;
+}
+
+/* Content / Reader Pane */
+#layout-content {
+  background-color: #fffcf9 !important;
+}
+#layout-content .header, #layout-content .toolbar {
+  background-color: #faf9f5 !important;
+  border-bottom: 1px solid #e2dfd8 !important;
+}
+.message-partheaders, #message-header {
+  background-color: #faf9f5 !important;
+  border-bottom: 1px solid #e2dfd8 !important;
+}
+
+/* Buttons */
+.btn-primary, .button.mainaction, button.mainaction, .btn.mainaction {
+  background-color: #31302e !important;
+  border-color: #31302e !important;
+  color: #faf9f6 !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  font-weight: 500 !important;
+  transition: all 0.15s ease !important;
+}
+.btn-primary:hover, .button.mainaction:hover, button.mainaction:hover, .btn.mainaction:hover {
+  background-color: #1a1918 !important;
+  border-color: #1a1918 !important;
+  color: #ffffff !important;
+}
+.btn-secondary {
+  background-color: #f1efea !important;
+  border-color: #e2dfd8 !important;
+  color: #2c2b29 !important;
+  border-radius: 8px !important;
+}
+.btn-secondary:hover {
+  background-color: #edeae4 !important;
+}
+
+/* Inputs & Form Controls */
+.form-control, input[type="text"], input[type="password"], input[type="email"], select, textarea {
+  background-color: #fffcf9 !important;
+  border-color: #e2dfd8 !important;
+  color: #2c2b29 !important;
+  border-radius: 8px !important;
+}
+.form-control:focus, input[type="text"]:focus, input[type="password"]:focus, input[type="email"]:focus {
+  border-color: #726f69 !important;
+  box-shadow: 0 0 0 2px rgba(114, 111, 105, 0.18) !important;
+}
+
+/* Links */
+a:not(.btn):not(.button) {
+  color: #31302e;
+}
+a:not(.btn):not(.button):hover {
+  color: #000000;
+}
+
+/* Login Page Styling */
+.task-login #layout-content {
+  background-color: #faf9f5 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.task-login #logo {
+  top: 0 !important;
+  margin-bottom: 2rem !important;
+  max-height: 84px !important;
+}
+.task-login #login-form {
+  background-color: #fffcf9 !important;
+  border: 1px solid #e2dfd8 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.02) !important;
+  padding: 2.5rem !important;
+  width: 100% !important;
+  max-width: 420px !important;
+}
+.task-login #login-form table {
+  width: 100% !important;
+}
+.task-login #login-form td.title label {
+  color: #726f69 !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+}
+.task-login #login-form button.mainaction {
+  width: 100% !important;
+  padding: 0.65rem 1rem !important;
+  margin-top: 1rem !important;
+}
+.task-login #login-footer {
+  color: #726f69 !important;
+  margin-top: 1.5rem !important;
+  font-size: 0.825rem !important;
+}
+.task-login #login-footer a {
+  color: #31302e !important;
+  text-decoration: underline !important;
+}
+
+/* --------------------------------------------------------------------------
+   DARK MODE PALETTE (html.dark-mode)
+   -------------------------------------------------------------------------- */
+html.dark-mode body,
+html.dark-mode #layout,
+html.dark-mode #layout-content {
+  background-color: #1f1f1f !important;
+  color: #f2f2f2 !important;
+}
+
+/* Left Task Navigation Bar in Dark Mode */
+html.dark-mode #layout-menu,
+html.dark-mode #layout-menu .popover-header,
+html.dark-mode #taskmenu {
+  background-color: #111111 !important;
+  border-right: 1px solid #242424 !important;
+}
+html.dark-mode #taskmenu a.button {
+  color: #888888 !important;
+}
+html.dark-mode #taskmenu a.button:hover {
+  color: #f2f2f2 !important;
+  background-color: #1f1f1f !important;
+}
+html.dark-mode #taskmenu a.button.selected {
+  color: #f2f2f2 !important;
+  background-color: #292929 !important;
+}
+html.dark-mode #taskmenu a.button.compose {
+  color: #141414 !important;
+  background-color: #f2f2f2 !important;
+}
+html.dark-mode #taskmenu a.button.compose:hover {
+  background-color: #ffffff !important;
+}
+
+/* Sidebar / Folders in Dark Mode */
+html.dark-mode #layout-sidebar {
+  background-color: #161616 !important;
+  border-right: 1px solid #292929 !important;
+}
+html.dark-mode #layout-sidebar .header {
+  background-color: #161616 !important;
+  border-bottom: 1px solid #292929 !important;
+  color: #f2f2f2 !important;
+}
+html.dark-mode .treelist li a,
+html.dark-mode .treelist li span {
+  color: #e0e0e0 !important;
+}
+html.dark-mode .treelist li:hover > a {
+  background-color: #242424 !important;
+}
+html.dark-mode .treelist li.selected > a {
+  background-color: #2d2d2d !important;
+  color: #ffffff !important;
+}
+
+/* Message List in Dark Mode */
+html.dark-mode #layout-list {
+  background-color: #1f1f1f !important;
+  border-right: 1px solid #292929 !important;
+}
+html.dark-mode #layout-list .header,
+html.dark-mode #layout-list .toolbar {
+  background-color: #1a1a1a !important;
+  border-bottom: 1px solid #292929 !important;
+  color: #f2f2f2 !important;
+}
+html.dark-mode .messagelist tr {
+  border-bottom: 1px solid #262626 !important;
+}
+html.dark-mode .messagelist tr:hover td {
+  background-color: #262626 !important;
+}
+html.dark-mode .messagelist tr.selected td {
+  background-color: #333333 !important;
+  color: #ffffff !important;
+}
+html.dark-mode .badge-info,
+html.dark-mode .badge-primary {
+  background-color: #f2f2f2 !important;
+  color: #141414 !important;
+}
+
+/* Content / Reader Pane in Dark Mode */
+html.dark-mode #layout-content {
+  background-color: #1f1f1f !important;
+}
+html.dark-mode #layout-content .header,
+html.dark-mode #layout-content .toolbar,
+html.dark-mode .message-partheaders,
+html.dark-mode #message-header {
+  background-color: #1a1a1a !important;
+  border-bottom: 1px solid #292929 !important;
+  color: #f2f2f2 !important;
+}
+
+/* Buttons in Dark Mode */
+html.dark-mode .btn-primary,
+html.dark-mode .button.mainaction,
+html.dark-mode button.mainaction,
+html.dark-mode .btn.mainaction {
+  background-color: #f2f2f2 !important;
+  border-color: #f2f2f2 !important;
+  color: #141414 !important;
+}
+html.dark-mode .btn-primary:hover,
+html.dark-mode .button.mainaction:hover,
+html.dark-mode button.mainaction:hover,
+html.dark-mode .btn.mainaction:hover {
+  background-color: #ffffff !important;
+  border-color: #ffffff !important;
+  color: #000000 !important;
+}
+html.dark-mode .btn-secondary {
+  background-color: #292929 !important;
+  border-color: #3b3b3b !important;
+  color: #f2f2f2 !important;
+}
+html.dark-mode .btn-secondary:hover {
+  background-color: #333333 !important;
+}
+
+/* Inputs & Form Controls in Dark Mode */
+html.dark-mode .form-control,
+html.dark-mode input[type="text"],
+html.dark-mode input[type="password"],
+html.dark-mode input[type="email"],
+html.dark-mode select,
+html.dark-mode textarea {
+  background-color: #262626 !important;
+  border-color: #3b3b3b !important;
+  color: #f2f2f2 !important;
+}
+html.dark-mode .form-control:focus,
+html.dark-mode input[type="text"]:focus,
+html.dark-mode input[type="password"]:focus,
+html.dark-mode input[type="email"]:focus {
+  border-color: #808080 !important;
+  box-shadow: 0 0 0 2px rgba(128, 128, 128, 0.25) !important;
+}
+
+/* Links in Dark Mode */
+html.dark-mode a:not(.btn):not(.button) {
+  color: #f2f2f2;
+}
+html.dark-mode a:not(.btn):not(.button):hover {
+  color: #ffffff;
+}
+
+/* Login Page Styling in Dark Mode */
+html.dark-mode.task-login #layout-content,
+html.dark-mode .task-login #layout-content {
+  background-color: #191919 !important;
+}
+html.dark-mode.task-login #login-form,
+html.dark-mode .task-login #login-form {
+  background-color: #242424 !important;
+  border-color: #383838 !important;
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.6) !important;
+}
+html.dark-mode.task-login #login-form td.title label,
+html.dark-mode .task-login #login-form td.title label {
+  color: #9e9e9e !important;
+}
+html.dark-mode.task-login #login-footer,
+html.dark-mode .task-login #login-footer {
+  color: #9e9e9e !important;
+}
+html.dark-mode.task-login #login-footer a,
+html.dark-mode .task-login #login-footer a {
+  color: #f2f2f2 !important;
+}

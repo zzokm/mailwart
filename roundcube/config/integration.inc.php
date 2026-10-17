@@ -22,7 +22,11 @@ if (preg_match('/^webmail\.(.+)$/', $http_host, $matches)) {
 }
 
 $config['login_autocomplete'] = 2;
-$config['product_name'] = 'Email Manager Webmail';
+$config['product_name'] = 'mailwart webmail';
+$config['skin_logo'] = [
+    '*' => '/skins/elastic/images/logo.svg',
+    'elastic:favicon' => '/skins/elastic/images/favicon.ico',
+];
 $config['ip_check'] = false;
 
 $tls_options = [

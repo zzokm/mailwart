@@ -2,7 +2,12 @@
  * Harmonizes Rav with Mailwart's palette in both Light and Dark modes.
  */
 
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap');
+
 :root {
+  --font-brand: 'Bricolage Grotesque', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --default-font-family: 'Plus Jakarta Sans', sans-serif;
   --radius: 0.625rem;
   --background: #faf9f5;
   --background: oklch(0.988 0.007 75);
@@ -123,4 +128,16 @@
   --sidebar-border: oklch(0.17 0 0);
   --sidebar-ring: #808080;
   --sidebar-ring: oklch(0.55 0 0);
+}
+
+.font-brand {
+  font-family: 'Bricolage Grotesque', sans-serif !important;
+}
+
+a.font-brand {
+  text-decoration: none !important;
+}
+
+a.font-brand:hover {
+  opacity: 0.8;
 }

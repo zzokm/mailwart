@@ -19,6 +19,10 @@ RUN curl -fSL "https://github.com/naust-mail/rav/releases/download/${RAV_VERSION
     && rm -f /tmp/rav.tar.gz \
     && chmod +x /app/rav-email-server
 
+# Whitelabel branding: Mailwart favicon and notification icon
+COPY favicon.ico /app/static/favicon.ico
+COPY notification-icon.svg /app/static/notification-icon.svg
+
 # Apply binary UTF-8 fix and frontend server/identity display hardening (with cache busting)
 COPY patch-rav.py /app/patch-rav.py
 RUN python3 /app/patch-rav.py /app/rav-email-server /app/static \
