@@ -10,12 +10,16 @@ COPY config/integration.inc.php /var/roundcube/config/integration.inc.php
 COPY plugins/em_sso /var/www/html/plugins/em_sso
 COPY plugins/em_sso /usr/src/roundcubemail/plugins/em_sso
 
-# Whitelabel branding: Mailwart logo, favicon, and theme styles in both /usr/src and /var/www
+# Whitelabel branding: Mailwart logo, favicon, templates, and theme styles in both /usr/src and /var/www
 COPY logo.svg /usr/src/roundcubemail/skins/elastic/images/logo.svg
 COPY logo.svg /var/www/html/skins/elastic/images/logo.svg
 COPY favicon.ico /usr/src/roundcubemail/skins/elastic/images/favicon.ico
 COPY favicon.ico /var/www/html/skins/elastic/images/favicon.ico
 COPY favicon.ico /var/www/html/favicon.ico
+COPY login.html /usr/src/roundcubemail/skins/elastic/templates/login.html
+COPY login.html /var/www/html/skins/elastic/templates/login.html
+COPY watermark.html /usr/src/roundcubemail/skins/elastic/watermark.html
+COPY watermark.html /var/www/html/skins/elastic/watermark.html
 COPY theme-override.css /usr/src/roundcubemail/skins/elastic/styles/theme-override.css
 COPY theme-override.css /var/www/html/skins/elastic/styles/theme-override.css
 

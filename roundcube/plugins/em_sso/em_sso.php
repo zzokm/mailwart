@@ -8,6 +8,15 @@ class em_sso extends rcube_plugin
         $this->add_hook('authenticate', [$this, 'authenticate']);
         $this->add_hook('storage_connect', [$this, 'storage_connect']);
         $this->add_hook('smtp_connect', [$this, 'smtp_connect']);
+        $this->add_hook('render_page', [$this, 'render_page']);
+    }
+
+    public function render_page($args)
+    {
+        if (isset($args['content'])) {
+            $args['content'] = preg_replace('/<title>.*?<\/title>/is', '<title>Webmail</title>', $args['content']);
+        }
+        return $args;
     }
 
     public function startup($args)

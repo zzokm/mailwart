@@ -1,6 +1,8 @@
 /* ==========================================================================
    Mailwart Theme Integration for Roundcube Webmail (Elastic Skin)
-   Harmonizes Roundcube with Mailwart's palette in both Light & Dark modes.
+   Default: Sleek Minimalist Dark Palette (oklch / #1f1f1f)
+   Light: Warm Cream Palette (oklch / #faf9f5)
+   Zero Blue Accents • Pure Monochrome Aesthetics
    ========================================================================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap');
@@ -10,372 +12,532 @@ body, button, input, select, textarea, .form-control, .btn, .popover, .ui-widget
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
 }
 
-/* --------------------------------------------------------------------------
-   LIGHT MODE PALETTE
-   -------------------------------------------------------------------------- */
-body, #layout, #layout-content {
-  background-color: #faf9f5 !important;
-  color: #2c2b29 !important;
+/* ==========================================================================
+   DEFAULT DARK THEME (Default for all unregistered & dark-mode users)
+   ========================================================================== */
+html, body, #layout, #layout-content {
+  background-color: #1f1f1f !important;
+  color: #f2f2f2 !important;
 }
 
-/* Left Task Navigation Bar */
-#layout-menu {
-  background-color: #1f1f1f !important;
-  border-right: 1px solid #292929 !important;
+/* Left Task Navigation Rail */
+#layout-menu,
+#layout-menu .popover-header,
+#taskmenu {
+  background-color: #111111 !important;
+  border-right: 1px solid #242424 !important;
 }
 #layout-menu .popover-header {
-  background-color: #1f1f1f !important;
-  border-bottom: 1px solid #292929 !important;
-}
-#taskmenu {
-  background-color: #1f1f1f !important;
+  border-bottom: 1px solid #242424 !important;
 }
 #taskmenu a.button {
-  color: #a0a0a0 !important;
+  color: #888888 !important;
 }
 #taskmenu a.button:hover {
-  color: #ffffff !important;
-  background-color: #2c2c2c !important;
+  color: #f2f2f2 !important;
+  background-color: #1f1f1f !important;
 }
 #taskmenu a.button.selected {
   color: #ffffff !important;
-  background-color: #333333 !important;
+  background-color: #292929 !important;
 }
-#taskmenu a.button.compose {
-  color: #faf9f5 !important;
-  background-color: #383734 !important;
+#taskmenu a.button.compose,
+#taskmenu a.button.action,
+#taskmenu .action-buttons a {
+  color: #141414 !important;
+  background-color: #f2f2f2 !important;
+  border-radius: 8px !important;
 }
-#taskmenu a.button.compose:hover {
-  background-color: #484643 !important;
+#taskmenu a.button.compose:hover,
+#taskmenu a.button.action:hover,
+#taskmenu .action-buttons a:hover {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+.floating-action-buttons a.button {
+  background-color: #f2f2f2 !important;
+  color: #141414 !important;
 }
 
-/* Sidebar / Folders */
+/* Sidebar / Folder Tree */
 #layout-sidebar {
-  background-color: #f5f3ee !important;
-  border-right: 1px solid #e2dfd8 !important;
+  background-color: #161616 !important;
+  border-right: 1px solid #292929 !important;
 }
-#layout-sidebar .header {
-  background-color: #f5f3ee !important;
-  border-bottom: 1px solid #e2dfd8 !important;
-  color: #2c2b29 !important;
+#layout-sidebar .header,
+#layout-sidebar .toolbar {
+  background-color: #161616 !important;
+  border-bottom: 1px solid #292929 !important;
+  color: #f2f2f2 !important;
 }
-.treelist li a, .treelist li span {
-  color: #2c2b29 !important;
+.treelist li a,
+.treelist li span {
+  color: #d1d1d1 !important;
 }
 .treelist li:hover > a {
-  background-color: #edeae4 !important;
+  background-color: #222222 !important;
 }
 .treelist li.selected > a {
-  background-color: #edeae4 !important;
-  color: #000000 !important;
+  background-color: #2c2c2c !important;
+  color: #ffffff !important;
   font-weight: 600 !important;
 }
 .treelist li.unread > a {
   font-weight: 700 !important;
+  color: #ffffff !important;
+}
+
+/* Badges & Notification Counters */
+.unreadcount,
+.folderlist li.mailbox .unreadcount,
+.folderlist li.mailbox.recent > a > .unreadcount,
+.badge-info,
+.badge-primary,
+.badge {
+  background-color: #f2f2f2 !important;
+  color: #141414 !important;
+  font-weight: 700 !important;
+  border-radius: 9999px !important;
 }
 
 /* Message List / Table */
 #layout-list {
-  background-color: #fffcf9 !important;
-  border-right: 1px solid #e2dfd8 !important;
+  background-color: #1f1f1f !important;
+  border-right: 1px solid #292929 !important;
 }
-#layout-list .header, #layout-list .toolbar {
-  background-color: #faf9f5 !important;
-  border-bottom: 1px solid #e2dfd8 !important;
-  color: #2c2b29 !important;
+#layout-list .header,
+#layout-list .toolbar {
+  background-color: #181818 !important;
+  border-bottom: 1px solid #292929 !important;
+  color: #f2f2f2 !important;
 }
 .messagelist tr {
-  border-bottom: 1px solid #f1efea !important;
+  border-bottom: 1px solid #262626 !important;
+  background-color: transparent !important;
+  color: #d1d1d1 !important;
 }
 .messagelist tr:hover td {
-  background-color: #f5f3ee !important;
+  background-color: #262626 !important;
 }
-.messagelist tr.selected td {
-  background-color: #edeae4 !important;
-  color: #2c2b29 !important;
+.messagelist tr.selected td,
+.listing li.selected,
+.listing li.selected > a {
+  background-color: #303030 !important;
+  color: #ffffff !important;
 }
-.messagelist tr.unseen td {
+.messagelist tr.unseen td,
+.messagelist tr.unseen td a {
   font-weight: 600 !important;
+  color: #ffffff !important;
 }
-.badge-info, .badge-primary {
-  background-color: #31302e !important;
-  color: #faf9f6 !important;
+.messagelist tr:not(.flagged):not(.deleted).selected td.subject a {
+  color: #ffffff !important;
 }
 
 /* Content / Reader Pane */
 #layout-content {
-  background-color: #fffcf9 !important;
+  background-color: #1f1f1f !important;
 }
-#layout-content .header, #layout-content .toolbar {
-  background-color: #faf9f5 !important;
-  border-bottom: 1px solid #e2dfd8 !important;
+#layout-content .header,
+#layout-content .toolbar,
+.message-partheaders,
+#message-header {
+  background-color: #181818 !important;
+  border-bottom: 1px solid #292929 !important;
+  color: #f2f2f2 !important;
 }
-.message-partheaders, #message-header {
-  background-color: #faf9f5 !important;
-  border-bottom: 1px solid #e2dfd8 !important;
+.message-part blockquote,
+.message-htmlpart blockquote {
+  border-left: 2px solid #555555 !important;
+  color: #b5b5b5 !important;
+  background: transparent !important;
+}
+
+/* Elimination of ALL Blue Accents: Links, Buttons, Inputs */
+a,
+a:not(.btn):not(.button),
+.btn-link,
+.ui.alert a:not(.btn) {
+  color: #f2f2f2 !important;
+  text-decoration: none;
+}
+a:hover,
+.btn-link:hover {
+  color: #ffffff !important;
+  text-decoration: underline;
 }
 
 /* Buttons */
-.btn-primary, .button.mainaction, button.mainaction, .btn.mainaction {
-  background-color: #31302e !important;
-  border-color: #31302e !important;
-  color: #faf9f6 !important;
-  border-radius: 8px !important;
-  box-shadow: none !important;
-  font-weight: 500 !important;
-  transition: all 0.15s ease !important;
-}
-.btn-primary:hover, .button.mainaction:hover, button.mainaction:hover, .btn.mainaction:hover {
-  background-color: #1a1918 !important;
-  border-color: #1a1918 !important;
-  color: #ffffff !important;
-}
-.btn-secondary {
-  background-color: #f1efea !important;
-  border-color: #e2dfd8 !important;
-  color: #2c2b29 !important;
-  border-radius: 8px !important;
-}
-.btn-secondary:hover {
-  background-color: #edeae4 !important;
-}
-
-/* Inputs & Form Controls */
-.form-control, input[type="text"], input[type="password"], input[type="email"], select, textarea {
-  background-color: #fffcf9 !important;
-  border-color: #e2dfd8 !important;
-  color: #2c2b29 !important;
-  border-radius: 8px !important;
-}
-.form-control:focus, input[type="text"]:focus, input[type="password"]:focus, input[type="email"]:focus {
-  border-color: #726f69 !important;
-  box-shadow: 0 0 0 2px rgba(114, 111, 105, 0.18) !important;
-}
-
-/* Links */
-a:not(.btn):not(.button) {
-  color: #31302e;
-}
-a:not(.btn):not(.button):hover {
-  color: #000000;
-}
-
-/* Login Page Styling */
-.task-login #layout-content {
-  background-color: #faf9f5 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-}
-.task-login #logo {
-  top: 0 !important;
-  margin-bottom: 2rem !important;
-  max-height: 84px !important;
-}
-.task-login #login-form {
-  background-color: #fffcf9 !important;
-  border: 1px solid #e2dfd8 !important;
-  border-radius: 14px !important;
-  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.02) !important;
-  padding: 2.5rem !important;
-  width: 100% !important;
-  max-width: 420px !important;
-}
-.task-login #login-form table {
-  width: 100% !important;
-}
-.task-login #login-form td.title label {
-  color: #726f69 !important;
-  font-size: 0.875rem !important;
-  font-weight: 500 !important;
-}
-.task-login #login-form button.mainaction {
-  width: 100% !important;
-  padding: 0.65rem 1rem !important;
-  margin-top: 1rem !important;
-}
-.task-login #login-footer {
-  color: #726f69 !important;
-  margin-top: 1.5rem !important;
-  font-size: 0.825rem !important;
-}
-.task-login #login-footer a {
-  color: #31302e !important;
-  text-decoration: underline !important;
-}
-
-/* --------------------------------------------------------------------------
-   DARK MODE PALETTE (html.dark-mode)
-   -------------------------------------------------------------------------- */
-html.dark-mode body,
-html.dark-mode #layout,
-html.dark-mode #layout-content {
-  background-color: #1f1f1f !important;
-  color: #f2f2f2 !important;
-}
-
-/* Left Task Navigation Bar in Dark Mode */
-html.dark-mode #layout-menu,
-html.dark-mode #layout-menu .popover-header,
-html.dark-mode #taskmenu {
-  background-color: #111111 !important;
-  border-right: 1px solid #242424 !important;
-}
-html.dark-mode #taskmenu a.button {
-  color: #888888 !important;
-}
-html.dark-mode #taskmenu a.button:hover {
-  color: #f2f2f2 !important;
-  background-color: #1f1f1f !important;
-}
-html.dark-mode #taskmenu a.button.selected {
-  color: #f2f2f2 !important;
-  background-color: #292929 !important;
-}
-html.dark-mode #taskmenu a.button.compose {
-  color: #141414 !important;
-  background-color: #f2f2f2 !important;
-}
-html.dark-mode #taskmenu a.button.compose:hover {
-  background-color: #ffffff !important;
-}
-
-/* Sidebar / Folders in Dark Mode */
-html.dark-mode #layout-sidebar {
-  background-color: #161616 !important;
-  border-right: 1px solid #292929 !important;
-}
-html.dark-mode #layout-sidebar .header {
-  background-color: #161616 !important;
-  border-bottom: 1px solid #292929 !important;
-  color: #f2f2f2 !important;
-}
-html.dark-mode .treelist li a,
-html.dark-mode .treelist li span {
-  color: #e0e0e0 !important;
-}
-html.dark-mode .treelist li:hover > a {
-  background-color: #242424 !important;
-}
-html.dark-mode .treelist li.selected > a {
-  background-color: #2d2d2d !important;
-  color: #ffffff !important;
-}
-
-/* Message List in Dark Mode */
-html.dark-mode #layout-list {
-  background-color: #1f1f1f !important;
-  border-right: 1px solid #292929 !important;
-}
-html.dark-mode #layout-list .header,
-html.dark-mode #layout-list .toolbar {
-  background-color: #1a1a1a !important;
-  border-bottom: 1px solid #292929 !important;
-  color: #f2f2f2 !important;
-}
-html.dark-mode .messagelist tr {
-  border-bottom: 1px solid #262626 !important;
-}
-html.dark-mode .messagelist tr:hover td {
-  background-color: #262626 !important;
-}
-html.dark-mode .messagelist tr.selected td {
-  background-color: #333333 !important;
-  color: #ffffff !important;
-}
-html.dark-mode .badge-info,
-html.dark-mode .badge-primary {
-  background-color: #f2f2f2 !important;
-  color: #141414 !important;
-}
-
-/* Content / Reader Pane in Dark Mode */
-html.dark-mode #layout-content {
-  background-color: #1f1f1f !important;
-}
-html.dark-mode #layout-content .header,
-html.dark-mode #layout-content .toolbar,
-html.dark-mode .message-partheaders,
-html.dark-mode #message-header {
-  background-color: #1a1a1a !important;
-  border-bottom: 1px solid #292929 !important;
-  color: #f2f2f2 !important;
-}
-
-/* Buttons in Dark Mode */
-html.dark-mode .btn-primary,
-html.dark-mode .button.mainaction,
-html.dark-mode button.mainaction,
-html.dark-mode .btn.mainaction {
+.btn-primary,
+.button.mainaction,
+button.mainaction,
+.btn.mainaction {
   background-color: #f2f2f2 !important;
   border-color: #f2f2f2 !important;
   color: #141414 !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+  transition: all 0.15s ease !important;
 }
-html.dark-mode .btn-primary:hover,
-html.dark-mode .button.mainaction:hover,
-html.dark-mode button.mainaction:hover,
-html.dark-mode .btn.mainaction:hover {
+.btn-primary:hover,
+.button.mainaction:hover,
+button.mainaction:hover,
+.btn.mainaction:hover,
+.btn-primary:focus:not(:disabled) {
   background-color: #ffffff !important;
   border-color: #ffffff !important;
   color: #000000 !important;
 }
-html.dark-mode .btn-secondary {
+.btn-secondary {
   background-color: #292929 !important;
   border-color: #3b3b3b !important;
   color: #f2f2f2 !important;
+  border-radius: 8px !important;
 }
-html.dark-mode .btn-secondary:hover {
+.btn-secondary:hover {
   background-color: #333333 !important;
 }
+.btn-danger {
+  background-color: #dc2626 !important;
+  border-color: #dc2626 !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+}
 
-/* Inputs & Form Controls in Dark Mode */
-html.dark-mode .form-control,
-html.dark-mode input[type="text"],
-html.dark-mode input[type="password"],
-html.dark-mode input[type="email"],
-html.dark-mode select,
-html.dark-mode textarea {
-  background-color: #262626 !important;
+/* Inputs & Form Controls */
+.form-control,
+input[type="text"],
+input[type="password"],
+input[type="email"],
+select,
+textarea,
+.recipient-input,
+.multi-input > .content {
+  background-color: #1f1f1f !important;
   border-color: #3b3b3b !important;
   color: #f2f2f2 !important;
+  border-radius: 8px !important;
 }
-html.dark-mode .form-control:focus,
-html.dark-mode input[type="text"]:focus,
-html.dark-mode input[type="password"]:focus,
-html.dark-mode input[type="email"]:focus {
+.form-control:focus,
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus,
+select:focus,
+textarea:focus,
+.recipient-input.focus,
+.multi-input > .content.focused {
   border-color: #808080 !important;
   box-shadow: 0 0 0 2px rgba(128, 128, 128, 0.25) !important;
 }
 
-/* Links in Dark Mode */
-html.dark-mode a:not(.btn):not(.button) {
-  color: #f2f2f2;
+/* Checkboxes and Radios */
+input[type="checkbox"],
+input[type="radio"],
+.custom-control-input {
+  accent-color: #f2f2f2 !important;
 }
-html.dark-mode a:not(.btn):not(.button):hover {
-  color: #ffffff;
+.custom-switch .custom-control-input:checked ~ .custom-control-label::before {
+  background-color: #f2f2f2 !important;
+  border-color: #f2f2f2 !important;
 }
 
-/* Login Page Styling in Dark Mode */
-html.dark-mode.task-login #layout-content,
-html.dark-mode .task-login #layout-content {
-  background-color: #191919 !important;
+/* Search Bar */
+.searchbar input,
+#searchfilter,
+.searchbar {
+  background-color: #1f1f1f !important;
+  border-color: #3b3b3b !important;
+  color: #f2f2f2 !important;
 }
-html.dark-mode.task-login #login-form,
-html.dark-mode .task-login #login-form {
+
+/* Quota Meter */
+.quota-widget .value {
+  color: #f2f2f2 !important;
+}
+.quota-widget .bar {
+  background-color: #3b3b3b !important;
+}
+
+/* Popovers, Menus & Dialogs */
+.popover,
+.dropdown-menu,
+.ui-menu,
+.ui-widget-content,
+.ui-dialog {
   background-color: #242424 !important;
   border-color: #383838 !important;
-  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.6) !important;
-}
-html.dark-mode.task-login #login-form td.title label,
-html.dark-mode .task-login #login-form td.title label {
-  color: #9e9e9e !important;
-}
-html.dark-mode.task-login #login-footer,
-html.dark-mode .task-login #login-footer {
-  color: #9e9e9e !important;
-}
-html.dark-mode.task-login #login-footer a,
-html.dark-mode .task-login #login-footer a {
   color: #f2f2f2 !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5) !important;
+}
+.ui-menu .ui-menu-item {
+  border-bottom: 1px solid #2e2e2e !important;
+}
+.ui-menu .ui-state-active,
+.popover .menu li a:not(.disabled):hover,
+.popupmenu .listing li > a:not(.disabled):hover {
+  background-color: #333333 !important;
+  color: #ffffff !important;
+}
+
+/* ==========================================================================
+   TOAST / ALERT NOTIFICATIONS (#messagestack)
+   ========================================================================== */
+#messagestack {
+  position: fixed !important;
+  bottom: 24px !important;
+  right: 24px !important;
+  left: auto !important;
+  width: auto !important;
+  max-width: 440px !important;
+  z-index: 9999 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+}
+#messagestack div {
+  border-radius: 10px !important;
+  padding: 12px 20px !important;
+  min-height: auto !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+#messagestack .alert-info,
+#messagestack .alert-info.information,
+#messagestack .loading,
+.ui.alert.boxinformation {
+  background-color: #292929 !important;
+  border: 1px solid #3b3b3b !important;
+  color: #f2f2f2 !important;
+}
+#messagestack .alert-success,
+.ui.alert.boxconfirmation {
+  background-color: #1a2e20 !important;
+  border: 1px solid #2a5e36 !important;
+  color: #4ade80 !important;
+}
+#messagestack .alert-warning,
+.ui.alert.boxwarning {
+  background-color: #332611 !important;
+  border: 1px solid #664c1c !important;
+  color: #facc15 !important;
+}
+#messagestack .alert-danger,
+.ui.alert.boxerror {
+  background-color: #331616 !important;
+  border: 1px solid #662626 !important;
+  color: #f87171 !important;
+}
+
+/* ==========================================================================
+   REDESIGNED MODERN LOGIN PAGE
+   ========================================================================== */
+.task-login #layout-content {
+  background-color: #1f1f1f !important;
+  min-height: 100vh !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1.5rem !important;
+}
+
+.task-login .login-wrapper {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  max-width: 380px !important;
+  margin: auto !important;
+}
+
+.task-login .brand-link {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 12px !important;
+  text-decoration: none !important;
+  margin-bottom: 4px !important;
+  transition: opacity 0.2s ease !important;
+}
+.task-login .brand-link:hover {
+  opacity: 0.85 !important;
+}
+.task-login #logo {
+  position: static !important;
+  width: 52px !important;
+  height: 52px !important;
+  max-height: 52px !important;
+  margin: 0 !important;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3)) !important;
+}
+.task-login .brand-wordmark {
+  font-family: 'Bricolage Grotesque', sans-serif !important;
+  font-size: 34px !important;
+  font-weight: 200 !important;
+  line-height: 1 !important;
+  letter-spacing: -0.02em !important;
+  color: #f2f2f2 !important;
+}
+
+.task-login .brand-subtitle {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
+  font-size: 14px !important;
+  color: #9e9e9e !important;
+  margin: 0 0 24px 0 !important;
+  text-align: center !important;
+}
+
+.task-login .login-card {
+  background-color: #292929 !important;
+  border: 1px solid #3b3b3b !important;
+  border-radius: 14px !important;
+  padding: 28px !important;
+  width: 100% !important;
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.5) !important;
+}
+
+.task-login #login-form {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+}
+.task-login #login-form table,
+.task-login #login-form tbody {
+  display: block !important;
+  width: 100% !important;
+}
+.task-login #login-form tr {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  margin-bottom: 16px !important;
+}
+.task-login #login-form td {
+  display: block !important;
+  width: 100% !important;
+  padding: 0 !important;
+  border: none !important;
+}
+.task-login #login-form td.title {
+  margin-bottom: 6px !important;
+}
+.task-login #login-form td.title label {
+  color: #f2f2f2 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+.task-login #login-form .form-control {
+  background-color: #1f1f1f !important;
+  border: 1px solid #3b3b3b !important;
+  color: #f2f2f2 !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  height: 42px !important;
+  font-size: 14px !important;
+  width: 100% !important;
+}
+.task-login #login-form .form-control:focus {
+  border-color: #808080 !important;
+  box-shadow: 0 0 0 2px rgba(128, 128, 128, 0.25) !important;
+}
+.task-login #login-form .formbuttons {
+  margin-top: 20px !important;
+  margin-bottom: 0 !important;
+}
+.task-login #login-form button.mainaction,
+.task-login #rcmloginsubmit {
+  width: 100% !important;
+  height: 42px !important;
+  background-color: #f2f2f2 !important;
+  border: none !important;
+  color: #141414 !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  transition: opacity 0.15s ease !important;
+}
+.task-login #login-form button.mainaction:hover,
+.task-login #rcmloginsubmit:hover {
+  background-color: #ffffff !important;
+  opacity: 0.95 !important;
+}
+
+.task-login .login-secure-footer {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
+  font-size: 12px !important;
+  color: #726f69 !important;
+  margin-top: 20px !important;
+  text-align: center !important;
+}
+
+/* ==========================================================================
+   LIGHT MODE (Only active if user explicitly toggles theme to light mode)
+   ========================================================================== */
+html:not(.dark-mode) body,
+html:not(.dark-mode) #layout,
+html:not(.dark-mode) #layout-content {
+  background-color: #faf9f5 !important;
+  color: #2c2b29 !important;
+}
+html:not(.dark-mode) #layout-sidebar {
+  background-color: #f5f3ee !important;
+  border-right-color: #e2dfd8 !important;
+}
+html:not(.dark-mode) #layout-list {
+  background-color: #fffcf9 !important;
+  border-right-color: #e2dfd8 !important;
+}
+html:not(.dark-mode) .treelist li.selected > a,
+html:not(.dark-mode) .messagelist tr.selected td,
+html:not(.dark-mode) .listing li.selected {
+  background-color: #edeae4 !important;
+  color: #000000 !important;
+}
+html:not(.dark-mode) .btn-primary,
+html:not(.dark-mode) .button.mainaction,
+html:not(.dark-mode) button.mainaction {
+  background-color: #31302e !important;
+  border-color: #31302e !important;
+  color: #faf9f6 !important;
+}
+html:not(.dark-mode) .btn-primary:hover,
+html:not(.dark-mode) .button.mainaction:hover,
+html:not(.dark-mode) button.mainaction:hover {
+  background-color: #1a1918 !important;
+  color: #ffffff !important;
+}
+html:not(.dark-mode) a,
+html:not(.dark-mode) .btn-link {
+  color: #31302e !important;
+}
+html:not(.dark-mode).task-login #layout-content {
+  background-color: #faf9f5 !important;
+}
+html:not(.dark-mode).task-login .brand-wordmark {
+  color: #2c2b29 !important;
+}
+html:not(.dark-mode).task-login .brand-subtitle {
+  color: #726f69 !important;
+}
+html:not(.dark-mode).task-login .login-card {
+  background-color: #fffcf9 !important;
+  border-color: #e2dfd8 !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05) !important;
+}
+html:not(.dark-mode).task-login #login-form td.title label {
+  color: #2c2b29 !important;
+}
+html:not(.dark-mode).task-login #login-form .form-control {
+  background-color: #ffffff !important;
+  border-color: #e2dfd8 !important;
+  color: #2c2b29 !important;
 }

@@ -1,0 +1,27 @@
+<roundcube:include file="includes/layout.html" />
+
+<h1 class="voice"><roundcube:object name="productname" /> <roundcube:label name="login" /></h1>
+
+<div id="layout-content" class="selected no-navbar" role="main">
+    <div class="login-wrapper">
+        <a href="https://email.yehia.dev" class="brand-link" title="mailwart">
+            <roundcube:object name="logo" src="/images/logo.svg" id="logo" alt="mailwart" />
+            <span class="brand-wordmark">mailwart</span>
+        </a>
+        <p class="brand-subtitle">Sign in to your account</p>
+
+        <div class="login-card">
+            <roundcube:form id="login-form" name="login-form" method="post" class="propform">
+                <roundcube:object name="loginform" form="login-form" size="40" submit="true" class="form-control" />
+            </roundcube:form>
+        </div>
+
+        <p class="login-secure-footer">Secure, private, and fast email.</p>
+    </div>
+</div>
+
+<noscript>
+	<p class="noscriptwarning"><roundcube:label name="noscriptwarning" /></p>
+</noscript>
+
+<roundcube:include file="includes/footer.html" />

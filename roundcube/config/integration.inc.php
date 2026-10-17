@@ -22,7 +22,10 @@ if (preg_match('/^webmail\.(.+)$/', $http_host, $matches)) {
 }
 
 $config['login_autocomplete'] = 2;
-$config['product_name'] = 'mailwart webmail';
+$config['product_name'] = 'Webmail';
+$config['skin_logo'] = [
+    '*[link]' => 'https://email.yehia.dev',
+];
 $config['ip_check'] = false;
 
 $tls_options = [
