@@ -145,7 +145,8 @@ def patch_frontend(static_dir: str):
             content = content.replace(target1, rep1).replace(target2, rep2).replace(target3, rep3).replace(target4, rep4)
             content = content.replace(rail_target, rail_rep)
             content = content.replace(watermark_target, watermark_rep)
-            content = re.sub(r'document\.title\s*=\s*r\s*>\s*0\s*\?\s*`\(\${r}\)[^`]+`\s*:\s*["\'][^"\']+["\']', 'document.title=r>0?`(${r}) Webmail`:"Webmail"', content)
+            content = re.sub(r'document\.title\s*=\s*r\s*>\s*0\s*\?\s*`\(\${r}\)[^`]+`\s*:\s*["\'][^"\']+["\']', 'document.title=r>0?`(${r}) Webmail Inbox`:"Webmail Inbox"', content)
+            content = re.sub(r'document\.title\s*=\s*r\s*>\s*0\s*\?\s*`\(\${r}\)\s*Webmail(?: Inbox)?`\s*:\s*["\']Webmail(?: Inbox)?["\']', 'document.title=r>0?`(${r}) Webmail Inbox`:"Webmail Inbox"', content)
 
             with open(new_chunk_path, "w", encoding="utf-8") as f:
                 f.write(content)
@@ -163,7 +164,29 @@ def patch_frontend(static_dir: str):
         print("[patch-rav] Notice: Mail client target already patched or chunk not found.")
 
     # --- 3. Patch All HTML and TXT files for Title, Metadata and Font Preconnect ---
-    font_links = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap"><script>document.title="Webmail";try{if(document.cookie.indexOf("rav-theme=light")===-1){document.documentElement.classList.add("dark");}}catch(e){}try{new MutationObserver(function(){if(document.title&&!document.title.endsWith("Webmail")){document.title="Webmail";}}).observe(document.head,{subtree:true,characterData:true,childList:true});}catch(e){}</script>'
+    font_links = (
+        '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap">'
+        '<script>'
+        'try{'
+        'var _isLog=window.location.pathname.indexOf("/login")!==-1;'
+        'document.title=_isLog?"Webmail Login":"Webmail Inbox";'
+        'if(document.cookie.indexOf("rav-theme=light")===-1){document.documentElement.classList.add("dark");}'
+        '}catch(e){}'
+        'try{'
+        'new MutationObserver(function(){'
+        'var _isL=window.location.pathname.indexOf("/login")!==-1;'
+        'if(_isL){'
+        'if(document.title!=="Webmail Login")document.title="Webmail Login";'
+        '}else{'
+        'var t=document.title;'
+        'if(!t||!t.includes("Webmail")){document.title="Webmail Inbox";}'
+        '}'
+        '}).observe(document.head,{subtree:true,characterData:true,childList:true});'
+        '}catch(e){}'
+        '</script>'
+    )
 
     meta_count = 0
     for root, dirs, files in os.walk(root_static):
@@ -175,14 +198,17 @@ def patch_frontend(static_dir: str):
                         content = f.read()
                     orig = content
 
-                    content = re.sub(r'<title>.*?</title>', '<title>Webmail</title>', content)
-                    content = re.sub(r'(\\+["\'])children\1:\1(?:Rav|mailwart webmail)\1', r'\1children\1:\1Webmail\1', content)
-                    content = content.replace('children:"Rav"', 'children:"Webmail"')
-                    content = content.replace('"children":"Rav"', '"children":"Webmail"')
-                    content = content.replace('children:"mailwart webmail"', 'children:"Webmail"')
-                    content = content.replace('"children":"mailwart webmail"', '"children":"Webmail"')
-                    content = content.replace('content="Rav"', 'content="Webmail"')
-                    content = content.replace('content="mailwart webmail"', 'content="Webmail"')
+                    is_login_page = "login" in fname.lower() or "login" in fpath.lower()
+                    page_title = "Webmail Login" if is_login_page else "Webmail Inbox"
+
+                    content = re.sub(r'<title>.*?</title>', f'<title>{page_title}</title>', content)
+                    content = re.sub(r'(\\+["\'])children\1:\1(?:Rav|mailwart webmail|Webmail)\1', rf'\1children\1:\1{page_title}\1', content)
+                    content = content.replace('children:"Rav"', f'children:"{page_title}"')
+                    content = content.replace('"children":"Rav"', f'"children":"{page_title}"')
+                    content = content.replace('children:"mailwart webmail"', f'children:"{page_title}"')
+                    content = content.replace('"children":"mailwart webmail"', f'"children":"{page_title}"')
+                    content = content.replace('content="Rav"', f'content="{page_title}"')
+                    content = content.replace('content="mailwart webmail"', f'content="{page_title}"')
                     content = content.replace("?favicon.2vob68tjqpejf.ico", "?v=mailwart")
 
                     if fname.endswith(".html") and "<head>" in content and font_links not in content:

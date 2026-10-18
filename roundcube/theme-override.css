@@ -13,87 +13,103 @@ body, button, input, select, textarea, .form-control, .btn, .popover, .ui-widget
 }
 
 /* ==========================================================================
-   DEFAULT DARK THEME (Default for all unregistered & dark-mode users)
+   DARK THEME (Scoped to html.dark-mode)
    ========================================================================== */
-html, body, #layout, #layout-content {
+html.dark-mode,
+html.dark-mode body,
+html.dark-mode #layout,
+html.dark-mode #layout-content {
   background-color: #1f1f1f !important;
   color: #f2f2f2 !important;
 }
 
 /* Left Task Navigation Rail */
-#layout-menu,
-#layout-menu .popover-header,
-#taskmenu {
+html.dark-mode #layout-menu,
+html.dark-mode #layout-menu .popover-header,
+html.dark-mode #taskmenu {
   background-color: #111111 !important;
   border-right: 1px solid #242424 !important;
 }
-#layout-menu .popover-header {
+html.dark-mode #layout-menu .popover-header {
   border-bottom: 1px solid #242424 !important;
 }
-#taskmenu a.button {
+html.dark-mode #taskmenu a.button {
   color: #888888 !important;
 }
-#taskmenu a.button:hover {
+html.dark-mode #taskmenu a.button:hover {
   color: #f2f2f2 !important;
   background-color: #1f1f1f !important;
 }
-#taskmenu a.button.selected {
+html.dark-mode #taskmenu a.button.selected {
   color: #ffffff !important;
   background-color: #292929 !important;
 }
-#taskmenu a.button.compose,
-#taskmenu a.button.action,
-#taskmenu .action-buttons a {
-  color: #141414 !important;
-  background-color: #f2f2f2 !important;
+
+/* Compose Button - same dark color styling as other rail buttons */
+html.dark-mode #taskmenu a.button.compose,
+html.dark-mode #taskmenu a.button.action,
+html.dark-mode #taskmenu .action-buttons a {
+  color: #888888 !important;
+  background-color: transparent !important;
   border-radius: 8px !important;
 }
-#taskmenu a.button.compose:hover,
-#taskmenu a.button.action:hover,
-#taskmenu .action-buttons a:hover {
-  background-color: #ffffff !important;
-  color: #000000 !important;
+html.dark-mode #taskmenu a.button.compose:hover,
+html.dark-mode #taskmenu a.button.action:hover,
+html.dark-mode #taskmenu .action-buttons a:hover {
+  background-color: #1f1f1f !important;
+  color: #f2f2f2 !important;
 }
-.floating-action-buttons a.button {
-  background-color: #f2f2f2 !important;
-  color: #141414 !important;
+html.dark-mode #taskmenu a.button.compose.selected,
+html.dark-mode #taskmenu a.button.action.selected,
+html.dark-mode #taskmenu .action-buttons a.selected {
+  background-color: #292929 !important;
+  color: #ffffff !important;
+}
+html.dark-mode .floating-action-buttons a.button {
+  background-color: #292929 !important;
+  color: #f2f2f2 !important;
+  border: 1px solid #3b3b3b !important;
+}
+html.dark-mode .floating-action-buttons a.button:hover {
+  background-color: #383838 !important;
+  color: #ffffff !important;
 }
 
 /* Sidebar / Folder Tree */
-#layout-sidebar {
+html.dark-mode #layout-sidebar {
   background-color: #161616 !important;
   border-right: 1px solid #292929 !important;
 }
-#layout-sidebar .header,
-#layout-sidebar .toolbar {
+html.dark-mode #layout-sidebar .header,
+html.dark-mode #layout-sidebar .toolbar {
   background-color: #161616 !important;
   border-bottom: 1px solid #292929 !important;
   color: #f2f2f2 !important;
 }
-.treelist li a,
-.treelist li span {
+html.dark-mode .treelist li a,
+html.dark-mode .treelist li span {
   color: #d1d1d1 !important;
 }
-.treelist li:hover > a {
+html.dark-mode .treelist li:hover > a {
   background-color: #222222 !important;
 }
-.treelist li.selected > a {
+html.dark-mode .treelist li.selected > a {
   background-color: #2c2c2c !important;
   color: #ffffff !important;
   font-weight: 600 !important;
 }
-.treelist li.unread > a {
+html.dark-mode .treelist li.unread > a {
   font-weight: 700 !important;
   color: #ffffff !important;
 }
 
 /* Badges & Notification Counters */
-.unreadcount,
-.folderlist li.mailbox .unreadcount,
-.folderlist li.mailbox.recent > a > .unreadcount,
-.badge-info,
-.badge-primary,
-.badge {
+html.dark-mode .unreadcount,
+html.dark-mode .folderlist li.mailbox .unreadcount,
+html.dark-mode .folderlist li.mailbox.recent > a > .unreadcount,
+html.dark-mode .badge-info,
+html.dark-mode .badge-primary,
+html.dark-mode .badge {
   background-color: #f2f2f2 !important;
   color: #141414 !important;
   font-weight: 700 !important;
@@ -101,93 +117,93 @@ html, body, #layout, #layout-content {
 }
 
 /* Message List / Table */
-#layout-list {
+html.dark-mode #layout-list {
   background-color: #1f1f1f !important;
   border-right: 1px solid #292929 !important;
 }
-#layout-list .header,
-#layout-list .toolbar {
+html.dark-mode #layout-list .header,
+html.dark-mode #layout-list .toolbar {
   background-color: #181818 !important;
   border-bottom: 1px solid #292929 !important;
   color: #f2f2f2 !important;
 }
-.messagelist tr {
+html.dark-mode .messagelist tr {
   border-bottom: 1px solid #262626 !important;
   background-color: transparent !important;
   color: #d1d1d1 !important;
 }
-.messagelist tr:hover td {
+html.dark-mode .messagelist tr:hover td {
   background-color: #262626 !important;
 }
-.messagelist tr.selected td,
-.listing li.selected,
-.listing li.selected > a {
+html.dark-mode .messagelist tr.selected td,
+html.dark-mode .listing li.selected,
+html.dark-mode .listing li.selected > a {
   background-color: #303030 !important;
   color: #ffffff !important;
 }
-.messagelist tr.unseen td,
-.messagelist tr.unseen td a {
+html.dark-mode .messagelist tr.unseen td,
+html.dark-mode .messagelist tr.unseen td a {
   font-weight: 600 !important;
   color: #ffffff !important;
 }
-.messagelist tr:not(.flagged):not(.deleted).selected td.subject a {
+html.dark-mode .messagelist tr:not(.flagged):not(.deleted).selected td.subject a {
   color: #ffffff !important;
 }
 
 /* Content / Reader Pane & Watermark Empty State */
-#layout-content,
-.iframe-wrapper,
-#messagecontframe,
-iframe#messagecontframe {
+html.dark-mode #layout-content,
+html.dark-mode .iframe-wrapper,
+html.dark-mode #messagecontframe,
+html.dark-mode iframe#messagecontframe {
   background-color: #1f1f1f !important;
   border: none !important;
 }
 
-body.watermark,
-.watermark {
+html.dark-mode body.watermark,
+html.dark-mode .watermark {
   background-color: #1f1f1f !important;
   color: #726f69 !important;
 }
 
-body.watermark #logo,
-.watermark #logo,
-.watermark img:not(.watermark-logo) {
+html.dark-mode body.watermark #logo,
+html.dark-mode .watermark #logo,
+html.dark-mode .watermark img:not(.watermark-logo) {
   display: none !important;
 }
-#layout-content .header,
-#layout-content .toolbar,
-.message-partheaders,
-#message-header {
+html.dark-mode #layout-content .header,
+html.dark-mode #layout-content .toolbar,
+html.dark-mode .message-partheaders,
+html.dark-mode #message-header {
   background-color: #181818 !important;
   border-bottom: 1px solid #292929 !important;
   color: #f2f2f2 !important;
 }
-.message-part blockquote,
-.message-htmlpart blockquote {
+html.dark-mode .message-part blockquote,
+html.dark-mode .message-htmlpart blockquote {
   border-left: 2px solid #555555 !important;
   color: #b5b5b5 !important;
   background: transparent !important;
 }
 
 /* Elimination of ALL Blue Accents: Links, Buttons, Inputs */
-a,
-a:not(.btn):not(.button),
-.btn-link,
-.ui.alert a:not(.btn) {
+html.dark-mode a,
+html.dark-mode a:not(.btn):not(.button),
+html.dark-mode .btn-link,
+html.dark-mode .ui.alert a:not(.btn) {
   color: #f2f2f2 !important;
   text-decoration: none;
 }
-a:hover,
-.btn-link:hover {
+html.dark-mode a:hover,
+html.dark-mode .btn-link:hover {
   color: #ffffff !important;
   text-decoration: underline;
 }
 
-/* Buttons */
-.btn-primary,
-.button.mainaction,
-button.mainaction,
-.btn.mainaction {
+/* Dark Mode Buttons */
+html.dark-mode .btn-primary,
+html.dark-mode .button.mainaction,
+html.dark-mode button.mainaction,
+html.dark-mode .btn.mainaction {
   background-color: #f2f2f2 !important;
   border-color: #f2f2f2 !important;
   color: #141414 !important;
@@ -196,104 +212,510 @@ button.mainaction,
   box-shadow: none !important;
   transition: all 0.15s ease !important;
 }
-.btn-primary:hover,
-.button.mainaction:hover,
-button.mainaction:hover,
-.btn.mainaction:hover,
-.btn-primary:focus:not(:disabled) {
+html.dark-mode .btn-primary:hover,
+html.dark-mode .button.mainaction:hover,
+html.dark-mode button.mainaction:hover,
+html.dark-mode .btn.mainaction:hover,
+html.dark-mode .btn-primary:focus:not(:disabled) {
   background-color: #ffffff !important;
   border-color: #ffffff !important;
   color: #000000 !important;
 }
-.btn-secondary {
+html.dark-mode .btn-secondary {
   background-color: #292929 !important;
   border-color: #3b3b3b !important;
   color: #f2f2f2 !important;
   border-radius: 8px !important;
 }
-.btn-secondary:hover {
+html.dark-mode .btn-secondary:hover {
   background-color: #333333 !important;
 }
-.btn-danger {
+html.dark-mode .btn-danger {
   background-color: #dc2626 !important;
   border-color: #dc2626 !important;
   color: #ffffff !important;
   border-radius: 8px !important;
 }
 
-/* Inputs & Form Controls */
-.form-control,
-input[type="text"],
-input[type="password"],
-input[type="email"],
-select,
-textarea,
-.recipient-input,
-.multi-input > .content {
+/* Dark Mode Inputs & Form Controls */
+html.dark-mode .form-control,
+html.dark-mode input[type="text"],
+html.dark-mode input[type="password"],
+html.dark-mode input[type="email"],
+html.dark-mode select,
+html.dark-mode textarea,
+html.dark-mode .recipient-input,
+html.dark-mode .multi-input > .content {
   background-color: #1f1f1f !important;
   border-color: #3b3b3b !important;
   color: #f2f2f2 !important;
   border-radius: 8px !important;
 }
-.form-control:focus,
-input[type="text"]:focus,
-input[type="password"]:focus,
-input[type="email"]:focus,
-select:focus,
-textarea:focus,
-.recipient-input.focus,
-.multi-input > .content.focused {
+html.dark-mode .form-control:focus,
+html.dark-mode input[type="text"]:focus,
+html.dark-mode input[type="password"]:focus,
+html.dark-mode input[type="email"]:focus,
+html.dark-mode select:focus,
+html.dark-mode textarea:focus,
+html.dark-mode .recipient-input.focus,
+html.dark-mode .multi-input > .content.focused {
   border-color: #808080 !important;
   box-shadow: 0 0 0 2px rgba(128, 128, 128, 0.25) !important;
 }
 
 /* Checkboxes and Radios */
-input[type="checkbox"],
-input[type="radio"],
-.custom-control-input {
+html.dark-mode input[type="checkbox"],
+html.dark-mode input[type="radio"],
+html.dark-mode .custom-control-input {
   accent-color: #f2f2f2 !important;
 }
-.custom-switch .custom-control-input:checked ~ .custom-control-label::before {
+html.dark-mode .custom-switch .custom-control-input:checked ~ .custom-control-label::before {
   background-color: #f2f2f2 !important;
   border-color: #f2f2f2 !important;
 }
 
 /* Search Bar */
-.searchbar input,
-#searchfilter,
-.searchbar {
+html.dark-mode .searchbar input,
+html.dark-mode #searchfilter,
+html.dark-mode .searchbar {
   background-color: #1f1f1f !important;
   border-color: #3b3b3b !important;
   color: #f2f2f2 !important;
 }
 
 /* Quota Meter */
-.quota-widget .value {
+html.dark-mode .quota-widget .value {
   color: #f2f2f2 !important;
 }
-.quota-widget .bar {
+html.dark-mode .quota-widget .bar {
   background-color: #3b3b3b !important;
 }
 
 /* Popovers, Menus & Dialogs */
-.popover,
-.dropdown-menu,
-.ui-menu,
-.ui-widget-content,
-.ui-dialog {
+html.dark-mode .popover,
+html.dark-mode .dropdown-menu,
+html.dark-mode .ui-menu,
+html.dark-mode .ui-widget-content,
+html.dark-mode .ui-dialog {
   background-color: #242424 !important;
   border-color: #383838 !important;
   color: #f2f2f2 !important;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5) !important;
 }
-.ui-menu .ui-menu-item {
+html.dark-mode .ui-menu .ui-menu-item {
   border-bottom: 1px solid #2e2e2e !important;
 }
-.ui-menu .ui-state-active,
-.popover .menu li a:not(.disabled):hover,
-.popupmenu .listing li > a:not(.disabled):hover {
+html.dark-mode .ui-menu .ui-state-active,
+html.dark-mode .popover .menu li a:not(.disabled):hover,
+html.dark-mode .popupmenu .listing li > a:not(.disabled):hover {
   background-color: #333333 !important;
   color: #ffffff !important;
+}
+
+/* ==========================================================================
+   LIGHT THEME (Instant for html:not(.dark-mode) and html.light-mode)
+   ========================================================================== */
+html:not(.dark-mode),
+html.light-mode,
+html:not(.dark-mode) body,
+html.light-mode body,
+html:not(.dark-mode) #layout,
+html.light-mode #layout,
+html:not(.dark-mode) #layout-content,
+html.light-mode #layout-content {
+  background-color: #faf9f5 !important;
+  color: #2c2b29 !important;
+}
+
+/* Light Mode Task Rail */
+html:not(.dark-mode) #layout-menu,
+html:not(.dark-mode) #layout-menu .popover-header,
+html:not(.dark-mode) #taskmenu,
+html.light-mode #layout-menu,
+html.light-mode #layout-menu .popover-header,
+html.light-mode #taskmenu {
+  background-color: #f0eee6 !important;
+  border-right: 1px solid #e2dfd8 !important;
+}
+html:not(.dark-mode) #layout-menu .popover-header,
+html.light-mode #layout-menu .popover-header {
+  border-bottom: 1px solid #e2dfd8 !important;
+}
+html:not(.dark-mode) #taskmenu a.button,
+html.light-mode #taskmenu a.button {
+  color: #55534e !important;
+}
+html:not(.dark-mode) #taskmenu a.button:hover,
+html.light-mode #taskmenu a.button:hover {
+  color: #1a1918 !important;
+  background-color: #e5e2d8 !important;
+}
+html:not(.dark-mode) #taskmenu a.button.selected,
+html.light-mode #taskmenu a.button.selected {
+  color: #1a1918 !important;
+  background-color: #dbd7cb !important;
+}
+
+/* Light Mode Compose Button */
+html:not(.dark-mode) #taskmenu a.button.compose,
+html:not(.dark-mode) #taskmenu a.button.action,
+html:not(.dark-mode) #taskmenu .action-buttons a,
+html.light-mode #taskmenu a.button.compose,
+html.light-mode #taskmenu a.button.action,
+html.light-mode #taskmenu .action-buttons a {
+  color: #55534e !important;
+  background-color: transparent !important;
+  border-radius: 8px !important;
+}
+html:not(.dark-mode) #taskmenu a.button.compose:hover,
+html:not(.dark-mode) #taskmenu a.button.action:hover,
+html:not(.dark-mode) #taskmenu .action-buttons a:hover,
+html.light-mode #taskmenu a.button.compose:hover,
+html.light-mode #taskmenu a.button.action:hover,
+html.light-mode #taskmenu .action-buttons a:hover {
+  background-color: #e5e2d8 !important;
+  color: #1a1918 !important;
+}
+html:not(.dark-mode) #taskmenu a.button.compose.selected,
+html:not(.dark-mode) #taskmenu a.button.action.selected,
+html:not(.dark-mode) #taskmenu .action-buttons a.selected,
+html.light-mode #taskmenu a.button.compose.selected,
+html.light-mode #taskmenu a.button.action.selected,
+html.light-mode #taskmenu .action-buttons a.selected {
+  background-color: #dbd7cb !important;
+  color: #1a1918 !important;
+}
+html:not(.dark-mode) .floating-action-buttons a.button,
+html.light-mode .floating-action-buttons a.button {
+  background-color: #ffffff !important;
+  color: #1a1918 !important;
+  border: 1px solid #dcd7cc !important;
+}
+html:not(.dark-mode) .floating-action-buttons a.button:hover,
+html.light-mode .floating-action-buttons a.button:hover {
+  background-color: #f5f2ea !important;
+}
+
+/* Light Mode Sidebar / Folder Tree */
+html:not(.dark-mode) #layout-sidebar,
+html.light-mode #layout-sidebar {
+  background-color: #f7f5ef !important;
+  border-right: 1px solid #e2dfd8 !important;
+}
+html:not(.dark-mode) #layout-sidebar .header,
+html:not(.dark-mode) #layout-sidebar .toolbar,
+html.light-mode #layout-sidebar .header,
+html.light-mode #layout-sidebar .toolbar {
+  background-color: #f7f5ef !important;
+  border-bottom: 1px solid #e2dfd8 !important;
+  color: #2c2b29 !important;
+}
+html:not(.dark-mode) .treelist li a,
+html:not(.dark-mode) .treelist li span,
+html.light-mode .treelist li a,
+html.light-mode .treelist li span {
+  color: #4b4843 !important;
+}
+html:not(.dark-mode) .treelist li:hover > a,
+html.light-mode .treelist li:hover > a {
+  background-color: #edeae2 !important;
+  color: #1a1918 !important;
+}
+html:not(.dark-mode) .treelist li.selected > a,
+html.light-mode .treelist li.selected > a {
+  background-color: #e2ded4 !important;
+  color: #000000 !important;
+  font-weight: 600 !important;
+}
+html:not(.dark-mode) .treelist li.unread > a,
+html.light-mode .treelist li.unread > a {
+  font-weight: 700 !important;
+  color: #000000 !important;
+}
+
+/* Light Mode Badges & Notification Counters */
+html:not(.dark-mode) .unreadcount,
+html:not(.dark-mode) .folderlist li.mailbox .unreadcount,
+html:not(.dark-mode) .folderlist li.mailbox.recent > a > .unreadcount,
+html:not(.dark-mode) .badge-info,
+html:not(.dark-mode) .badge-primary,
+html:not(.dark-mode) .badge,
+html.light-mode .unreadcount,
+html.light-mode .folderlist li.mailbox .unreadcount,
+html.light-mode .folderlist li.mailbox.recent > a > .unreadcount,
+html.light-mode .badge-info,
+html.light-mode .badge-primary,
+html.light-mode .badge {
+  background-color: #31302e !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  border-radius: 9999px !important;
+}
+
+/* Light Mode Message List */
+html:not(.dark-mode) #layout-list,
+html.light-mode #layout-list {
+  background-color: #ffffff !important;
+  border-right: 1px solid #e2dfd8 !important;
+}
+html:not(.dark-mode) #layout-list .header,
+html:not(.dark-mode) #layout-list .toolbar,
+html.light-mode #layout-list .header,
+html.light-mode #layout-list .toolbar {
+  background-color: #faf8f3 !important;
+  border-bottom: 1px solid #e2dfd8 !important;
+  color: #2c2b29 !important;
+}
+html:not(.dark-mode) .messagelist tr,
+html.light-mode .messagelist tr {
+  border-bottom: 1px solid #eeebe3 !important;
+  background-color: transparent !important;
+  color: #4b4843 !important;
+}
+html:not(.dark-mode) .messagelist tr:hover td,
+html.light-mode .messagelist tr:hover td {
+  background-color: #f5f2ea !important;
+}
+html:not(.dark-mode) .messagelist tr.selected td,
+html:not(.dark-mode) .listing li.selected,
+html:not(.dark-mode) .listing li.selected > a,
+html.light-mode .messagelist tr.selected td,
+html.light-mode .listing li.selected,
+html.light-mode .listing li.selected > a {
+  background-color: #e8e4d9 !important;
+  color: #000000 !important;
+}
+html:not(.dark-mode) .messagelist tr.unseen td,
+html:not(.dark-mode) .messagelist tr.unseen td a,
+html.light-mode .messagelist tr.unseen td,
+html.light-mode .messagelist tr.unseen td a {
+  font-weight: 600 !important;
+  color: #000000 !important;
+}
+html:not(.dark-mode) .messagelist tr:not(.flagged):not(.deleted).selected td.subject a,
+html.light-mode .messagelist tr:not(.flagged):not(.deleted).selected td.subject a {
+  color: #000000 !important;
+}
+
+/* Light Mode Content & Message Pane */
+html:not(.dark-mode) #layout-content,
+html:not(.dark-mode) .iframe-wrapper,
+html:not(.dark-mode) #messagecontframe,
+html:not(.dark-mode) iframe#messagecontframe,
+html.light-mode #layout-content,
+html.light-mode .iframe-wrapper,
+html.light-mode #messagecontframe,
+html.light-mode iframe#messagecontframe {
+  background-color: #ffffff !important;
+  border: none !important;
+}
+html:not(.dark-mode) body.watermark,
+html:not(.dark-mode) .watermark,
+html.light-mode body.watermark,
+html.light-mode .watermark {
+  background-color: #faf9f5 !important;
+  color: #726f69 !important;
+}
+html:not(.dark-mode) body.watermark #logo,
+html:not(.dark-mode) .watermark #logo,
+html:not(.dark-mode) .watermark img:not(.watermark-logo),
+html.light-mode body.watermark #logo,
+html.light-mode .watermark #logo,
+html.light-mode .watermark img:not(.watermark-logo) {
+  display: none !important;
+}
+html:not(.dark-mode) #layout-content .header,
+html:not(.dark-mode) #layout-content .toolbar,
+html:not(.dark-mode) .message-partheaders,
+html:not(.dark-mode) #message-header,
+html.light-mode #layout-content .header,
+html.light-mode #layout-content .toolbar,
+html.light-mode .message-partheaders,
+html.light-mode #message-header {
+  background-color: #faf8f3 !important;
+  border-bottom: 1px solid #e2dfd8 !important;
+  color: #2c2b29 !important;
+}
+html:not(.dark-mode) .message-part blockquote,
+html:not(.dark-mode) .message-htmlpart blockquote,
+html.light-mode .message-part blockquote,
+html.light-mode .message-htmlpart blockquote {
+  border-left: 2px solid #d4cfc4 !important;
+  color: #55534e !important;
+  background: transparent !important;
+}
+
+/* Light Mode Links */
+html:not(.dark-mode) a,
+html:not(.dark-mode) a:not(.btn):not(.button),
+html:not(.dark-mode) .btn-link,
+html:not(.dark-mode) .ui.alert a:not(.btn),
+html.light-mode a,
+html.light-mode a:not(.btn):not(.button),
+html.light-mode .btn-link,
+html.light-mode .ui.alert a:not(.btn) {
+  color: #1a1918 !important;
+  text-decoration: none;
+}
+html:not(.dark-mode) a:hover,
+html:not(.dark-mode) .btn-link:hover,
+html.light-mode a:hover,
+html.light-mode .btn-link:hover {
+  color: #000000 !important;
+  text-decoration: underline;
+}
+
+/* Light Mode Buttons */
+html:not(.dark-mode) .btn-primary,
+html:not(.dark-mode) .button.mainaction,
+html:not(.dark-mode) button.mainaction,
+html:not(.dark-mode) .btn.mainaction,
+html.light-mode .btn-primary,
+html.light-mode .button.mainaction,
+html.light-mode button.mainaction,
+html.light-mode .btn.mainaction {
+  background-color: #21201e !important;
+  border-color: #21201e !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+  transition: all 0.15s ease !important;
+}
+html:not(.dark-mode) .btn-primary:hover,
+html:not(.dark-mode) .button.mainaction:hover,
+html:not(.dark-mode) button.mainaction:hover,
+html:not(.dark-mode) .btn.mainaction:hover,
+html:not(.dark-mode) .btn-primary:focus:not(:disabled),
+html.light-mode .btn-primary:hover,
+html.light-mode .button.mainaction:hover,
+html.light-mode button.mainaction:hover,
+html.light-mode .btn.mainaction:hover,
+html.light-mode .btn-primary:focus:not(:disabled) {
+  background-color: #000000 !important;
+  border-color: #000000 !important;
+  color: #ffffff !important;
+}
+html:not(.dark-mode) .btn-secondary,
+html.light-mode .btn-secondary {
+  background-color: #f0eee6 !important;
+  border-color: #dcd7cc !important;
+  color: #2c2b29 !important;
+  border-radius: 8px !important;
+}
+html:not(.dark-mode) .btn-secondary:hover,
+html.light-mode .btn-secondary:hover {
+  background-color: #e5e2d8 !important;
+  color: #1a1918 !important;
+}
+
+/* Light Mode Inputs & Form Controls */
+html:not(.dark-mode) .form-control,
+html:not(.dark-mode) input[type="text"],
+html:not(.dark-mode) input[type="password"],
+html:not(.dark-mode) input[type="email"],
+html:not(.dark-mode) select,
+html:not(.dark-mode) textarea,
+html:not(.dark-mode) .recipient-input,
+html:not(.dark-mode) .multi-input > .content,
+html.light-mode .form-control,
+html.light-mode input[type="text"],
+html.light-mode input[type="password"],
+html.light-mode input[type="email"],
+html.light-mode select,
+html.light-mode textarea,
+html.light-mode .recipient-input,
+html.light-mode .multi-input > .content {
+  background-color: #ffffff !important;
+  border-color: #dcd7cc !important;
+  color: #2c2b29 !important;
+  border-radius: 8px !important;
+}
+html:not(.dark-mode) .form-control:focus,
+html:not(.dark-mode) input[type="text"]:focus,
+html:not(.dark-mode) input[type="password"]:focus,
+html:not(.dark-mode) input[type="email"]:focus,
+html:not(.dark-mode) select:focus,
+html:not(.dark-mode) textarea:focus,
+html:not(.dark-mode) .recipient-input.focus,
+html:not(.dark-mode) .multi-input > .content.focused,
+html.light-mode .form-control:focus,
+html.light-mode input[type="text"]:focus,
+html.light-mode input[type="password"]:focus,
+html.light-mode input[type="email"]:focus,
+html.light-mode select:focus,
+html.light-mode textarea:focus,
+html.light-mode .recipient-input.focus,
+html.light-mode .multi-input > .content.focused {
+  border-color: #726f69 !important;
+  box-shadow: 0 0 0 2px rgba(114, 111, 105, 0.2) !important;
+}
+
+/* Light Mode Checkboxes and Radios */
+html:not(.dark-mode) input[type="checkbox"],
+html:not(.dark-mode) input[type="radio"],
+html:not(.dark-mode) .custom-control-input,
+html.light-mode input[type="checkbox"],
+html.light-mode input[type="radio"],
+html.light-mode .custom-control-input {
+  accent-color: #21201e !important;
+}
+html:not(.dark-mode) .custom-switch .custom-control-input:checked ~ .custom-control-label::before,
+html.light-mode .custom-switch .custom-control-input:checked ~ .custom-control-label::before {
+  background-color: #21201e !important;
+  border-color: #21201e !important;
+}
+
+/* Light Mode Search Bar */
+html:not(.dark-mode) .searchbar input,
+html:not(.dark-mode) #searchfilter,
+html:not(.dark-mode) .searchbar,
+html.light-mode .searchbar input,
+html.light-mode #searchfilter,
+html.light-mode .searchbar {
+  background-color: #ffffff !important;
+  border-color: #dcd7cc !important;
+  color: #2c2b29 !important;
+}
+
+/* Light Mode Quota Meter */
+html:not(.dark-mode) .quota-widget .value,
+html.light-mode .quota-widget .value {
+  color: #2c2b29 !important;
+}
+html:not(.dark-mode) .quota-widget .bar,
+html.light-mode .quota-widget .bar {
+  background-color: #dcd7cc !important;
+}
+
+/* Light Mode Popovers, Menus & Dialogs */
+html:not(.dark-mode) .popover,
+html:not(.dark-mode) .dropdown-menu,
+html:not(.dark-mode) .ui-menu,
+html:not(.dark-mode) .ui-widget-content,
+html:not(.dark-mode) .ui-dialog,
+html.light-mode .popover,
+html.light-mode .dropdown-menu,
+html.light-mode .ui-menu,
+html.light-mode .ui-widget-content,
+html.light-mode .ui-dialog {
+  background-color: #ffffff !important;
+  border-color: #e2dfd8 !important;
+  color: #2c2b29 !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.08) !important;
+}
+html:not(.dark-mode) .ui-menu .ui-menu-item,
+html.light-mode .ui-menu .ui-menu-item {
+  border-bottom: 1px solid #f2efe8 !important;
+}
+html:not(.dark-mode) .ui-menu .ui-state-active,
+html:not(.dark-mode) .popover .menu li a:not(.disabled):hover,
+html:not(.dark-mode) .popupmenu .listing li > a:not(.disabled):hover,
+html.light-mode .ui-menu .ui-state-active,
+html.light-mode .popover .menu li a:not(.disabled):hover,
+html.light-mode .popupmenu .listing li > a:not(.disabled):hover {
+  background-color: #f0eee6 !important;
+  color: #000000 !important;
 }
 
 /* ==========================================================================
@@ -322,14 +744,27 @@ input[type="radio"],
   align-items: center !important;
   gap: 10px !important;
 }
-#messagestack .alert-info,
-#messagestack .alert-info.information,
-#messagestack .loading,
-.ui.alert.boxinformation {
+html.dark-mode #messagestack .alert-info,
+html.dark-mode #messagestack .alert-info.information,
+html.dark-mode #messagestack .loading,
+html.dark-mode .ui.alert.boxinformation {
   background-color: #292929 !important;
   border: 1px solid #3b3b3b !important;
   color: #f2f2f2 !important;
 }
+html:not(.dark-mode) #messagestack .alert-info,
+html:not(.dark-mode) #messagestack .alert-info.information,
+html:not(.dark-mode) #messagestack .loading,
+html:not(.dark-mode) .ui.alert.boxinformation,
+html.light-mode #messagestack .alert-info,
+html.light-mode #messagestack .alert-info.information,
+html.light-mode #messagestack .loading,
+html.light-mode .ui.alert.boxinformation {
+  background-color: #f0eee6 !important;
+  border: 1px solid #dcd7cc !important;
+  color: #2c2b29 !important;
+}
+
 #messagestack .alert-success,
 .ui.alert.boxconfirmation {
   background-color: #1a2e20 !important;
@@ -353,12 +788,21 @@ input[type="radio"],
    REDESIGNED MODERN LOGIN PAGE
    ========================================================================== */
 .task-login #layout-content {
-  background-color: #1f1f1f !important;
   min-height: 100vh !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   padding: 1.5rem !important;
+}
+html.dark-mode.task-login #layout-content,
+html.dark-mode .task-login #layout-content {
+  background-color: #1f1f1f !important;
+}
+html:not(.dark-mode).task-login #layout-content,
+html:not(.dark-mode) .task-login #layout-content,
+html.light-mode.task-login #layout-content,
+html.light-mode .task-login #layout-content {
+  background-color: #faf9f5 !important;
 }
 
 .task-login .login-wrapper {
@@ -397,7 +841,13 @@ input[type="radio"],
   font-weight: 200 !important;
   line-height: 1 !important;
   letter-spacing: -0.02em !important;
+}
+html.dark-mode .task-login .brand-wordmark {
   color: #f2f2f2 !important;
+}
+html:not(.dark-mode) .task-login .brand-wordmark,
+html.light-mode .task-login .brand-wordmark {
+  color: #2c2b29 !important;
 }
 
 .task-login .brand-subtitle {
@@ -407,14 +857,26 @@ input[type="radio"],
   margin: 0 0 24px 0 !important;
   text-align: center !important;
 }
+html:not(.dark-mode) .task-login .brand-subtitle,
+html.light-mode .task-login .brand-subtitle {
+  color: #726f69 !important;
+}
 
 .task-login .login-card {
-  background-color: #292929 !important;
-  border: 1px solid #3b3b3b !important;
   border-radius: 14px !important;
   padding: 28px !important;
   width: 100% !important;
+}
+html.dark-mode .task-login .login-card {
+  background-color: #292929 !important;
+  border: 1px solid #3b3b3b !important;
   box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.5) !important;
+}
+html:not(.dark-mode) .task-login .login-card,
+html.light-mode .task-login .login-card {
+  background-color: #fffcf9 !important;
+  border: 1px solid #e2dfd8 !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05) !important;
 }
 
 .task-login #login-form,
@@ -450,16 +912,19 @@ input[type="radio"],
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
   font-size: 13px !important;
   font-weight: 500 !important;
-  color: #ededed !important;
   margin: 0 !important;
   text-align: left !important;
+}
+html.dark-mode .task-login .form-label {
+  color: #ededed !important;
+}
+html:not(.dark-mode) .task-login .form-label,
+html.light-mode .task-login .form-label {
+  color: #2c2b29 !important;
 }
 
 .task-login .form-input,
 .task-login #login-form .form-control {
-  background-color: #1a1a1a !important;
-  border: 1px solid #3b3b3b !important;
-  color: #ffffff !important;
   border-radius: 8px !important;
   padding: 0 14px !important;
   height: 42px !important;
@@ -471,11 +936,32 @@ input[type="radio"],
   text-align: left !important;
   transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
 }
+html.dark-mode .task-login .form-input,
+html.dark-mode .task-login #login-form .form-control {
+  background-color: #1a1a1a !important;
+  border: 1px solid #3b3b3b !important;
+  color: #ffffff !important;
+}
+html:not(.dark-mode) .task-login .form-input,
+html:not(.dark-mode) .task-login #login-form .form-control,
+html.light-mode .task-login .form-input,
+html.light-mode .task-login #login-form .form-control {
+  background-color: #ffffff !important;
+  border: 1px solid #dcd7cc !important;
+  color: #2c2b29 !important;
+}
 
 .task-login .form-input:focus,
-.task-login #login-form .form-control:focus {
+html.dark-mode .task-login #login-form .form-control:focus {
   border-color: #71717a !important;
   box-shadow: 0 0 0 1px #71717a !important;
+}
+html:not(.dark-mode) .task-login .form-input:focus,
+html:not(.dark-mode) .task-login #login-form .form-control:focus,
+html.light-mode .task-login .form-input:focus,
+html.light-mode .task-login #login-form .form-control:focus {
+  border-color: #726f69 !important;
+  box-shadow: 0 0 0 1px #726f69 !important;
 }
 
 .task-login .form-submit-btn,
@@ -484,9 +970,6 @@ input[type="radio"],
   margin-top: 8px !important;
   width: 100% !important;
   height: 42px !important;
-  background-color: #ffffff !important;
-  border: 1px solid #ffffff !important;
-  color: #09090b !important;
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
   font-weight: 500 !important;
   font-size: 14px !important;
@@ -499,12 +982,37 @@ input[type="radio"],
   text-transform: none !important;
   letter-spacing: normal !important;
 }
-
-.task-login .form-submit-btn:hover,
-.task-login #login-form button.mainaction:hover,
-.task-login #rcmloginsubmit:hover {
+html.dark-mode .task-login .form-submit-btn,
+html.dark-mode .task-login #login-form button.mainaction,
+html.dark-mode .task-login #rcmloginsubmit {
+  background-color: #ffffff !important;
+  border: 1px solid #ffffff !important;
+  color: #09090b !important;
+}
+html.dark-mode .task-login .form-submit-btn:hover,
+html.dark-mode .task-login #login-form button.mainaction:hover,
+html.dark-mode .task-login #rcmloginsubmit:hover {
   background-color: #f4f4f5 !important;
   border-color: #f4f4f5 !important;
+}
+html:not(.dark-mode) .task-login .form-submit-btn,
+html:not(.dark-mode) .task-login #login-form button.mainaction,
+html:not(.dark-mode) .task-login #rcmloginsubmit,
+html.light-mode .task-login .form-submit-btn,
+html.light-mode .task-login #login-form button.mainaction,
+html.light-mode .task-login #rcmloginsubmit {
+  background-color: #1a1918 !important;
+  border: 1px solid #1a1918 !important;
+  color: #ffffff !important;
+}
+html:not(.dark-mode) .task-login .form-submit-btn:hover,
+html:not(.dark-mode) .task-login #login-form button.mainaction:hover,
+html:not(.dark-mode) .task-login #rcmloginsubmit:hover,
+html.light-mode .task-login .form-submit-btn:hover,
+html.light-mode .task-login #login-form button.mainaction:hover,
+html.light-mode .task-login #rcmloginsubmit:hover {
+  background-color: #000000 !important;
+  border-color: #000000 !important;
 }
 
 .task-login .form-submit-btn:active,
@@ -535,9 +1043,15 @@ input[type="radio"],
   margin-bottom: 6px !important;
 }
 .task-login #login-form td.title label {
-  color: #ededed !important;
   font-size: 13px !important;
   font-weight: 500 !important;
+}
+html.dark-mode .task-login #login-form td.title label {
+  color: #ededed !important;
+}
+html:not(.dark-mode) .task-login #login-form td.title label,
+html.light-mode .task-login #login-form td.title label {
+  color: #2c2b29 !important;
 }
 
 /* Inside Webmail Brand Links */
@@ -572,9 +1086,18 @@ input[type="radio"],
   font-family: 'Bricolage Grotesque', sans-serif !important;
   font-size: 22px !important;
   font-weight: 200 !important;
-  color: #f2f2f2 !important;
   letter-spacing: -0.015em !important;
   line-height: 1 !important;
+}
+html.dark-mode #layout-menu.expanded .taskmenu-brand .rail-brand-text,
+html.dark-mode .popover-header .brand-wordmark {
+  color: #f2f2f2 !important;
+}
+html:not(.dark-mode) #layout-menu.expanded .taskmenu-brand .rail-brand-text,
+html:not(.dark-mode) .popover-header .brand-wordmark,
+html.light-mode #layout-menu.expanded .taskmenu-brand .rail-brand-text,
+html.light-mode .popover-header .brand-wordmark {
+  color: #2c2b29 !important;
 }
 .popover-header .brand-link {
   display: flex !important;
@@ -593,72 +1116,4 @@ input[type="radio"],
   color: #726f69 !important;
   margin-top: 20px !important;
   text-align: center !important;
-}
-
-/* ==========================================================================
-   LIGHT MODE (Only active if user explicitly toggles theme to light mode)
-   ========================================================================== */
-html.light-mode body,
-html.light-mode #layout,
-html.light-mode #layout-content,
-html.light-mode .iframe-wrapper,
-html.light-mode #messagecontframe,
-html.light-mode iframe#messagecontframe,
-html.light-mode body.watermark,
-html.light-mode .watermark {
-  background-color: #faf9f5 !important;
-  color: #2c2b29 !important;
-}
-html.light-mode #layout-sidebar {
-  background-color: #f5f3ee !important;
-  border-right-color: #e2dfd8 !important;
-}
-html.light-mode #layout-list {
-  background-color: #fffcf9 !important;
-  border-right-color: #e2dfd8 !important;
-}
-html.light-mode .treelist li.selected > a,
-html.light-mode .messagelist tr.selected td,
-html.light-mode .listing li.selected {
-  background-color: #edeae4 !important;
-  color: #000000 !important;
-}
-html.light-mode .btn-primary,
-html.light-mode .button.mainaction,
-html.light-mode button.mainaction {
-  background-color: #31302e !important;
-  border-color: #31302e !important;
-  color: #faf9f6 !important;
-}
-html.light-mode .btn-primary:hover,
-html.light-mode .button.mainaction:hover,
-html.light-mode button.mainaction:hover {
-  background-color: #1a1918 !important;
-  color: #ffffff !important;
-}
-html.light-mode a,
-html.light-mode .btn-link {
-  color: #31302e !important;
-}
-html.light-mode.task-login #layout-content {
-  background-color: #faf9f5 !important;
-}
-html.light-mode.task-login .brand-wordmark {
-  color: #2c2b29 !important;
-}
-html.light-mode.task-login .brand-subtitle {
-  color: #726f69 !important;
-}
-html.light-mode.task-login .login-card {
-  background-color: #fffcf9 !important;
-  border-color: #e2dfd8 !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05) !important;
-}
-html.light-mode.task-login #login-form td.title label {
-  color: #2c2b29 !important;
-}
-html.light-mode.task-login #login-form .form-control {
-  background-color: #ffffff !important;
-  border-color: #e2dfd8 !important;
-  color: #2c2b29 !important;
 }

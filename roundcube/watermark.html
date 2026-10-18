@@ -50,14 +50,18 @@ html, body {
   color: #9e9e9e;
   letter-spacing: 0.01em;
 }
+html:not(.dark-mode),
+html:not(.dark-mode) body,
 html.light-mode,
 html.light-mode body {
   background-color: #faf9f5 !important;
   color: #726f69;
 }
+html:not(.dark-mode) .brand-mark,
 html.light-mode .brand-mark {
   color: #2c2b29;
 }
+html:not(.dark-mode) .watermark-text,
 html.light-mode .watermark-text {
   color: #726f69;
 }

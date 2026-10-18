@@ -22,30 +22,47 @@ for f in /var/www/html/skins/elastic/templates/*.html /usr/src/roundcubemail/ski
     fi
 done
 
-# 2. Enforce clean tab name "Webmail" everywhere across PHP server and client JS
+# 2. Enforce clean tab names "Webmail <Page>" everywhere across PHP server and client JS
 for php_file in /var/www/html/program/include/rcmail_output_html.php /usr/src/roundcubemail/program/include/rcmail_output_html.php; do
     if [ -f "$php_file" ]; then
-        sed -i 's/protected function get_pagetitle($full = true)/protected function get_pagetitle($full = true) { return "Webmail"; } protected function _unused_get_pagetitle($full = true)/g' "$php_file" 2>/dev/null || true
+        php -r '
+        $file = $argv[1];
+        $c = file_get_contents($file);
+        $replacement = "protected function get_pagetitle(\$full = true) {
+            \$t = \$this->app->task;
+            if (\$t === \"login\") return \"Webmail Login\";
+            \$title = \$this->pagetitle;
+            if (empty(\$title)) \$title = (\$t === \"mail\") ? \"Inbox\" : ucfirst(\$t ?: \"Inbox\");
+            \$title = preg_replace(\"/^(Roundcube\\s+Webmail|Roundcube|Webmail)\\s*[:\\-\\x{2013}\\x{2014}|]*\\s*/ui\", \"\", \$title);
+            \$title = trim(\$title);
+            if (\$title === \"\") \$title = \"Inbox\";
+            return \"Webmail \" . \$title;
+        }
+        protected function _orig_get_pagetitle(\$full = true)";
+        if (strpos($c, "_orig_get_pagetitle") === false) {
+            $c = preg_replace("/protected\\s+function\\s+get_pagetitle\\s*\\(\\\$full\\s*=\\s*true\\)/", $replacement, $c, 1);
+            file_put_contents($file, $c);
+        }
+        ' "$php_file" 2>/dev/null || true
     fi
 done
 
 for js_file in /var/www/html/program/js/app.js /usr/src/roundcubemail/program/js/app.js; do
     if [ -f "$js_file" ]; then
-        sed -i 's/document\.title\s*=\s*title;/document.title = "Webmail";/g' "$js_file" 2>/dev/null || true
-        sed -i 's/if (title && document.title)\s*document.title = title;/document.title = "Webmail";/g' "$js_file" 2>/dev/null || true
+        sed -i 's/document\.title\s*=\s*title;/document.title = (function(t){var d=((window.rcmail\&\&window.rcmail.env\&\&window.rcmail.env.task)==="login"||window.location.search.indexOf("_task=login")!==-1)?"Login":"Inbox";if(!t)return"Webmail "+d;var c=(t.match(/^\\(\\d+\\)\\s*/)||[""])[0];var cl=t.replace(/^\\(\\d+\\)\\s*/,"").replace(/^(Roundcube\\s+Webmail|Roundcube|Webmail)\\s*[:\\-\\u2013\\u2014|]*\\s*/i,"").trim();if(!cl)cl=d;return(c?c.trim()+" ":"")+"Webmail "+cl;})(title);/g' "$js_file" 2>/dev/null || true
+        sed -i 's/if (title && document.title)\s*document.title = title;/if (title \&\& document.title) document.title = (function(t){var d=((window.rcmail\&\&window.rcmail.env\&\&window.rcmail.env.task)==="login"||window.location.search.indexOf("_task=login")!==-1)?"Login":"Inbox";if(!t)return"Webmail "+d;var c=(t.match(/^\\(\\d+\\)\\s*/)||[""])[0];var cl=t.replace(/^\\(\\d+\\)\\s*/,"").replace(/^(Roundcube\\s+Webmail|Roundcube|Webmail)\\s*[:\\-\\u2013\\u2014|]*\\s*/i,"").trim();if(!cl)cl=d;return(c?c.trim()+" ":"")+"Webmail "+cl;})(title);/g' "$js_file" 2>/dev/null || true
     fi
 done
 
 for js_min in /var/www/html/program/js/app.min.js /usr/src/roundcubemail/program/js/app.min.js; do
     if [ -f "$js_min" ]; then
-        sed -i 's/document\.title=e/document.title="Webmail"/g' "$js_min" 2>/dev/null || true
-        sed -i 's/if(e&&document.title)(document.title=e)/document.title="Webmail"/g' "$js_min" 2>/dev/null || true
-        sed -i 's/if(a&&document.title)document.title=a/document.title="Webmail"/g' "$js_min" 2>/dev/null || true
+        sed -i 's/document\.title="Webmail"/document.title=(function(t){var d=((window.rcmail\&\&window.rcmail.env\&\&window.rcmail.env.task)==="login"||window.location.search.indexOf("_task=login")!==-1)?"Login":"Inbox";if(!t)return"Webmail "+d;var c=(t.match(/^\\(\\d+\\)\\s*/)||[""])[0];var cl=t.replace(/^\\(\\d+\\)\\s*/,"").replace(/^(Roundcube\\s+Webmail|Roundcube|Webmail)\\s*[:\\-\\u2013\\u2014|]*\\s*/i,"").trim();if(!cl)cl=d;return(c?c.trim()+" ":"")+"Webmail "+cl;})(e)/g' "$js_min" 2>/dev/null || true
+        sed -i 's/document\.title=e/document.title=(function(t){var d=((window.rcmail\&\&window.rcmail.env\&\&window.rcmail.env.task)==="login"||window.location.search.indexOf("_task=login")!==-1)?"Login":"Inbox";if(!t)return"Webmail "+d;var c=(t.match(/^\\(\\d+\\)\\s*/)||[""])[0];var cl=t.replace(/^\\(\\d+\\)\\s*/,"").replace(/^(Roundcube\\s+Webmail|Roundcube|Webmail)\\s*[:\\-\\u2013\\u2014|]*\\s*/i,"").trim();if(!cl)cl=d;return(c?c.trim()+" ":"")+"Webmail "+cl;})(e)/g' "$js_min" 2>/dev/null || true
     fi
 done
 
-# 3. Default dark mode, font preconnect, and title lock in layout.html
-FONT_TAGS='<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800\&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800\&display=swap"><script>document.title="Webmail";try{new MutationObserver(function(){if(document.title!=="Webmail"){document.title="Webmail";}}).observe(document.head,{subtree:true,characterData:true,childList:true});}catch(e){}</script>'
+# 3. Default dark mode, font preconnect, and dynamic title observer in layout.html
+FONT_TAGS='<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800\&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800\&display=swap"><script>try{var _wfmt=function(t){var task=(window.rcmail&&window.rcmail.env&&window.rcmail.env.task)||"mail";var d=(task==="login"||window.location.search.indexOf("_task=login")!==-1)?"Login":"Inbox";if(!t)return"Webmail "+d;var c=(t.match(/^\\(\\d+\\)\\s*/)||[""])[0];var cl=t.replace(/^\\(\\d+\\)\\s*/,"").replace(/^(Roundcube\\s+Webmail|Roundcube|Webmail)\\s*[:\\-\\u2013\\u2014|]*\\s*/i,"").trim();if(!cl)cl=d;return(c?c.trim()+" ":"")+"Webmail "+cl;};if(document.title&&!document.title.includes("Webmail ")){document.title=_wfmt(document.title);}new MutationObserver(function(){var t=document.title;if(t&&!t.includes("Webmail ")){document.title=_wfmt(t);}}).observe(document.head,{subtree:true,characterData:true,childList:true});}catch(e){}</script>'
 
 for layout in /var/www/html/skins/elastic/templates/includes/layout.html /usr/src/roundcubemail/skins/elastic/templates/includes/layout.html; do
     if [ -f "$layout" ]; then
@@ -56,10 +73,12 @@ for layout in /var/www/html/skins/elastic/templates/includes/layout.html /usr/sr
     fi
 done
 
-# 4. Default dark mode in ui.js
+# 4. Instant light/dark mode and default dark mode in ui.js
 for ui in /var/www/html/skins/elastic/ui.js /var/www/html/skins/elastic/ui.min.js /usr/src/roundcubemail/skins/elastic/ui.js /usr/src/roundcubemail/skins/elastic/ui.min.js; do
     if [ -f "$ui" ]; then
         sed -i 's/color_scheme\.matches ? '\''dark'\'' : '\''light'\''/'\''dark'\''/g' "$ui" 2>/dev/null || true
+        sed -i "s/\\\$('html')\\.addClass('dark-mode');/\\\$('html').addClass('dark-mode').removeClass('light-mode');/g" "$ui" 2>/dev/null || true
+        sed -i "s/\\\$('html')\\.removeClass('dark-mode');/\\\$('html').removeClass('dark-mode').addClass('light-mode');/g" "$ui" 2>/dev/null || true
     fi
 done
 

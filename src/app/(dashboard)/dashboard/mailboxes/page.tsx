@@ -55,7 +55,7 @@ export default async function MailboxesPage({
     <div>
       <PageHeader
         title="Mailboxes"
-        description="Create, suspend, reset passwords, app passwords, open Roundcube, and run bulk actions."
+        description="Create, suspend, reset passwords, app passwords, open webmail, and run bulk actions."
         breadcrumbs={breadcrumbs}
         back={
           scoped

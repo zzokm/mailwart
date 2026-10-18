@@ -1,7 +1,7 @@
 <roundcube:include file="includes/layout.html" />
 
 <script>
-document.title = "Webmail";
+document.title = "Webmail Login";
 try {
     if (document.cookie.indexOf('colorMode=light') === -1) {
         document.documentElement.classList.add('dark-mode');
@@ -47,14 +47,14 @@ try {
 
 <script>
 try {
-    document.title = "Webmail";
+    document.title = "Webmail Login";
     var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (tz && document.getElementById('rcmlogintz')) {
         document.getElementById('rcmlogintz').value = tz;
     }
     new MutationObserver(function() {
-        if (document.title && !document.title.endsWith("Webmail")) {
-            document.title = "Webmail";
+        if (document.title !== "Webmail Login") {
+            document.title = "Webmail Login";
         }
     }).observe(document.head, { subtree: true, characterData: true, childList: true });
 } catch(e) {}

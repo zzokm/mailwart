@@ -15,8 +15,27 @@ class em_sso extends rcube_plugin
     public function render_page($args)
     {
         if (isset($args['content'])) {
-            $args['content'] = preg_replace('/<title>.*?<\/title>/is', '<title>Webmail</title>', $args['content']);
-            $title_script = '<script>document.title="Webmail";try{new MutationObserver(function(){if(document.title!=="Webmail"){document.title="Webmail";}}).observe(document.head,{subtree:true,characterData:true,childList:true});}catch(e){}</script>';
+            $task = rcmail::get_instance()->task;
+            $defaultTitle = ($task === 'login') ? 'Webmail Login' : 'Webmail Inbox';
+            $args['content'] = preg_replace_callback('/<title>(.*?)<\/title>/is', function($matches) use ($defaultTitle) {
+                $t = trim($matches[1]);
+                if ($t === '' || $t === 'Roundcube Webmail' || $t === 'Webmail') {
+                    return "<title>{$defaultTitle}</title>";
+                }
+                $count = '';
+                if (preg_match('/^(\(\d+\))\s*/', $t, $cm)) {
+                    $count = $cm[1] . ' ';
+                    $t = substr($t, strlen($cm[0]));
+                }
+                $t = preg_replace('/^(Roundcube\s+Webmail|Roundcube|Webmail)\s*[:\-\x{2013}\x{2014}|]*\s*/ui', '', $t);
+                $t = trim($t);
+                if ($t === '') {
+                    return "<title>{$count}{$defaultTitle}</title>";
+                }
+                return "<title>{$count}Webmail {$t}</title>";
+            }, $args['content']);
+
+            $title_script = '<script>try{var _wfmt=function(t){var task=(window.rcmail&&window.rcmail.env&&window.rcmail.env.task)||"mail";var d=(task==="login"||window.location.search.indexOf("_task=login")!==-1)?"Login":"Inbox";if(!t)return"Webmail "+d;var c=(t.match(/^\\(\\d+\\)\\s*/)||[""])[0];var cl=t.replace(/^\\(\\d+\\)\\s*/,"").replace(/^(Roundcube\\s+Webmail|Roundcube|Webmail)\\s*[:\\-\\u2013\\u2014|]*\\s*/i,"").trim();if(!cl)cl=d;return(c?c.trim()+" ":"")+"Webmail "+cl;};if(document.title&&!document.title.includes("Webmail ")){document.title=_wfmt(document.title);}new MutationObserver(function(){var t=document.title;if(t&&!t.includes("Webmail ")){document.title=_wfmt(t);}}).observe(document.head,{subtree:true,characterData:true,childList:true});}catch(e){}</script>';
             if (strpos($args['content'], 'new MutationObserver') === false && strpos($args['content'], '</head>') !== false) {
                 $args['content'] = str_replace('</head>', $title_script . '</head>', $args['content']);
             }
