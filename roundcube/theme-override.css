@@ -28,43 +28,114 @@ html.dark-mode #layout-menu,
 html.dark-mode #layout-menu .popover-header,
 html.dark-mode #taskmenu {
   background-color: #111111 !important;
+  background: #111111 !important;
   border-right: 1px solid #242424 !important;
 }
 html.dark-mode #layout-menu .popover-header {
   border-bottom: 1px solid #242424 !important;
 }
-html.dark-mode #taskmenu a.button {
-  color: #888888 !important;
-}
-html.dark-mode #taskmenu a.button:hover {
-  color: #f2f2f2 !important;
-  background-color: #1f1f1f !important;
-}
-html.dark-mode #taskmenu a.button.selected {
-  color: #ffffff !important;
-  background-color: #292929 !important;
+html.dark-mode #taskmenu .special-buttons,
+html.dark-mode #layout-menu .special-buttons {
+  background-color: transparent !important;
+  background: transparent !important;
+  border: none !important;
+  border-right: none !important;
 }
 
-/* Compose Button - same dark color styling as other rail buttons */
-html.dark-mode #taskmenu a.button.compose,
-html.dark-mode #taskmenu a.button.action,
-html.dark-mode #taskmenu .action-buttons a {
+/* All links/buttons in task navigation rail */
+html.dark-mode #taskmenu a,
+html.dark-mode #taskmenu a:link,
+html.dark-mode #taskmenu a:visited,
+html.dark-mode #taskmenu a:not(:focus),
+html.dark-mode #taskmenu .action-buttons a,
+html.dark-mode #taskmenu .special-buttons a,
+html.dark-mode #layout-menu .special-buttons a,
+html.dark-mode #layout-menu .special-buttons a:not(:focus) {
   color: #888888 !important;
   background-color: transparent !important;
+  background: transparent !important;
   border-radius: 8px !important;
+  border: none !important;
 }
-html.dark-mode #taskmenu a.button.compose:hover,
-html.dark-mode #taskmenu a.button.action:hover,
-html.dark-mode #taskmenu .action-buttons a:hover {
+html.dark-mode #taskmenu a:before,
+html.dark-mode #taskmenu a span.inner,
+html.dark-mode #layout-menu .special-buttons a:before,
+html.dark-mode #layout-menu .special-buttons a span.inner {
+  color: #888888 !important;
+}
+
+/* Hover state on rail buttons */
+html.dark-mode #taskmenu a:hover,
+html.dark-mode #taskmenu a:focus,
+html.dark-mode #taskmenu .action-buttons a:hover,
+html.dark-mode #taskmenu .special-buttons a:hover,
+html.dark-mode #layout-menu .special-buttons a:hover,
+html.dark-mode #layout-menu .special-buttons a:focus {
+  color: #f2f2f2 !important;
   background-color: #1f1f1f !important;
+  background: #1f1f1f !important;
+}
+html.dark-mode #taskmenu a:hover:before,
+html.dark-mode #taskmenu a:hover span.inner,
+html.dark-mode #layout-menu .special-buttons a:hover:before,
+html.dark-mode #layout-menu .special-buttons a:hover span.inner {
   color: #f2f2f2 !important;
 }
-html.dark-mode #taskmenu a.button.compose.selected,
-html.dark-mode #taskmenu a.button.action.selected,
-html.dark-mode #taskmenu .action-buttons a.selected {
+
+/* Selected / Active state (e.g. Mail button) */
+html.dark-mode #taskmenu a.selected,
+html.dark-mode #taskmenu a.selected:hover,
+html.dark-mode #taskmenu a.selected:focus,
+html.dark-mode #taskmenu a.button-selected,
+html.dark-mode #taskmenu a.compose.selected,
+html.dark-mode #taskmenu a.mail.selected,
+html.dark-mode #taskmenu a.contacts.selected,
+html.dark-mode #taskmenu a.settings.selected,
+html.dark-mode #taskmenu .action-buttons a.selected,
+html.dark-mode #layout-menu #taskmenu a.selected {
+  color: #ffffff !important;
   background-color: #292929 !important;
+  background: #292929 !important;
+}
+html.dark-mode #taskmenu a.selected:before,
+html.dark-mode #taskmenu a.selected span.inner,
+html.dark-mode #layout-menu #taskmenu a.selected:before,
+html.dark-mode #layout-menu #taskmenu a.selected span.inner {
   color: #ffffff !important;
 }
+
+/* Logout button in dark mode */
+html.dark-mode #taskmenu a.logout,
+html.dark-mode #taskmenu a.logout:link,
+html.dark-mode #taskmenu a.logout:visited,
+html.dark-mode #taskmenu a.logout:not(:focus),
+html.dark-mode #layout-menu .special-buttons a.logout,
+html.dark-mode #layout-menu .special-buttons a.logout:not(:focus) {
+  color: #f87171 !important;
+  background-color: transparent !important;
+  background: transparent !important;
+}
+html.dark-mode #taskmenu a.logout:before,
+html.dark-mode #taskmenu a.logout span.inner,
+html.dark-mode #layout-menu .special-buttons a.logout:before,
+html.dark-mode #layout-menu .special-buttons a.logout span.inner {
+  color: #f87171 !important;
+}
+html.dark-mode #taskmenu a.logout:hover,
+html.dark-mode #taskmenu a.logout:focus,
+html.dark-mode #layout-menu .special-buttons a.logout:hover,
+html.dark-mode #layout-menu .special-buttons a.logout:focus {
+  background-color: #331616 !important;
+  background: #331616 !important;
+  color: #fca5a5 !important;
+}
+html.dark-mode #taskmenu a.logout:hover:before,
+html.dark-mode #taskmenu a.logout:hover span.inner,
+html.dark-mode #layout-menu .special-buttons a.logout:hover:before,
+html.dark-mode #layout-menu .special-buttons a.logout:hover span.inner {
+  color: #fca5a5 !important;
+}
+
 html.dark-mode .floating-action-buttons a.button {
   background-color: #292929 !important;
   color: #f2f2f2 !important;
@@ -334,57 +405,175 @@ html:not(.dark-mode) #taskmenu,
 html.light-mode #layout-menu,
 html.light-mode #layout-menu .popover-header,
 html.light-mode #taskmenu {
-  background-color: #f0eee6 !important;
-  border-right: 1px solid #e2dfd8 !important;
+  background-color: #faf9f5 !important;
+  background: #faf9f5 !important;
+  border-right: 1px solid #e5e2d9 !important;
 }
 html:not(.dark-mode) #layout-menu .popover-header,
 html.light-mode #layout-menu .popover-header {
-  border-bottom: 1px solid #e2dfd8 !important;
+  border-bottom: 1px solid #e5e2d9 !important;
 }
-html:not(.dark-mode) #taskmenu a.button,
-html.light-mode #taskmenu a.button {
-  color: #55534e !important;
-}
-html:not(.dark-mode) #taskmenu a.button:hover,
-html.light-mode #taskmenu a.button:hover {
-  color: #1a1918 !important;
-  background-color: #e5e2d8 !important;
-}
-html:not(.dark-mode) #taskmenu a.button.selected,
-html.light-mode #taskmenu a.button.selected {
-  color: #1a1918 !important;
-  background-color: #dbd7cb !important;
+html:not(.dark-mode) #taskmenu .special-buttons,
+html:not(.dark-mode) #layout-menu .special-buttons,
+html.light-mode #taskmenu .special-buttons,
+html.light-mode #layout-menu .special-buttons {
+  background-color: transparent !important;
+  background: transparent !important;
+  border: none !important;
+  border-right: none !important;
 }
 
-/* Light Mode Compose Button */
-html:not(.dark-mode) #taskmenu a.button.compose,
-html:not(.dark-mode) #taskmenu a.button.action,
+/* All links/buttons in task navigation rail */
+html:not(.dark-mode) #taskmenu a,
+html:not(.dark-mode) #taskmenu a:link,
+html:not(.dark-mode) #taskmenu a:visited,
+html:not(.dark-mode) #taskmenu a:not(:focus),
 html:not(.dark-mode) #taskmenu .action-buttons a,
-html.light-mode #taskmenu a.button.compose,
-html.light-mode #taskmenu a.button.action,
-html.light-mode #taskmenu .action-buttons a {
+html:not(.dark-mode) #taskmenu .special-buttons a,
+html:not(.dark-mode) #layout-menu .special-buttons a,
+html:not(.dark-mode) #layout-menu .special-buttons a:not(:focus),
+html.light-mode #taskmenu a,
+html.light-mode #taskmenu a:link,
+html.light-mode #taskmenu a:visited,
+html.light-mode #taskmenu a:not(:focus),
+html.light-mode #taskmenu .action-buttons a,
+html.light-mode #taskmenu .special-buttons a,
+html.light-mode #layout-menu .special-buttons a,
+html.light-mode #layout-menu .special-buttons a:not(:focus) {
   color: #55534e !important;
   background-color: transparent !important;
+  background: transparent !important;
   border-radius: 8px !important;
+  border: none !important;
 }
-html:not(.dark-mode) #taskmenu a.button.compose:hover,
-html:not(.dark-mode) #taskmenu a.button.action:hover,
+html:not(.dark-mode) #taskmenu a:before,
+html:not(.dark-mode) #taskmenu a span.inner,
+html:not(.dark-mode) #layout-menu .special-buttons a:before,
+html:not(.dark-mode) #layout-menu .special-buttons a span.inner,
+html.light-mode #taskmenu a:before,
+html.light-mode #taskmenu a span.inner,
+html.light-mode #layout-menu .special-buttons a:before,
+html.light-mode #layout-menu .special-buttons a span.inner {
+  color: #55534e !important;
+}
+
+/* Hover state on rail buttons */
+html:not(.dark-mode) #taskmenu a:hover,
+html:not(.dark-mode) #taskmenu a:focus,
 html:not(.dark-mode) #taskmenu .action-buttons a:hover,
-html.light-mode #taskmenu a.button.compose:hover,
-html.light-mode #taskmenu a.button.action:hover,
-html.light-mode #taskmenu .action-buttons a:hover {
-  background-color: #e5e2d8 !important;
+html:not(.dark-mode) #taskmenu .special-buttons a:hover,
+html:not(.dark-mode) #layout-menu .special-buttons a:hover,
+html:not(.dark-mode) #layout-menu .special-buttons a:focus,
+html.light-mode #taskmenu a:hover,
+html.light-mode #taskmenu a:focus,
+html.light-mode #taskmenu .action-buttons a:hover,
+html.light-mode #taskmenu .special-buttons a:hover,
+html.light-mode #layout-menu .special-buttons a:hover,
+html.light-mode #layout-menu .special-buttons a:focus {
+  color: #1a1918 !important;
+  background-color: #ebe7de !important;
+  background: #ebe7de !important;
+}
+html:not(.dark-mode) #taskmenu a:hover:before,
+html:not(.dark-mode) #taskmenu a:hover span.inner,
+html:not(.dark-mode) #layout-menu .special-buttons a:hover:before,
+html:not(.dark-mode) #layout-menu .special-buttons a:hover span.inner,
+html.light-mode #taskmenu a:hover:before,
+html.light-mode #taskmenu a:hover span.inner,
+html.light-mode #layout-menu .special-buttons a:hover:before,
+html.light-mode #layout-menu .special-buttons a:hover span.inner {
   color: #1a1918 !important;
 }
-html:not(.dark-mode) #taskmenu a.button.compose.selected,
-html:not(.dark-mode) #taskmenu a.button.action.selected,
+
+/* Selected / Active state (e.g. Mail button) */
+html:not(.dark-mode) #taskmenu a.selected,
+html:not(.dark-mode) #taskmenu a.selected:hover,
+html:not(.dark-mode) #taskmenu a.selected:focus,
+html:not(.dark-mode) #taskmenu a.selected:not(:focus),
+html:not(.dark-mode) #taskmenu a.button-selected,
+html:not(.dark-mode) #taskmenu a.compose.selected,
+html:not(.dark-mode) #taskmenu a.mail.selected,
+html:not(.dark-mode) #taskmenu a.contacts.selected,
+html:not(.dark-mode) #taskmenu a.settings.selected,
 html:not(.dark-mode) #taskmenu .action-buttons a.selected,
-html.light-mode #taskmenu a.button.compose.selected,
-html.light-mode #taskmenu a.button.action.selected,
-html.light-mode #taskmenu .action-buttons a.selected {
-  background-color: #dbd7cb !important;
-  color: #1a1918 !important;
+html:not(.dark-mode) #layout-menu #taskmenu a.selected,
+html.light-mode #taskmenu a.selected,
+html.light-mode #taskmenu a.selected:hover,
+html.light-mode #taskmenu a.selected:focus,
+html.light-mode #taskmenu a.selected:not(:focus),
+html.light-mode #taskmenu a.button-selected,
+html.light-mode #taskmenu a.compose.selected,
+html.light-mode #taskmenu a.mail.selected,
+html.light-mode #taskmenu a.contacts.selected,
+html.light-mode #taskmenu a.settings.selected,
+html.light-mode #taskmenu .action-buttons a.selected,
+html.light-mode #layout-menu #taskmenu a.selected {
+  color: #000000 !important;
+  background-color: #ded9cd !important;
+  background: #ded9cd !important;
+  font-weight: 600 !important;
 }
+html:not(.dark-mode) #taskmenu a.selected:before,
+html:not(.dark-mode) #taskmenu a.selected span.inner,
+html:not(.dark-mode) #layout-menu #taskmenu a.selected:before,
+html:not(.dark-mode) #layout-menu #taskmenu a.selected span.inner,
+html.light-mode #taskmenu a.selected:before,
+html.light-mode #taskmenu a.selected span.inner,
+html.light-mode #layout-menu #taskmenu a.selected:before,
+html.light-mode #layout-menu #taskmenu a.selected span.inner {
+  color: #000000 !important;
+}
+
+/* Logout button in light mode */
+html:not(.dark-mode) #taskmenu a.logout,
+html:not(.dark-mode) #taskmenu a.logout:link,
+html:not(.dark-mode) #taskmenu a.logout:visited,
+html:not(.dark-mode) #taskmenu a.logout:not(:focus),
+html:not(.dark-mode) #layout-menu .special-buttons a.logout,
+html:not(.dark-mode) #layout-menu .special-buttons a.logout:not(:focus),
+html.light-mode #taskmenu a.logout,
+html.light-mode #taskmenu a.logout:link,
+html.light-mode #taskmenu a.logout:visited,
+html.light-mode #taskmenu a.logout:not(:focus),
+html.light-mode #layout-menu .special-buttons a.logout,
+html.light-mode #layout-menu .special-buttons a.logout:not(:focus) {
+  color: #e11d48 !important;
+  background-color: transparent !important;
+  background: transparent !important;
+}
+html:not(.dark-mode) #taskmenu a.logout:before,
+html:not(.dark-mode) #taskmenu a.logout span.inner,
+html:not(.dark-mode) #layout-menu .special-buttons a.logout:before,
+html:not(.dark-mode) #layout-menu .special-buttons a.logout span.inner,
+html.light-mode #taskmenu a.logout:before,
+html.light-mode #taskmenu a.logout span.inner,
+html.light-mode #layout-menu .special-buttons a.logout:before,
+html.light-mode #layout-menu .special-buttons a.logout span.inner {
+  color: #e11d48 !important;
+}
+html:not(.dark-mode) #taskmenu a.logout:hover,
+html:not(.dark-mode) #taskmenu a.logout:focus,
+html:not(.dark-mode) #layout-menu .special-buttons a.logout:hover,
+html:not(.dark-mode) #layout-menu .special-buttons a.logout:focus,
+html.light-mode #taskmenu a.logout:hover,
+html.light-mode #taskmenu a.logout:focus,
+html.light-mode #layout-menu .special-buttons a.logout:hover,
+html.light-mode #layout-menu .special-buttons a.logout:focus {
+  background-color: #fee2e2 !important;
+  background: #fee2e2 !important;
+  color: #be123c !important;
+}
+html:not(.dark-mode) #taskmenu a.logout:hover:before,
+html:not(.dark-mode) #taskmenu a.logout:hover span.inner,
+html:not(.dark-mode) #layout-menu .special-buttons a.logout:hover:before,
+html:not(.dark-mode) #layout-menu .special-buttons a.logout:hover span.inner,
+html.light-mode #taskmenu a.logout:hover:before,
+html.light-mode #taskmenu a.logout:hover span.inner,
+html.light-mode #layout-menu .special-buttons a.logout:hover:before,
+html.light-mode #layout-menu .special-buttons a.logout:hover span.inner {
+  color: #be123c !important;
+}
+
 html:not(.dark-mode) .floating-action-buttons a.button,
 html.light-mode .floating-action-buttons a.button {
   background-color: #ffffff !important;

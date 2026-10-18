@@ -92,6 +92,10 @@ for css_bundle in /var/www/html/skins/elastic/styles/styles.min.css /var/www/htm
         sed -i 's/#21292c/#18181b/g' "$css_bundle" 2>/dev/null || true
         sed -i 's/#374549/#27272a/g' "$css_bundle" 2>/dev/null || true
         sed -i 's/#4d6066/#3f3f46/g' "$css_bundle" 2>/dev/null || true
+        # Strip hardcoded rail and special-buttons dark backgrounds from base bundles so theme-override controls them cleanly
+        sed -i 's/#taskmenu .special-buttons{position:absolute;bottom:0;left:0;background-color:[^}]*}/#taskmenu .special-buttons{position:absolute;bottom:0;left:0;background-color:transparent}/g' "$css_bundle" 2>/dev/null || true
+        sed -i 's/#layout-menu .special-buttons a:not(:focus){background:[^}]*}/#layout-menu .special-buttons a:not(:focus){background:transparent}/g' "$css_bundle" 2>/dev/null || true
+        sed -i 's/#layout-menu{background-color:[^;]*;/#layout-menu{background-color:transparent;/g' "$css_bundle" 2>/dev/null || true
     fi
 done
 
@@ -118,10 +122,11 @@ cp -f /usr/src/roundcubemail/skins/elastic/images/logo.svg /var/www/html/skins/e
 cp -f /usr/src/roundcubemail/skins/elastic/images/favicon.ico /var/www/html/skins/elastic/images/favicon.ico
 cp -f /usr/src/roundcubemail/skins/elastic/images/favicon.ico /var/www/html/favicon.ico 2>/dev/null || true
 
-# 7. Concatenate theme override CSS
-if ! grep -q "Mailwart Theme Integration" /var/www/html/skins/elastic/styles/styles.min.css 2>/dev/null; then
-    cat /usr/src/roundcubemail/skins/elastic/styles/theme-override.css >> /var/www/html/skins/elastic/styles/styles.min.css
-fi
-if ! grep -q "Mailwart Theme Integration" /var/www/html/skins/elastic/styles/styles.css 2>/dev/null; then
-    cat /usr/src/roundcubemail/skins/elastic/styles/theme-override.css >> /var/www/html/skins/elastic/styles/styles.css
-fi
+# 7. Concatenate theme override CSS (always sync latest and avoid duplicate appending)
+cp -f /usr/src/roundcubemail/skins/elastic/styles/theme-override.css /var/www/html/skins/elastic/styles/theme-override.css 2>/dev/null || true
+for bundle in /var/www/html/skins/elastic/styles/styles.min.css /var/www/html/skins/elastic/styles/styles.css /usr/src/roundcubemail/skins/elastic/styles/styles.min.css /usr/src/roundcubemail/skins/elastic/styles/styles.css; do
+    if [ -f "$bundle" ]; then
+        sed -i '/Mailwart Theme Integration/,$d' "$bundle" 2>/dev/null || true
+        cat /usr/src/roundcubemail/skins/elastic/styles/theme-override.css >> "$bundle"
+    fi
+done
