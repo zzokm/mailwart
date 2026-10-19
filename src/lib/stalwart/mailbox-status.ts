@@ -1,5 +1,5 @@
 import "server-only"
-import { jmapCall } from "./client"
+import { jmapCall, responseById } from "./client"
 import { getStalwartConfig } from "@/lib/env"
 import type { JmapMethodCall } from "./types"
 import type { WebmailClientType } from "@/lib/webmail/types"
@@ -7,6 +7,12 @@ import type { WebmailClientType } from "@/lib/webmail/types"
 export type MailboxActivity = {
   unreadCount: number
   newCount: number
+}
+
+export type MailboxActivityInput = {
+  email: string
+  id?: string
+  usedBytes?: number
 }
 
 // In-memory persistent tracker for mock mode or cached activity
@@ -17,76 +23,104 @@ const mockActivityStore = new Map<string, MailboxActivity>([
 ])
 
 /**
- * Calculates new emails vs unread emails according to:
- * - Unread = total emails without $seen flag.
- * - New = unread emails received AFTER the most recently read email.
- * If the user read a more recent email than those, older unread emails are considered "ignored"
- * and stay unread only (newCount = 0).
+ * Calculates new emails vs unread emails according to real server data.
+ * - Unread = total unread emails in mailboxes.
+ * - New = unread emails received in the Inbox.
+ *
+ * Accounts with 0 bytes used strictly have 0 unread and 0 new emails.
+ * Real servers return real unread/new counts; no pseudo-random values or assumed numbers are generated.
  */
 export async function getMailboxesActivity(
-  emails: string[],
+  items: (string | MailboxActivityInput)[],
   webmailClient: WebmailClientType = "rav"
 ): Promise<Map<string, MailboxActivity>> {
+  void webmailClient
   const result = new Map<string, MailboxActivity>()
-  if (!emails || emails.length === 0) return result
+  if (!items || items.length === 0) return result
+
+  // Normalize inputs
+  const normalized: MailboxActivityInput[] = items.map((item) => {
+    if (typeof item === "string") {
+      return { email: item }
+    }
+    return item
+  })
+
+  // Fast-path: accounts with explicitly 0 bytes used cannot have any emails on disk
+  const candidates: MailboxActivityInput[] = []
+  for (const item of normalized) {
+    const key = item.email.toLowerCase()
+    if (item.usedBytes === 0) {
+      result.set(key, { unreadCount: 0, newCount: 0 })
+    } else {
+      candidates.push(item)
+    }
+  }
 
   const config = getStalwartConfig()
   const isLive = Boolean(config && process.env.NODE_ENV !== "test")
 
-  if (isLive) {
+  if (isLive && candidates.length > 0) {
     try {
-      // In live Stalwart, probe mailbox stats across accounts via JMAP
-      // Stalwart JMAP Mailbox/get returns unreadEmails and totalEmails for inboxes
-      const calls: JmapMethodCall[] = emails.slice(0, 50).map((_email, idx) => [
-        "Mailbox/query",
+      // In live Stalwart, query standard JMAP Mailbox/get per candidate account
+      // Stalwart returns unreadEmails and totalEmails per mailbox
+      const calls: JmapMethodCall[] = candidates.slice(0, 50).map((cand, idx) => [
+        "Mailbox/get",
         {
-          filter: { role: "inbox" },
-          clientHint: webmailClient,
+          accountId: cand.id || cand.email,
+          properties: ["role", "unreadEmails", "totalEmails"],
         },
-        `mbq_${idx}`,
+        `mb_${idx}`,
       ])
 
-      // Use a fast 2.5s timeout so mailbox listing is never delayed
       const res = await jmapCall(calls, {
-        timeoutMs: 2500,
+        timeoutMs: 3000,
         retry: false,
+        using: [
+          "urn:ietf:params:jmap:core",
+          "urn:ietf:params:jmap:mail",
+          "urn:stalwart:jmap",
+        ],
       }).catch(() => null)
 
       if (res && res.methodResponses) {
-        // If live JMAP returned results, process them
+        for (let idx = 0; idx < candidates.length && idx < 50; idx++) {
+          const cand = candidates[idx]
+          const key = cand.email.toLowerCase()
+          const tag = `mb_${idx}`
+          const body = responseById(res, tag)
+          if (body && Array.isArray(body.list)) {
+            let totalUnread = 0
+            let inboxUnread = 0
+            for (const mb of body.list as Array<Record<string, unknown>>) {
+              const u = typeof mb.unreadEmails === "number" ? mb.unreadEmails : 0
+              totalUnread += u
+              if (mb.role === "inbox") {
+                inboxUnread = u
+              }
+            }
+            result.set(key, {
+              unreadCount: totalUnread,
+              newCount: inboxUnread,
+            })
+          }
+        }
       }
     } catch {
-      // Gracefully fall through to deterministic activity mapping
+      // Live query failed - proceed without fake numbers
     }
   }
 
-  // Populate activity mapping for each email
-  for (const email of emails) {
-    const key = email.toLowerCase()
+  // Final pass: ensure every email is present in the map
+  for (const item of normalized) {
+    const key = item.email.toLowerCase()
     if (result.has(key)) continue
 
-    if (mockActivityStore.has(key)) {
+    if (!isLive && mockActivityStore.has(key)) {
       result.set(key, mockActivityStore.get(key)!)
     } else {
-      // Deterministic calculation based on email hash so accounts get consistent, sensible values
-      let hash = 0
-      for (let i = 0; i < key.length; i++) {
-        hash = (hash << 5) - hash + key.charCodeAt(i)
-        hash |= 0
-      }
-      const positiveHash = Math.abs(hash)
-      // Some accounts have new emails, some have only unread, some have 0
-      const mod = positiveHash % 5
-      if (mod === 0) {
-        result.set(key, { unreadCount: 0, newCount: 0 })
-      } else if (mod === 1 || mod === 2) {
-        const unread = (positiveHash % 4) + 1
-        result.set(key, { unreadCount: unread, newCount: 0 }) // user read a more recent one, so newCount = 0
-      } else {
-        const newEmails = (positiveHash % 3) + 1
-        const unread = newEmails + (positiveHash % 2)
-        result.set(key, { unreadCount: unread, newCount: newEmails })
-      }
+      // Strictly 0 for any unverified or empty account — never guess or assume numbers
+      result.set(key, { unreadCount: 0, newCount: 0 })
     }
   }
 

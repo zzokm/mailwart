@@ -26,6 +26,9 @@ import {
   getOutboundEmailConfig,
   saveOutboundEmailConfig,
   type SystemEmailSenderConfig,
+  getEmailTemplateSetting,
+  saveEmailTemplateSetting,
+  type EmailTemplateId,
 } from "@/lib/db/system-settings"
 import {
   createAccount,
@@ -34,6 +37,7 @@ import {
   queryAccounts,
 } from "@/lib/stalwart/accounts"
 import { sendPasswordResetEmail } from "@/lib/email/sender"
+import { renderPasswordResetEmailHtml } from "@/lib/email/templates/password-reset"
 
 
 import { queryDomains } from "@/lib/stalwart/domains"
@@ -567,6 +571,7 @@ export async function changeNoreplyDomainAction(
 export async function sendTestVerificationEmailAction(input: {
   to: string
   code?: string
+  template?: EmailTemplateId
 }): Promise<
   ActionResult<{
     messageId?: string
@@ -600,7 +605,7 @@ export async function sendTestVerificationEmailAction(input: {
 
     const testCode = (input.code?.trim() || crypto.randomInt(100000, 1000000).toString())
 
-    const res = await sendPasswordResetEmail(cleanTo, testCode)
+    const res = await sendPasswordResetEmail(cleanTo, testCode, input.template)
     if (!res.success) {
       return {
         ok: false,
@@ -611,7 +616,7 @@ export async function sendTestVerificationEmailAction(input: {
     await recordAudit({
       actor: session.username || "yehia",
       action: "system.test_email",
-      detail: `Sent test verification code (${testCode}) to ${cleanTo} via ${config.mailboxEmail}`,
+      detail: `Sent test verification code (${testCode}) to ${cleanTo} via ${config.mailboxEmail} [template: ${input.template || "default"}]`,
     }).catch(() => {})
 
     return {
@@ -626,6 +631,69 @@ export async function sendTestVerificationEmailAction(input: {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to send test email."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Save active password reset email template setting.
+ */
+export async function saveEmailTemplateSettingAction(
+  template: EmailTemplateId
+): Promise<ActionResult<{ template: EmailTemplateId }>> {
+  try {
+    const session = await requireSession()
+    if (!isPrimaryAdmin(session.username)) {
+      return {
+        ok: false,
+        error: "Forbidden: Only the primary administrator can update email template settings.",
+      }
+    }
+
+    await saveEmailTemplateSetting(template)
+
+    await recordAudit({
+      actor: session.username || "yehia",
+      action: "system.email_template_updated",
+      detail: `Updated password reset email template to '${template}'`,
+    }).catch(() => {})
+
+    revalidatePath("/dashboard/settings")
+    return { ok: true, data: { template } }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to save template setting."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Get active password reset email template setting.
+ */
+export async function getEmailTemplateSettingAction(): Promise<
+  ActionResult<{ template: EmailTemplateId }>
+> {
+  try {
+    const template = await getEmailTemplateSetting().catch(() => "macos_dark" as EmailTemplateId)
+    return { ok: true, data: { template } }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to load template setting."
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Render email HTML preview for iframe viewer.
+ */
+export async function getEmailTemplatePreviewHtmlAction(
+  template: EmailTemplateId,
+  code?: string
+): Promise<ActionResult<{ html: string }>> {
+  try {
+    const previewCode = code?.trim() || "492018"
+    const html = renderPasswordResetEmailHtml(previewCode, template)
+    return { ok: true, data: { html } }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to generate preview."
     return { ok: false, error: msg }
   }
 }

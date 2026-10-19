@@ -222,15 +222,23 @@ async function loadScopedDirectory(): Promise<{
 
   const webmailSettings = await getUserWebmailSettings(session?.userId).catch(() => null)
   const activityMap = await getMailboxesActivity(
-    allAccounts.map((a) => a.email),
+    allAccounts.map((a) => ({
+      email: a.email,
+      id: a.id,
+      usedBytes: a.usedDiskQuota ?? quotaSummary(a.quotas).used ?? 0,
+    })),
     webmailSettings?.client || "rav"
   ).catch(() => new Map())
 
   for (const a of allAccounts) {
-    const act = activityMap.get(a.email.toLowerCase())
-    if (act) {
-      a.unreadCount = act.unreadCount
-      a.newCount = act.newCount
+    const used = a.usedDiskQuota ?? quotaSummary(a.quotas).used ?? 0
+    if (used === 0) {
+      a.unreadCount = 0
+      a.newCount = 0
+    } else {
+      const act = activityMap.get(a.email.toLowerCase())
+      a.unreadCount = act?.unreadCount ?? 0
+      a.newCount = act?.newCount ?? 0
     }
   }
 

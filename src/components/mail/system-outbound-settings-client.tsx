@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import {
   Mail,
   Send,
@@ -12,6 +12,11 @@ import {
   ArrowRightLeft,
   RefreshCw,
   MailCheck,
+  Eye,
+  Maximize2,
+  Check,
+  Laptop,
+  Smartphone,
 } from "lucide-react"
 
 import { toast } from "sonner"
@@ -20,16 +25,29 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import type { SystemEmailSenderConfig } from "@/lib/db/system-settings"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import type { SystemEmailSenderConfig, EmailTemplateId } from "@/lib/db/system-settings"
+import {
+  renderPasswordResetEmailHtml,
+  EMAIL_TEMPLATES,
+} from "@/lib/email/templates/password-reset"
 import {
   setupNoreplyEmailAction,
   saveSystemEmailSenderAction,
   changeNoreplyDomainAction,
   sendTestVerificationEmailAction,
+  saveEmailTemplateSettingAction,
 } from "@/lib/actions/users"
 
 interface SystemOutboundSettingsClientProps {
   initialConfig: SystemEmailSenderConfig | null
+  initialTemplate?: EmailTemplateId
   availableDomains: string[]
   availableMailboxes: string[]
   isPrimaryAdmin: boolean
@@ -37,6 +55,7 @@ interface SystemOutboundSettingsClientProps {
 
 export function SystemOutboundSettingsClient({
   initialConfig,
+  initialTemplate = "macos_dark",
   availableDomains,
   availableMailboxes,
   isPrimaryAdmin,
@@ -44,6 +63,16 @@ export function SystemOutboundSettingsClient({
   const [config, setConfig] = useState<SystemEmailSenderConfig | null>(
     initialConfig
   )
+
+  // Email Template State
+  const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplateId>(
+    initialTemplate
+  )
+  const [activeSavedTemplate, setActiveSavedTemplate] = useState<EmailTemplateId>(
+    initialTemplate
+  )
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false)
+  const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop")
 
   // 1-Click Setup state (shown only when no config exists)
   const [selectedDomain, setSelectedDomain] = useState<string>(
@@ -162,6 +191,32 @@ export function SystemOutboundSettingsClient({
     }
   }
 
+  // Live Email Preview HTML
+  const previewHtml = useMemo(() => {
+    return renderPasswordResetEmailHtml(testCode || "492018", selectedTemplate)
+  }, [testCode, selectedTemplate])
+
+  // Save active system default template
+  async function handleSaveTemplateDefault(template: EmailTemplateId) {
+    setIsSavingTemplate(true)
+    try {
+      const res = await saveEmailTemplateSettingAction(template)
+      if (!res.ok) {
+        toast.error(res.error || "Failed to update default template.")
+        return
+      }
+      setActiveSavedTemplate(template)
+      setSelectedTemplate(template)
+      toast.success(
+        `Default email template set to ${template === "macos_dark" ? "macOS Dark Window" : "Nordic Minimal Dark"}!`
+      )
+    } catch {
+      toast.error("Failed to update template setting.")
+    } finally {
+      setIsSavingTemplate(false)
+    }
+  }
+
   // Randomize 6-digit test code
   function generateNewRandomCode() {
     const newCode = Math.floor(100000 + Math.random() * 900000).toString()
@@ -186,6 +241,7 @@ export function SystemOutboundSettingsClient({
       const res = await sendTestVerificationEmailAction({
         to: testTargetEmail,
         code: testCode,
+        template: selectedTemplate,
       })
 
       if (!res.ok) {
@@ -459,26 +515,112 @@ export function SystemOutboundSettingsClient({
 
       {/* Deliverability & Verification Sample Test Section */}
       {isPrimaryAdmin && (
-        <div className="rounded-lg border border-border/80 bg-background/50 p-4 sm:p-5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="rounded-lg border border-border/80 bg-background/50 p-4 sm:p-5 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/40 pb-3">
             <div className="flex items-center gap-2">
               <MailCheck className="size-4 text-primary" />
               <h3 className="text-xs font-semibold text-foreground">
                 Deliverability & Verification Code Test
               </h3>
             </div>
-            <Badge variant="outline" className="text-[10px] self-start sm:self-auto font-mono">
-              Live SMTP Dispatch
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-[10px] font-mono">
+                Live SMTP Dispatch
+              </Badge>
+              <Badge
+                variant="secondary"
+                className="text-[10px] font-mono gap-1 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+              >
+                <Check className="size-2.5" />
+                Active Default: {activeSavedTemplate === "macos_dark" ? "macOS Dark" : "Nordic Dark"}
+              </Badge>
+            </div>
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            Test outbound deliverability and inbox placement of transactional OTP verification emails. Enter any target email address and 6-digit code to simulate live dispatch through Stalwart.
-          </p>
+          {/* Template Selection Cards */}
+          <div className="space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <Label className="text-xs font-semibold text-foreground">
+                  Reset Password Email Template
+                </Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Select and preview transactional email layouts. Changes apply globally to password reset OTP dispatches.
+                </p>
+              </div>
+              {selectedTemplate !== activeSavedTemplate && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => handleSaveTemplateDefault(selectedTemplate)}
+                  disabled={isSavingTemplate}
+                  className="h-7 text-xs gap-1.5 self-start sm:self-auto"
+                >
+                  {isSavingTemplate ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Check className="size-3" />
+                  )}
+                  Set &quot;{selectedTemplate === "macos_dark" ? "macOS Dark" : "Nordic Dark"}&quot; as Default
+                </Button>
+              )}
+            </div>
 
-          <div className="grid gap-4 lg:grid-cols-12 items-start">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {EMAIL_TEMPLATES.map((tmpl) => {
+                const isSelected = selectedTemplate === tmpl.id
+                const isSavedDefault = activeSavedTemplate === tmpl.id
+                return (
+                  <button
+                    key={tmpl.id}
+                    type="button"
+                    onClick={() => setSelectedTemplate(tmpl.id)}
+                    className={`relative text-left p-3.5 rounded-lg border transition-all text-xs flex flex-col justify-between gap-2.5 cursor-pointer ${
+                      isSelected
+                        ? "border-primary bg-primary/5 ring-1 ring-primary/40 shadow-xs"
+                        : "border-border/80 bg-card/60 hover:border-border hover:bg-card/90"
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground text-xs">
+                            {tmpl.name}
+                          </span>
+                          <Badge variant="outline" className="text-[9px] px-1.5 py-0">
+                            {tmpl.badge}
+                          </Badge>
+                        </div>
+                        {isSavedDefault && (
+                          <Badge
+                            variant="secondary"
+                            className="text-[9px] px-1.5 py-0 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 gap-1 font-mono"
+                          >
+                            <Check className="size-2.5" />
+                            Saved Default
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
+                        {tmpl.description}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[10px] text-muted-foreground">
+                      <span className="font-mono">{tmpl.subtitle}</span>
+                      <span className="text-primary font-medium">
+                        {isSelected ? "Currently Previewing" : "Click to Preview"}
+                      </span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-12 items-start">
             {/* Input Controls Form */}
-            <div className="lg:col-span-6 space-y-3">
+            <div className="lg:col-span-5 space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="test-target-email" className="text-xs">
                   Target Recipient Email
@@ -516,7 +658,7 @@ export function SystemOutboundSettingsClient({
                     type="button"
                     onClick={generateNewRandomCode}
                     disabled={isSendingTest}
-                    className="text-[11px] text-primary hover:underline flex items-center gap-1 font-sans"
+                    className="text-[11px] text-primary hover:underline flex items-center gap-1 font-sans cursor-pointer"
                   >
                     <RefreshCw className="size-3" />
                     Randomize
@@ -548,7 +690,9 @@ export function SystemOutboundSettingsClient({
                 ) : (
                   <Send className="size-3.5" />
                 )}
-                {isSendingTest ? "Dispatching via SMTP..." : "Send Test Verification Email"}
+                {isSendingTest
+                  ? "Dispatching via SMTP..."
+                  : `Send Test (${selectedTemplate === "macos_dark" ? "macOS Dark" : "Nordic Dark"})`}
               </Button>
 
               {!config && (
@@ -597,54 +741,121 @@ export function SystemOutboundSettingsClient({
               )}
             </div>
 
-            {/* Interactive Email Preview Sample */}
-            <div className="lg:col-span-6 space-y-2">
+            {/* Real Email Client Iframe Preview */}
+            <div className="lg:col-span-7 space-y-2">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span className="font-medium">Live Email Preview Sample</span>
-                <span className="font-mono text-[10px]">HTML Mockup</span>
+                <div className="flex items-center gap-1.5 font-medium text-foreground">
+                  <Eye className="size-3.5 text-primary" />
+                  <span>Real Email Client Preview (Iframe)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Dialog>
+                    <DialogTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
+                        />
+                      }
+                    >
+                      <Maximize2 className="size-3" />
+                      Fullscreen
+                    </DialogTrigger>
+                    <DialogContent className="max-w-4xl p-0 overflow-hidden bg-background">
+                      <DialogHeader className="p-4 border-b border-border/80">
+                        <div className="flex items-center justify-between gap-4">
+                          <DialogTitle className="text-sm font-semibold">
+                            Email Client Preview — {selectedTemplate === "macos_dark" ? "macOS Dark Window" : "Nordic Minimal Dark"}
+                          </DialogTitle>
+                          <div className="flex items-center gap-1.5 mr-6">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={previewDevice === "desktop" ? "default" : "outline"}
+                              onClick={() => setPreviewDevice("desktop")}
+                              className="h-7 text-xs px-2.5 gap-1"
+                            >
+                              <Laptop className="size-3" /> Desktop
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={previewDevice === "mobile" ? "default" : "outline"}
+                              onClick={() => setPreviewDevice("mobile")}
+                              className="h-7 text-xs px-2.5 gap-1"
+                            >
+                              <Smartphone className="size-3" /> Mobile
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogHeader>
+                      <div className="p-4 bg-muted/40 overflow-y-auto max-h-[80vh] flex justify-center">
+                        <div
+                          className={`w-full transition-all duration-200 rounded-xl overflow-hidden shadow-xl border border-border/80 bg-white ${
+                            previewDevice === "mobile" ? "max-w-[400px]" : "max-w-[620px]"
+                          }`}
+                        >
+                          <iframe
+                            srcDoc={previewHtml}
+                            title="Fullscreen Email Client Preview"
+                            className="w-full h-[620px] border-0 bg-white"
+                          />
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                  <span className="font-mono text-[10px] text-muted-foreground">HTML5 Iframe</span>
+                </div>
               </div>
 
-              <div className="rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm space-y-3 font-sans">
-                <div className="flex items-center justify-between border-b border-border/60 pb-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-sm tracking-tight text-foreground">
-                      mailwart
-                    </span>
-                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-primary/40 text-primary">
-                      Security
+              {/* Simulated Email App Window Frame */}
+              <div className="rounded-xl border border-border/80 bg-card overflow-hidden shadow-sm">
+                {/* Email Client Header bar */}
+                <div className="bg-muted/60 border-b border-border/60 px-3.5 py-2.5 space-y-1.5 font-sans">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="size-2.5 rounded-full bg-red-400/80 inline-block" />
+                      <span className="size-2.5 rounded-full bg-amber-400/80 inline-block" />
+                      <span className="size-2.5 rounded-full bg-emerald-400/80 inline-block" />
+                      <span className="text-[11px] font-medium text-foreground/80 ml-2">
+                        Inbox &bull; mailwart verification
+                      </span>
+                    </div>
+                    <Badge variant="outline" className="text-[9px] font-mono py-0 h-4 bg-background">
+                      White UI Blended
                     </Badge>
                   </div>
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    {config?.mailboxEmail || "noreply@domain.com"}
-                  </span>
-                </div>
-
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-foreground">
-                    Password Reset Verification Code
-                  </p>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Hello, you requested a one-time verification code to update your account password. Use the verification code below to proceed:
-                  </p>
-                </div>
-
-                {/* Big Verification Code Box */}
-                <div className="my-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-center">
-                  <div className="font-mono text-xl font-bold tracking-[0.25em] text-primary">
-                    {testCode ? testCode.split("").join(" ") : "• • • • • •"}
+                  <div className="text-[11px] text-muted-foreground grid grid-cols-1 gap-0.5 pt-0.5">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="text-foreground/70 font-medium w-12 shrink-0">Subject:</span>
+                      <span className="text-foreground font-semibold truncate">
+                        Your mailwart verification code: {testCode || "492018"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 truncate text-[10.5px]">
+                      <span className="text-foreground/70 font-medium w-12 shrink-0">From:</span>
+                      <span className="font-mono text-muted-foreground truncate">
+                        mailwart &lt;{config?.mailboxEmail || "noreply@domain.com"}&gt;
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 truncate text-[10.5px]">
+                      <span className="text-foreground/70 font-medium w-12 shrink-0">To:</span>
+                      <span className="font-mono text-muted-foreground truncate">
+                        {testTargetEmail || "recipient@example.com"}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Valid for 15 minutes &bull; Do not share this code
-                  </p>
                 </div>
 
-                <p className="text-[10px] text-muted-foreground">
-                  If you didn&apos;t request this verification code, you can safely ignore this email.
-                </p>
-
-                <div className="border-t border-border/60 pt-2 text-[10px] text-muted-foreground/80 flex items-center justify-between">
-                  <span>Sent to: {testTargetEmail || "recipient@example.com"}</span>
-                  <span>mailwart System Service</span>
+                {/* Real Iframe Rendering Email HTML */}
+                <div className="bg-white p-0 relative">
+                  <iframe
+                    srcDoc={previewHtml}
+                    title="Real Email Preview Iframe"
+                    className="w-full h-[540px] border-0 bg-white"
+                  />
                 </div>
               </div>
             </div>

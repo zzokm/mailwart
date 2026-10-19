@@ -22,7 +22,7 @@ import type { CloudflareStatus } from "@/lib/cloudflare/types"
 import type { CopilotPublicStatus } from "@/lib/copilot/types"
 import type { SafeUser } from "@/lib/db/users"
 import type { DeliverabilitySuiteReport } from "@/lib/deliverability/types"
-import type { SystemEmailSenderConfig } from "@/lib/db/system-settings"
+import type { SystemEmailSenderConfig, EmailTemplateId } from "@/lib/db/system-settings"
 import type { WebmailSettings } from "@/lib/webmail/types"
 
 export type SettingsClientProps = {
@@ -42,6 +42,7 @@ export type SettingsClientProps = {
   availableDomains: string[]
   availableMailboxes?: string[]
   outboundEmailConfig?: SystemEmailSenderConfig | null
+  emailTemplate?: EmailTemplateId
   users: SafeUser[]
   webmailSettings?: WebmailSettings | null
   roundcubeUrl: string
@@ -66,6 +67,7 @@ export function SettingsClient({
   availableDomains,
   availableMailboxes,
   outboundEmailConfig,
+  emailTemplate,
   users,
   webmailSettings,
   roundcubeUrl,
@@ -275,6 +277,7 @@ export function SettingsClient({
             {/* System Outbound Mailer */}
             <SystemOutboundSettingsClient
               initialConfig={outboundEmailConfig ?? null}
+              initialTemplate={emailTemplate ?? "macos_dark"}
               availableDomains={availableDomains}
               availableMailboxes={availableMailboxes ?? []}
               isPrimaryAdmin={isPrimary}

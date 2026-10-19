@@ -14,7 +14,7 @@ import { getSession } from "@/lib/auth/session"
 import { getUserOwnedDomainNames } from "@/lib/db"
 import { queryDomains } from "@/lib/stalwart/domains"
 
-import { getOutboundEmailConfig } from "@/lib/db/system-settings"
+import { getOutboundEmailConfig, getEmailTemplateSetting } from "@/lib/db/system-settings"
 import { isPrimaryAdmin } from "@/lib/db/users"
 import { queryAccounts } from "@/lib/stalwart/accounts"
 import { getWebmailSettingsAction } from "@/lib/actions/webmail"
@@ -41,6 +41,7 @@ export default async function SettingsPage({
     domains,
     outboundConfig,
     webmailResult,
+    emailTemplate,
   ] = await Promise.all([
     getSettingsAction(),
     getCopilotSettingsAction(),
@@ -51,6 +52,7 @@ export default async function SettingsPage({
     queryDomains().catch(() => []),
     getOutboundEmailConfig().catch(() => null),
     getWebmailSettingsAction(),
+    getEmailTemplateSetting().catch(() => "macos_dark" as const),
   ])
 
   if (!result.ok) {
@@ -92,6 +94,7 @@ export default async function SettingsPage({
         availableDomains={availableDomains}
         availableMailboxes={availableMailboxes}
         outboundEmailConfig={outboundConfig}
+        emailTemplate={emailTemplate}
         users={usersResult.ok && usersResult.data ? usersResult.data : []}
         webmailSettings={webmailResult.ok ? webmailResult.data : null}
         roundcubeUrl={getRoundcubeUrl()}

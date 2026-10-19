@@ -11,6 +11,7 @@ export type JmapClientOptions = {
   timeoutMs?: number
   /** Idempotent query/get only — mutations must not auto-retry. */
   retry?: boolean
+  using?: string[]
 }
 
 function basicAuthHeader(user: string, password: string): string {
@@ -42,7 +43,10 @@ export async function jmapCall(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          using: ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
+          using: options.using ?? [
+            "urn:ietf:params:jmap:core",
+            "urn:stalwart:jmap",
+          ],
           methodCalls,
         }),
         signal: controller.signal,

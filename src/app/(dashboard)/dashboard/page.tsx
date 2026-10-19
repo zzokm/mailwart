@@ -160,9 +160,9 @@ export default async function OverviewPage() {
                   </span>
                   {isNotification ? (
                     <div className="relative inline-flex items-center">
-                      <Bell className="size-4 text-muted-foreground" />
+                      <Bell className="size-5 text-muted-foreground" />
                       {m.newCount > 0 ? (
-                        <span className="absolute -top-1 -right-1 size-2 rounded-full bg-rose-500 animate-pulse" />
+                        <span className="absolute top-0 right-0 size-2 rounded-full bg-red-600" />
                       ) : null}
                     </div>
                   ) : null}
@@ -172,7 +172,7 @@ export default async function OverviewPage() {
                     {m.value}
                   </span>
                   {isNotification && m.newCount > 0 ? (
-                    <span className="font-mono text-[11px] font-medium text-rose-500">
+                    <span className="font-mono text-[11px] font-medium text-red-600">
                       new
                     </span>
                   ) : null}

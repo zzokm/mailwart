@@ -58,3 +58,14 @@ export async function saveOutboundEmailConfig(
     configuredAt: new Date().toISOString(),
   })
 }
+
+export type EmailTemplateId = "macos_dark" | "nordic_dark"
+
+export async function getEmailTemplateSetting(): Promise<EmailTemplateId> {
+  const val = await getSystemSetting<string>("reset_password_template")
+  return val === "nordic_dark" ? "nordic_dark" : "macos_dark"
+}
+
+export async function saveEmailTemplateSetting(template: EmailTemplateId): Promise<void> {
+  await setSystemSetting<EmailTemplateId>("reset_password_template", template)
+}

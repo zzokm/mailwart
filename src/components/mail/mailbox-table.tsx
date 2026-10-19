@@ -583,7 +583,7 @@ export function MailboxTable({
                         >
                           <div className="relative inline-flex items-center">
                             <Bell className="size-3.5 text-muted-foreground" />
-                            <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-rose-500" />
+                            <span className="absolute top-0 right-0 size-1.5 rounded-full bg-red-600" />
                           </div>
                           <span>+{a.newCount} new</span>
                           {a.unreadCount && a.unreadCount > a.newCount ? (
