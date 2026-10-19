@@ -3,10 +3,20 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition } from "react"
-import { ExternalLink, Plus, Trash2 } from "lucide-react"
+import {
+  Check,
+  Edit2,
+  ExternalLink,
+  Plus,
+  Search,
+  ShieldCheck,
+  Trash2,
+  X,
+} from "lucide-react"
 
 import {
   destroyForwardingRuleAction,
+  toggleForwardingRuleAction,
   updateCatchAllAction,
   updateMailExchangerAction,
   upsertForwardingRuleAction,
@@ -37,6 +47,7 @@ import { cn } from "@/lib/utils"
 import type {
   CatchAllMode,
   ForwardingRule,
+  ForwardSourceType,
   MailExchangerMode,
   StalwartAccount,
   StalwartDomain,
@@ -54,9 +65,30 @@ const MX_MODE_LABEL: Record<MailExchangerMode, string> = {
   remote: "remote",
 }
 
-const FORWARD_SCOPE_LABEL = {
-  user: "user",
-  domain: "domain (*@)",
+const FORWARD_SOURCE_TYPES: Record<
+  ForwardSourceType,
+  { label: string; placeholder: string; helper: string }
+> = {
+  exact: {
+    label: "Exact Address",
+    placeholder: "info or info@example.com",
+    helper: "Match a specific mailbox or free local-part",
+  },
+  wildcard: {
+    label: "Wildcard Source",
+    placeholder: "support-* or support-*@example.com",
+    helper: "Pattern with * or ? wildcards (e.g. support-*, billing.*)",
+  },
+  regex: {
+    label: "Regex Source",
+    placeholder: "^invoice-[0-9]+@example\\.com$",
+    helper: "Regular expression pattern evaluated via Sieve :regex",
+  },
+  domain: {
+    label: "Domain Catch-All (*@)",
+    placeholder: "*@example.com",
+    helper: "Match all incoming mail for the entire domain",
+  },
 }
 
 function catchAllModeOf(d: StalwartDomain): CatchAllMode {
@@ -104,22 +136,39 @@ export function RoutingClient({
   }, [accounts, domains])
 
   return (
-    <Tabs defaultValue="catch-alls" className="w-full">
+    <Tabs defaultValue="forwarding" className="w-full">
       <TabsList variant="line" className="mb-6 w-full justify-start gap-8">
-        <TabsTrigger value="catch-alls" className="gap-2">
-          <span>Catch-alls &amp; MX posture</span>
-          <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
-            {domains.length}
-          </Badge>
-        </TabsTrigger>
+        {/* Forwarding is placed FIRST as requested */}
         <TabsTrigger value="forwarding" className="gap-2">
           <span>Forwarding</span>
           <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
             {forwards.length}
           </Badge>
         </TabsTrigger>
+        {/* Catch-alls is placed SECOND as requested */}
+        <TabsTrigger value="catch-alls" className="gap-2">
+          <span>Catch-alls &amp; MX posture</span>
+          <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0 h-4">
+            {domains.length}
+          </Badge>
+        </TabsTrigger>
       </TabsList>
 
+      {/* 1. Forwarding Content (First) */}
+      <TabsContent value="forwarding" className="space-y-6">
+        <ForwardsSection
+          domains={domains}
+          accounts={accounts}
+          forwards={forwards}
+          source={source}
+          adminUiUrl={adminUiUrl}
+          pending={pending}
+          startTransition={startTransition}
+          onDone={() => router.refresh()}
+        />
+      </TabsContent>
+
+      {/* 2. Catch-alls & MX Posture Content (Second) */}
       <TabsContent value="catch-alls" className="space-y-10">
         <CatchAllsSection
           domains={domains}
@@ -182,19 +231,6 @@ export function RoutingClient({
           )}
         </section>
       </TabsContent>
-
-      <TabsContent value="forwarding" className="space-y-6">
-        <ForwardsSection
-          domains={domains}
-          accounts={accounts}
-          forwards={forwards}
-          source={source}
-          adminUiUrl={adminUiUrl}
-          pending={pending}
-          startTransition={startTransition}
-          onDone={() => router.refresh()}
-        />
-      </TabsContent>
     </Tabs>
   )
 }
@@ -213,15 +249,16 @@ function CatchAllsSection({
   onDone: () => void
 }) {
   return (
-    <section className="space-y-3">
-      <div>
-        <h2 className="text-sm font-medium">Catch-alls &amp; MX posture</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Unknown recipients: deliver to a mailbox, bounce, or blackhole
-          (mock). Mail exchanger maps to Stalwart{" "}
-          <code className="font-mono text-[11px]">allowRelaying</code>.
-        </p>
+    <section className="space-y-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-medium">Catch-alls &amp; Archival Journaling</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Configure catch-all routing for unknown addresses. When an address is selected, all incoming domain deliveries automatically duplicate an archival copy into the catch-all mailbox via Sieve.
+          </p>
+        </div>
       </div>
+
       <div className="overflow-hidden rounded-xl border border-border/80">
         <Table>
           <TableHeader>
@@ -230,13 +267,13 @@ function CatchAllsSection({
                 Domain
               </TableHead>
               <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                Catch-all
+                Catch-all &amp; Archival
               </TableHead>
               <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                MX
+                MX Posture
               </TableHead>
               <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-right">
-                Edit
+                Actions
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -244,35 +281,57 @@ function CatchAllsSection({
             {domains.map((d) => {
               const mode = catchAllModeOf(d)
               const mailboxes = accounts.filter((a) => a.domainId === d.id)
+              const hasCatchAll = Boolean(d.catchAllAddress)
+
               return (
                 <TableRow key={d.id}>
-                  <TableCell>
-                    <Link
-                      href={`/dashboard/domains/${d.id}`}
-                      className="font-mono text-[13px] underline-offset-4 hover:underline"
-                    >
-                      {d.name}
-                    </Link>
-                    {d.isEnabled === false ? (
-                      <Badge
-                        variant="outline"
-                        className="ml-2 font-mono text-[10px] text-destructive"
-                      >
-                        suspended
-                      </Badge>
-                    ) : null}
+                  <TableCell className="align-top py-3.5">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1.5">
+                        <Link
+                          href={`/dashboard/domains/${d.id}`}
+                          className="font-mono text-[13px] font-medium underline-offset-4 hover:underline"
+                        >
+                          {d.name}
+                        </Link>
+                        {d.isEnabled === false ? (
+                          <Badge
+                            variant="outline"
+                            className="font-mono text-[10px] text-destructive border-destructive/30"
+                          >
+                            suspended
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">
+                        {mailboxes.length} {mailboxes.length === 1 ? "mailbox" : "mailboxes"}
+                      </span>
+                    </div>
                   </TableCell>
-                  <TableCell>
-                    <CatchAllInline
-                      domain={d}
-                      mailboxes={mailboxes}
-                      mode={mode}
-                      pending={pending}
-                      startTransition={startTransition}
-                      onDone={onDone}
-                    />
+                  <TableCell className="align-top py-3.5">
+                    <div className="space-y-2">
+                      <CatchAllInline
+                        domain={d}
+                        mailboxes={mailboxes}
+                        mode={mode}
+                        pending={pending}
+                        startTransition={startTransition}
+                        onDone={onDone}
+                      />
+                      {hasCatchAll ? (
+                        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2 text-xs">
+                          <div className="flex items-center gap-1.5 text-emerald-500 font-medium">
+                            <ShieldCheck className="size-3.5 shrink-0" />
+                            <span>Archival Mirroring Active</span>
+                          </div>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground leading-relaxed">
+                            Delivered emails to any mailbox or catch-all on <code className="font-mono text-[10px]">{d.name}</code> duplicate a copy into <span className="font-mono font-medium text-foreground">{d.catchAllAddress}</span>.
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="align-top py-3.5">
                     <MxInline
                       domain={d}
                       pending={pending}
@@ -280,7 +339,7 @@ function CatchAllsSection({
                       onDone={onDone}
                     />
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="align-top text-right py-3.5">
                     <Button
                       size="sm"
                       variant="ghost"
@@ -342,7 +401,7 @@ function CatchAllInline({
   }
 
   return (
-    <div className="flex min-w-[12rem] flex-col gap-1.5">
+    <div className="flex min-w-[13rem] flex-col gap-1.5">
       <Select
         items={CATCH_ALL_MODE_LABEL}
         value={localMode}
@@ -472,236 +531,527 @@ function ForwardsSection({
   startTransition: (fn: () => void) => void
   onDone: () => void
 }) {
-  const [scope, setScope] = useState<"user" | "domain">("user")
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [sourceType, setSourceType] = useState<ForwardSourceType>("exact")
   const [domainId, setDomainId] = useState(domains[0]?.id ?? "")
   const [sourceAddr, setSourceAddr] = useState("")
   const [targets, setTargets] = useState("")
-  const [keepLocal, setKeepLocal] = useState(false)
+  const [keepLocal, setKeepLocal] = useState(true)
+  const [searchQuery, setSearchQuery] = useState("")
 
   const domain = domains.find((d) => d.id === domainId)
 
-  function create() {
+  function startEdit(rule: ForwardingRule) {
+    setEditingId(rule.id)
+    const sType =
+      rule.sourceType ||
+      (rule.scope === "domain"
+        ? "domain"
+        : rule.scope === "wildcard" || rule.source.includes("*")
+          ? "wildcard"
+          : rule.scope === "regex" || rule.source.startsWith("^")
+            ? "regex"
+            : "exact")
+    setSourceType(sType)
+    setDomainId(rule.domainId)
+    setSourceAddr(rule.source)
+    setTargets(rule.targets.join(", "))
+    setKeepLocal(rule.keepLocalCopy !== false)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setSourceType("exact")
+    setSourceAddr("")
+    setTargets("")
+    setKeepLocal(true)
+  }
+
+  function saveRule() {
     startTransition(() => {
       void (async () => {
+        const finalSource =
+          sourceType === "domain" ? `*@${domain?.name ?? ""}` : sourceAddr
+
         const result = await upsertForwardingRuleAction({
-          scope,
+          id: editingId || undefined,
+          scope: sourceType === "exact" ? "user" : sourceType,
+          sourceType,
           domainId,
-          source: sourceAddr,
+          source: finalSource,
           targets: targets.split(/[\s,;]+/).filter(Boolean),
           keepLocalCopy: keepLocal,
           enabled: true,
         })
+
         if (
           !toastActionResult(result, {
             success: result.ok
-              ? `Forward saved (${result.data.backend}).`
+              ? editingId
+                ? "Forward updated successfully."
+                : `Forward rule saved (${result.data.backend}).`
               : "",
           })
         ) {
           return
         }
-        setSourceAddr("")
-        setTargets("")
+
+        cancelEdit()
         onDone()
       })()
     })
   }
 
+  function toggleStatus(rule: ForwardingRule) {
+    startTransition(() => {
+      void (async () => {
+        const result = await toggleForwardingRuleAction(rule.id, !rule.enabled)
+        if (
+          !toastActionResult(result, {
+            success: `Forward rule ${!rule.enabled ? "enabled" : "paused"}.`,
+          })
+        ) {
+          return
+        }
+        onDone()
+      })()
+    })
+  }
+
+  const filteredForwards = useMemo(() => {
+    if (!searchQuery.trim()) return forwards
+    const q = searchQuery.toLowerCase().trim()
+    return forwards.filter(
+      (f) =>
+        f.source.toLowerCase().includes(q) ||
+        f.domainName.toLowerCase().includes(q) ||
+        f.targets.some((t) => t.toLowerCase().includes(q))
+    )
+  }, [forwards, searchQuery])
+
   return (
-    <section className="space-y-4">
-      <div>
-        <h2 className="text-sm font-medium">Forwarding</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {source === "mock"
-            ? "Mock store supports full forward CRUD. Live maps domain→catch-all and free local-part→alias; external redirects need Sieve."
-            : "Live: domain forwards become catch-alls; free local-parts become aliases on the target mailbox. External redirects → Filters / ManageSieve."}
-        </p>
+    <section className="space-y-6">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-medium">Forwarding Rules</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Redirect inbound emails to external targets (e.g. Gmail, Outlook) or internal mailboxes using Sieve filters. Supports exact addresses, wildcard patterns, and regex.
+          </p>
+        </div>
       </div>
 
-      <div className="grid gap-3 rounded-xl border border-border/80 p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="grid gap-1.5">
-          <Label className="text-[11px] text-muted-foreground">Scope</Label>
-          <Select
-            items={FORWARD_SCOPE_LABEL}
-            value={scope}
-            onValueChange={(v) => setScope((v as "user" | "domain") ?? "user")}
-            disabled={pending}
-          >
-            <SelectTrigger className="w-full font-mono text-[13px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(FORWARD_SCOPE_LABEL).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid gap-1.5">
-          <Label className="text-[11px] text-muted-foreground">Domain</Label>
-          <Select
-            items={Object.fromEntries(domains.map((d) => [d.id, d.name]))}
-            value={domainId}
-            onValueChange={(v) => setDomainId(v ?? "")}
-            disabled={pending}
-          >
-            <SelectTrigger className="w-full font-mono text-[13px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {domains.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid gap-1.5">
-          <Label className="text-[11px] text-muted-foreground">
-            Source {scope === "domain" ? "(auto *@domain)" : ""}
-          </Label>
-          <Input
-            value={scope === "domain" ? `*@${domain?.name ?? ""}` : sourceAddr}
-            disabled={pending || scope === "domain"}
-            onChange={(e) => setSourceAddr(e.target.value)}
-            className="font-mono text-[13px]"
-            placeholder="info or info@example.com"
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <Label className="text-[11px] text-muted-foreground">
-            Targets (comma-separated)
-          </Label>
-          <Input
-            value={targets}
-            disabled={pending}
-            onChange={(e) => setTargets(e.target.value)}
-            className="font-mono text-[13px]"
-            placeholder="user@example.com"
-          />
-        </div>
-        <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-4">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={keepLocal}
-              disabled={pending || scope === "domain"}
-              onChange={(e) => setKeepLocal(e.target.checked)}
-              className="size-3.5 accent-foreground"
-            />
-            Keep local copy
-          </label>
-          <Button type="button" size="sm" disabled={pending} onClick={create}>
-            <Plus data-icon="inline-start" />
-            Add forward
-          </Button>
-          {source === "live" && adminUiUrl ? (
+      {/* Form for Creating / Editing Forwards */}
+      <div className="rounded-xl border border-border/80 bg-card/40 p-4 shadow-xs">
+        <div className="mb-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-primary">
+              {editingId ? "Edit Forward Rule" : "Create Forward Rule"}
+            </span>
+            {editingId ? (
+              <Badge variant="outline" className="font-mono text-[10px]">
+                ID: {editingId}
+              </Badge>
+            ) : null}
+          </div>
+          {editingId ? (
             <Button
               type="button"
               size="sm"
-              variant="outline"
-              nativeButton={false}
-              render={
-                <a href={adminUiUrl} target="_blank" rel="noreferrer" />
-              }
+              variant="ghost"
+              className="h-7 text-xs text-muted-foreground hover:text-foreground"
+              onClick={cancelEdit}
             >
-              <ExternalLink data-icon="inline-start" />
-              Stalwart Admin
+              <X className="size-3.5 mr-1" />
+              Cancel Edit
             </Button>
           ) : null}
         </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* 1. Source Type Selector (Requirement 2: exact, wildcard, regex, domain) */}
+          <div className="grid gap-1.5">
+            <Label className="text-[11px] text-muted-foreground">Source Type</Label>
+            <Select
+              items={Object.fromEntries(
+                Object.entries(FORWARD_SOURCE_TYPES).map(([k, v]) => [k, v.label])
+              )}
+              value={sourceType}
+              onValueChange={(v) => {
+                const nextType = (v as ForwardSourceType) ?? "exact"
+                setSourceType(nextType)
+                if (nextType === "domain" && domain) {
+                  setSourceAddr(`*@${domain.name}`)
+                }
+              }}
+              disabled={pending}
+            >
+              <SelectTrigger className="w-full font-mono text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(FORWARD_SOURCE_TYPES).map(([value, info]) => (
+                  <SelectItem key={value} value={value}>
+                    <div className="flex flex-col py-0.5">
+                      <span>{info.label}</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {info.helper}
+                      </span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* 2. Target Domain */}
+          <div className="grid gap-1.5">
+            <Label className="text-[11px] text-muted-foreground">Domain</Label>
+            <Select
+              items={Object.fromEntries(domains.map((d) => [d.id, d.name]))}
+              value={domainId}
+              onValueChange={(v) => {
+                const nextId = v ?? ""
+                setDomainId(nextId)
+                const nextDom = domains.find((d) => d.id === nextId)
+                if (sourceType === "domain" && nextDom) {
+                  setSourceAddr(`*@${nextDom.name}`)
+                }
+              }}
+              disabled={pending}
+            >
+              <SelectTrigger className="w-full font-mono text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {domains.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* 3. Source Pattern / Address */}
+          <div className="grid gap-1.5">
+            <Label className="text-[11px] text-muted-foreground">
+              Source Pattern {sourceType === "domain" ? "(Auto *@domain)" : ""}
+            </Label>
+            <Input
+              value={
+                sourceType === "domain" ? `*@${domain?.name ?? ""}` : sourceAddr
+              }
+              disabled={pending || sourceType === "domain"}
+              onChange={(e) => setSourceAddr(e.target.value)}
+              className="font-mono text-[13px]"
+              placeholder={FORWARD_SOURCE_TYPES[sourceType].placeholder}
+            />
+          </div>
+
+          {/* 4. Target Addresses (Supports external like Gmail) */}
+          <div className="grid gap-1.5">
+            <Label className="text-[11px] text-muted-foreground">
+              Targets (e.g. personal Gmail or internal)
+            </Label>
+            <Input
+              value={targets}
+              disabled={pending}
+              onChange={(e) => setTargets(e.target.value)}
+              className="font-mono text-[13px]"
+              placeholder="myemail@gmail.com, office@domain.com"
+            />
+          </div>
+
+          {/* Form Actions */}
+          <div className="flex flex-wrap items-center justify-between gap-3 sm:col-span-2 lg:col-span-4 pt-1">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={keepLocal}
+                disabled={pending}
+                onChange={(e) => setKeepLocal(e.target.checked)}
+                className="size-3.5 rounded accent-primary"
+              />
+              <span>Keep local copy (retain copy in recipient mailbox or catch-all archive)</span>
+            </label>
+
+            <div className="flex items-center gap-2">
+              {editingId ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={cancelEdit}
+                >
+                  Cancel
+                </Button>
+              ) : null}
+
+              <Button
+                type="button"
+                size="sm"
+                disabled={
+                  pending ||
+                  !targets.trim() ||
+                  (sourceType !== "domain" && !sourceAddr.trim())
+                }
+                onClick={saveRule}
+              >
+                {editingId ? (
+                  <>
+                    <Check data-icon="inline-start" />
+                    Update rule
+                  </>
+                ) : (
+                  <>
+                    <Plus data-icon="inline-start" />
+                    Add forward
+                  </>
+                )}
+              </Button>
+
+              {source === "live" && adminUiUrl ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  nativeButton={false}
+                  render={<a href={adminUiUrl} target="_blank" rel="noreferrer" />}
+                >
+                  <ExternalLink data-icon="inline-start" />
+                  Stalwart Admin
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {forwards.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 font-mono text-[12px] text-muted-foreground">
-          No forwarding rules.
-        </p>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-border/80">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                  Source
-                </TableHead>
-                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                  Targets
-                </TableHead>
-                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                  Backend
-                </TableHead>
-                <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                  Status
-                </TableHead>
-                <TableHead className="w-12" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {forwards.map((f) => (
-                <TableRow key={f.id}>
-                  <TableCell className="font-mono text-[13px]">
-                    {f.source}
-                  </TableCell>
-                  <TableCell className="font-mono text-[12px] text-muted-foreground">
-                    {f.targets.join(", ")}
-                    {f.keepLocalCopy ? (
-                      <span className="ml-1 text-[10px]">(+local)</span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="font-mono text-[10px]">
-                      {f.backend}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
+      {/* Forwards Table */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Configured Rules
+            </h3>
+            <Badge variant="secondary" className="font-mono text-[10px]">
+              {filteredForwards.length}
+            </Badge>
+          </div>
+
+          {forwards.length > 3 ? (
+            <div className="relative w-64">
+              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Filter rules..."
+                className="h-7 pl-8 font-mono text-[11px]"
+              />
+            </div>
+          ) : null}
+        </div>
+
+        {filteredForwards.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border/70 px-4 py-8 text-center font-mono text-[12px] text-muted-foreground">
+            {forwards.length === 0
+              ? "No forwarding rules created yet. Configure an exact address, wildcard pattern, or external Gmail forward above."
+              : "No rules matching search criteria."}
+          </p>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-border/80">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                    Source Pattern
+                  </TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                    Targets
+                  </TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                    Backend
+                  </TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                    Status
+                  </TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-right">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredForwards.map((f) => {
+                  const sType =
+                    f.sourceType ||
+                    (f.scope === "domain"
+                      ? "domain"
+                      : f.scope === "wildcard" || f.source.includes("*")
+                        ? "wildcard"
+                        : f.scope === "regex" || f.source.startsWith("^")
+                          ? "regex"
+                          : "exact")
+
+                  const isBeingEdited = editingId === f.id
+
+                  return (
+                    <TableRow
+                      key={f.id}
                       className={cn(
-                        "font-mono text-[10px]",
-                        f.enabled
-                          ? "border-success/40 text-success"
-                          : "text-muted-foreground"
+                        "transition-colors",
+                        isBeingEdited && "bg-primary/5"
                       )}
                     >
-                      {f.enabled ? "on" : "off"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      disabled={pending}
-                      onClick={() => {
-                        startTransition(() => {
-                          void (async () => {
-                            const result = await destroyForwardingRuleAction(
-                              f.id
-                            )
-                            if (
-                              !toastActionResult(result, {
-                                success: "Forward removed.",
+                      {/* Source with pattern type badge */}
+                      <TableCell className="align-top py-3 font-mono text-[13px]">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-foreground">
+                              {f.source}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "font-mono text-[9px] uppercase px-1.5 py-0",
+                                sType === "exact" && "border-blue-500/30 text-blue-500 bg-blue-500/5",
+                                sType === "wildcard" && "border-amber-500/30 text-amber-500 bg-amber-500/5",
+                                sType === "regex" && "border-purple-500/30 text-purple-500 bg-purple-500/5",
+                                sType === "domain" && "border-sky-500/30 text-sky-500 bg-sky-500/5"
+                              )}
+                            >
+                              {sType}
+                            </Badge>
+                          </div>
+                          <span className="text-[11px] text-muted-foreground font-sans">
+                            Domain: {f.domainName}
+                          </span>
+                        </div>
+                      </TableCell>
+
+                      {/* Targets with external badges */}
+                      <TableCell className="align-top py-3 font-mono text-[12px]">
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {f.targets.map((target) => {
+                              const isExternal =
+                                target.endsWith("@gmail.com") ||
+                                target.endsWith("@googlemail.com") ||
+                                target.endsWith("@outlook.com") ||
+                                target.endsWith("@yahoo.com") ||
+                                !target.toLowerCase().endsWith(`@${f.domainName.toLowerCase()}`)
+
+                              return (
+                                <span
+                                  key={target}
+                                  className={cn(
+                                    "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px]",
+                                    isExternal
+                                      ? "bg-primary/10 text-primary border border-primary/20 font-medium"
+                                      : "bg-muted text-muted-foreground"
+                                  )}
+                                >
+                                  {isExternal ? (
+                                    <ExternalLink className="size-2.5 shrink-0 opacity-70" />
+                                  ) : null}
+                                  {target}
+                                </span>
+                              )
+                            })}
+                          </div>
+                          <span className="text-[10px] text-muted-foreground font-sans">
+                            {f.keepLocalCopy !== false
+                              ? "✓ Keeps copy in local mailbox"
+                              : "✕ Redirect only (no local copy)"}
+                          </span>
+                        </div>
+                      </TableCell>
+
+                      {/* Backend */}
+                      <TableCell className="align-top py-3">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "font-mono text-[10px]",
+                            f.backend === "sieve"
+                              ? "border-emerald-500/30 text-emerald-500 bg-emerald-500/5"
+                              : f.backend === "sieve-pending"
+                                ? "border-amber-500/30 text-amber-500 bg-amber-500/5"
+                                : "text-muted-foreground"
+                          )}
+                        >
+                          {f.backend}
+                        </Badge>
+                      </TableCell>
+
+                      {/* Status Toggle */}
+                      <TableCell className="align-top py-3">
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => toggleStatus(f)}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] transition-colors cursor-pointer border",
+                            f.enabled
+                              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20"
+                              : "border-border text-muted-foreground bg-muted/30 hover:bg-muted"
+                          )}
+                        >
+                          <span className={cn("size-1.5 rounded-full", f.enabled ? "bg-emerald-500" : "bg-muted-foreground")} />
+                          {f.enabled ? "active" : "paused"}
+                        </button>
+                      </TableCell>
+
+                      {/* Actions: Edit & Delete (Issue 5 fix) */}
+                      <TableCell className="align-top py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0"
+                            title="Edit forward rule"
+                            disabled={pending}
+                            onClick={() => startEdit(f)}
+                          >
+                            <Edit2 className="size-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                            title="Delete forward rule"
+                            disabled={pending}
+                            onClick={() => {
+                              startTransition(() => {
+                                void (async () => {
+                                  const result = await destroyForwardingRuleAction(f.id)
+                                  if (
+                                    !toastActionResult(result, {
+                                      success: "Forwarding rule removed.",
+                                    })
+                                  ) {
+                                    return
+                                  }
+                                  if (editingId === f.id) cancelEdit()
+                                  onDone()
+                                })()
                               })
-                            ) {
-                              return
-                            }
-                            onDone()
-                          })()
-                        })
-                      }}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+                            }}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
     </section>
   )
 }

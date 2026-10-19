@@ -49,8 +49,6 @@ import { buildRoundcubeUrl } from "@/lib/roundcube-client"
 import { generatePassword, quotaSummary } from "@/lib/format"
 import type { StalwartAccount, StalwartDomain } from "@/lib/stalwart/types"
 
-type SortField = "email" | "status" | "space" | null
-
 type EmailSortMode = "alpha-asc" | "alpha-desc" | "domain-asc" | "domain-desc"
 type StatusSortMode = "active-first" | "suspended-first"
 type SpaceSortMode = "used-desc" | "used-asc"

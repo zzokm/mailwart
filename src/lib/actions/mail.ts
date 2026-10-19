@@ -16,7 +16,17 @@ import {
   getUserOwnedDomainNames,
   getUserOwnedDomainIds,
   isDomainOwnedByUser,
+  getForwardingRules,
+  getForwardingRule,
+  saveForwardingRule,
+  deleteForwardingRule,
+  toggleForwardingRule,
+  setDomainCatchAllArchival,
+  getDomainCatchAllArchival,
 } from "@/lib/db"
+import { generateMailboxSieve } from "@/lib/stalwart/sieve-generator"
+import { syncMailboxSieveScript } from "@/lib/stalwart/managesieve"
+import type { ForwardSourceType } from "@/lib/stalwart/types"
 import {
   dataSource as source,
   failResult as fail,
@@ -106,7 +116,6 @@ import {
   getDomainByName,
   getDomainDnsHealth,
   getMockStore,
-  isExternalEmail,
   loadLiveSpamSettings,
   mailExchangerToAllowRelaying,
   mockHealth,
@@ -2228,10 +2237,47 @@ export async function getRoutingOverviewAction(): Promise<
     const session = await getSession().catch(() => null)
     const isAdmin = session?.role === "admin"
     const { domains, accounts } = await loadScopedDirectory()
-    const forwards = buildLiveForwardHints(domains, accounts)
+
+    // 1. Fetch persistent forwarding rules from PostgreSQL
+    const dbForwards = await getForwardingRules().catch(() => [])
+
+    let forwards: ForwardingRule[] = []
+    if (src === "mock") {
+      const store = getMockStore()
+      forwards = [...store.forwards]
+      // Merge with dbForwards if not already in store
+      for (const df of dbForwards) {
+        if (!forwards.some((f) => f.id === df.id)) {
+          forwards.push(df)
+        }
+      }
+    } else {
+      forwards = [...dbForwards]
+    }
+
+    // 2. Synthesize read-only alias hints or domain catch-alls if not already covered
+    const existingSources = new Set(forwards.map((f) => f.source.toLowerCase()))
+    const liveHints = buildLiveForwardHints(domains, accounts)
+    for (const hint of liveHints) {
+      if (!existingSources.has(hint.source.toLowerCase())) {
+        forwards.push(hint)
+      }
+    }
+
+    // 3. Attach catchAllArchival setting to each domain
+    const enrichedDomains = await Promise.all(
+      domains.map(async (d) => {
+        const archival = await getDomainCatchAllArchival(d.id).catch(() => true)
+        return {
+          ...d,
+          catchAllArchival: archival,
+        }
+      })
+    )
+
     return ok(
       {
-        domains,
+        domains: enrichedDomains,
         accounts,
         forwards,
         adminUiUrl: isAdmin ? getStalwartAdminUiUrl() : "",
@@ -2260,6 +2306,7 @@ function buildLiveForwardHints(
       rules.push({
         id: `alias-${account.id}-${alias.key}`,
         scope: "user",
+        sourceType: "exact",
         domainId: domain.id,
         domainName: domain.name,
         source: alias.email,
@@ -2278,12 +2325,13 @@ function buildLiveForwardHints(
       rules.push({
         id: `catchall-${domain.id}`,
         scope: "domain",
+        sourceType: "domain",
         domainId: domain.id,
         domainName: domain.name,
         source: `*@${domain.name}`,
         sourceAccountId: null,
         targets: [domain.catchAllAddress],
-        keepLocalCopy: false,
+        keepLocalCopy: true,
         enabled: true,
         backend: "catchall",
         updatedAt: now,
@@ -2294,15 +2342,75 @@ function buildLiveForwardHints(
   return rules
 }
 
+/**
+ * Synchronize Sieve scripts (archival copying and inbound forwards) for all mailboxes in a domain.
+ */
+export async function syncDomainSieveRules(
+  domainId: string,
+  domainsList?: StalwartDomain[],
+  accountsList?: StalwartAccount[]
+): Promise<{ ok: boolean; syncedCount: number; errors: string[] }> {
+  const src = source()
+  if (src === "mock") return { ok: true, syncedCount: 0, errors: [] }
+
+  try {
+    const domains = domainsList ?? (await queryDomains())
+    const domain = domains.find((d) => d.id === domainId)
+    if (!domain) return { ok: false, syncedCount: 0, errors: ["Domain not found"] }
+
+    const allAccounts = accountsList ?? (await queryAccounts(domains))
+    const domainAccounts = allAccounts.filter((a) => a.domainId === domain.id)
+    const domainRules = await getForwardingRules(domain.id)
+    const archival = await getDomainCatchAllArchival(domain.id)
+
+    let syncedCount = 0
+    const errors: string[] = []
+
+    for (const acc of domainAccounts) {
+      const isCatchAll = Boolean(
+        domain.catchAllAddress &&
+        domain.catchAllAddress.toLowerCase() === acc.email.toLowerCase()
+      )
+
+      const scriptContent = generateMailboxSieve({
+        mailboxEmail: acc.email,
+        domainName: domain.name,
+        catchAllEmail: domain.catchAllAddress,
+        isCatchAllMailbox: isCatchAll,
+        archivalCopyEnabled: archival,
+        rules: domainRules,
+      })
+
+      const res = await syncMailboxSieveScript({
+        accountEmail: acc.email,
+        scriptContent,
+      })
+
+      if (res.ok) {
+        syncedCount++
+      } else if (res.error) {
+        errors.push(`${acc.email}: ${res.error}`)
+      }
+    }
+
+    return { ok: errors.length === 0, syncedCount, errors }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { ok: false, syncedCount: 0, errors: [msg] }
+  }
+}
+
 export async function upsertForwardingRuleAction(input: {
   id?: string
-  scope: "user" | "domain"
+  scope?: "user" | "domain" | "wildcard" | "regex"
+  sourceType?: ForwardSourceType
   domainId: string
   source: string
   sourceAccountId?: string | null
   targets: string[]
   keepLocalCopy?: boolean
   enabled?: boolean
+  description?: string
 }): Promise<ActionResult<ForwardingRule>> {
   const denied = await denyUnlessAuthed<ForwardingRule>()
   if (denied) return denied
@@ -2322,260 +2430,102 @@ export async function upsertForwardingRuleAction(input: {
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean)
     const enabled = validated.data.enabled !== false
-    const keepLocalCopy = validated.data.keepLocalCopy === true
-    input = { ...validated.data, targets }
+    const keepLocalCopy = validated.data.keepLocalCopy !== false
 
-    if (src === "mock") {
-      const store = getMockStore()
-      const domain = store.domains.find((d) => d.id === input.domainId)
-      if (!domain) {
-        return fail(new StalwartError("Domain not found.", "not_found"), src)
-      }
-
-      const knownEmails = new Set(
-        store.accounts.map((a) => a.email.toLowerCase())
-      )
-      const knownDomains = new Set(
-        store.domains.map((d) => d.name.toLowerCase())
-      )
-      const valid = validateForwardTargets(targets, knownEmails, knownDomains)
-      if (!valid.ok) {
-        return fail(new StalwartError(valid.error, "validation"), src)
-      }
-
-      let source = input.source.trim().toLowerCase()
-      let sourceAccountId = input.sourceAccountId ?? null
-
-      if (input.scope === "domain") {
-        source = `*@${domain.name}`
-        sourceAccountId = null
-      } else {
-        if (!source.includes("@")) {
-          source = `${source}@${domain.name}`
-        }
-        const account =
-          store.accounts.find((a) => a.id === sourceAccountId) ??
-          store.accounts.find((a) => a.email.toLowerCase() === source)
-        if (account) {
-          source = account.email.toLowerCase()
-          sourceAccountId = account.id
-        }
-      }
-
-      const now = new Date().toISOString()
-      if (input.id) {
-        const existing = store.forwards.find((f) => f.id === input.id)
-        if (!existing) {
-          return fail(
-            new StalwartError("Forwarding rule not found.", "not_found"),
-            src
-          )
-        }
-        const updated: ForwardingRule = {
-          ...existing,
-          scope: input.scope,
-          domainId: domain.id,
-          domainName: domain.name,
-          source,
-          sourceAccountId,
-          targets,
-          keepLocalCopy,
-          enabled,
-          updatedAt: now,
-        }
-        store.setForwards(
-          store.forwards.map((f) => (f.id === input.id ? updated : f))
-        )
-        await audit("forwarding.upsert", {
-          target: updated.source,
-          detail: "Updated forwarding rule",
-        })
-        return ok(updated, src)
-      }
-
-      const created: ForwardingRule = {
-        id: `fwd-${crypto.randomUUID().slice(0, 8)}`,
-        scope: input.scope,
-        domainId: domain.id,
-        domainName: domain.name,
-        source,
-        sourceAccountId,
-        targets,
-        keepLocalCopy,
-        enabled,
-        backend: "mock",
-        updatedAt: now,
-      }
-      store.setForwards([...store.forwards, created])
-      await audit("forwarding.upsert", {
-        target: created.source,
-        detail: "Created forwarding rule",
-      })
-      return ok(created, src)
-    }
-
-    // Live: domain forward with single internal target → catch-all.
-    // User forward to a mailbox via alias local-part → EmailAlias on target.
-    // External redirects need Sieve (Phase 4 filters).
-    const domains = await queryDomains()
-    const domain = domains.find((d) => d.id === input.domainId)
+    const domains = src === "mock" ? getMockStore().domains : await queryDomains()
+    const domain = domains.find((d) => d.id === validated.data.domainId)
     if (!domain) {
       return fail(new StalwartError("Domain not found.", "not_found"), src)
     }
-    const accounts = await queryAccounts(domains)
+
+    const accounts = src === "mock" ? getMockStore().accounts : await queryAccounts(domains)
     const knownEmails = new Set(accounts.map((a) => a.email.toLowerCase()))
     const knownDomains = new Set(domains.map((d) => d.name.toLowerCase()))
+
     const valid = validateForwardTargets(targets, knownEmails, knownDomains)
     if (!valid.ok) {
       return fail(new StalwartError(valid.error, "validation"), src)
     }
 
+    // Determine and normalize sourceType
+    const rawSource = validated.data.source.trim()
+    let sourceType: ForwardSourceType = validated.data.sourceType || "exact"
+
+    if (validated.data.scope === "domain" || rawSource.startsWith("*@")) {
+      sourceType = "domain"
+    } else if (validated.data.scope === "wildcard" || rawSource.includes("*") || rawSource.includes("?")) {
+      sourceType = "wildcard"
+    } else if (validated.data.scope === "regex" || rawSource.startsWith("^") || rawSource.includes("[")) {
+      sourceType = "regex"
+    }
+
+    let normalizedSource = rawSource
+    if (sourceType === "domain") {
+      normalizedSource = `*@${domain.name}`
+    } else if (sourceType === "wildcard") {
+      normalizedSource = rawSource.includes("@") ? rawSource : `${rawSource}@${domain.name}`
+    } else if (sourceType === "regex") {
+      normalizedSource = rawSource
+    } else {
+      normalizedSource = rawSource.includes("@") ? rawSource : `${rawSource}@${domain.name}`
+    }
+
+    const matchedAccount = accounts.find((a) => a.email.toLowerCase() === normalizedSource.toLowerCase())
+    const sourceAccountId = validated.data.sourceAccountId ?? (matchedAccount ? matchedAccount.id : null)
+
     const now = new Date().toISOString()
+    const ruleId = validated.data.id || `fwd-${crypto.randomUUID().slice(0, 8)}`
 
-    if (input.scope === "domain") {
-      if (targets.length !== 1 || isExternalEmail(targets[0], knownDomains)) {
-        return fail(
-          new StalwartError(
-            "Live domain forwards map to catch-all: use one internal mailbox target, or configure Sieve in Filters.",
-            "validation"
-          ),
-          src
-        )
-      }
-      await updateDomain(domain.id, { catchAllAddress: targets[0] })
-      const rule: ForwardingRule = {
-        id: `catchall-${domain.id}`,
-        scope: "domain",
-        domainId: domain.id,
-        domainName: domain.name,
-        source: `*@${domain.name}`,
-        sourceAccountId: null,
-        targets,
-        keepLocalCopy: false,
-        enabled: true,
-        backend: "catchall",
-        updatedAt: now,
+    const rule: ForwardingRule = {
+      id: ruleId,
+      scope: sourceType === "exact" ? "user" : (sourceType as ForwardingRule["scope"]),
+      sourceType,
+      domainId: domain.id,
+      domainName: domain.name,
+      source: normalizedSource,
+      sourceAccountId,
+      targets,
+      keepLocalCopy,
+      enabled,
+      backend: src === "mock" ? "mock" : "sieve",
+      description: validated.data.description,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    // 1. Persist to PostgreSQL database
+    await saveForwardingRule(rule).catch((err) => {
+      console.warn("[forwarding] DB save warning:", err)
+    })
+
+    // 2. Handle mock store
+    if (src === "mock") {
+      const store = getMockStore()
+      if (validated.data.id && store.forwards.some((f) => f.id === validated.data.id)) {
+        store.setForwards(store.forwards.map((f) => (f.id === validated.data.id ? rule : f)))
+      } else {
+        store.setForwards([...store.forwards.filter((f) => f.id !== rule.id), rule])
       }
       await audit("forwarding.upsert", {
         target: rule.source,
-        detail: "Set domain catch-all forward",
+        detail: `Saved mock forwarding rule (${rule.sourceType}) -> ${targets.join(", ")}`,
       })
       return ok(rule, src)
     }
 
-    // User scope: if source is a new local-part and single internal target → alias on target.
-    let source = input.source.trim().toLowerCase()
-    if (!source.includes("@")) source = `${source}@${domain.name}`
-    const parsed = parseEmailAddress(source)
-    if (!parsed || parsed.domain !== domain.name) {
-      return fail(
-        new StalwartError(
-          "Source must be a local address on the selected domain.",
-          "validation"
-        ),
-        src
-      )
+    // 3. Live mode: Synchronize Sieve scripts on Stalwart Mail Server
+    const syncRes = await syncDomainSieveRules(domain.id, domains, accounts)
+    if (!syncRes.ok && syncRes.errors.length > 0) {
+      rule.backend = "sieve-pending"
+      await saveForwardingRule(rule).catch(() => {})
     }
 
-    const sourceAccount = accounts.find(
-      (a) => a.email.toLowerCase() === source
-    )
-    const allExternal = targets.every((t) => isExternalEmail(t, knownDomains))
+    await audit("forwarding.upsert", {
+      target: rule.source,
+      detail: `Saved forwarding rule (${rule.sourceType}) -> ${targets.join(", ")} via Sieve`,
+    })
 
-    if (sourceAccount && allExternal) {
-      return fail(
-        new StalwartError(
-          "External mailbox redirects need Sieve (Filters / ManageSieve). Aliases only accept alternate local-parts into a mailbox.",
-          "validation"
-        ),
-        src
-      )
-    }
-
-    if (targets.length === 1 && !isExternalEmail(targets[0], knownDomains)) {
-      const targetAccount = accounts.find(
-        (a) => a.email.toLowerCase() === targets[0]
-      )
-      if (!targetAccount) {
-        return fail(
-          new StalwartError("Target mailbox not found.", "not_found"),
-          src
-        )
-      }
-      if (sourceAccount && sourceAccount.id === targetAccount.id) {
-        return fail(
-          new StalwartError(
-            "Source and target are the same mailbox — nothing to forward.",
-            "validation"
-          ),
-          src
-        )
-      }
-      // Alias: deliver source local-part into target mailbox.
-      if (sourceAccount) {
-        return fail(
-          new StalwartError(
-            "Cannot alias an existing mailbox onto another. Create a free local-part as the source, or use Sieve for redirects.",
-            "validation"
-          ),
-          src
-        )
-      }
-      const domainsById = new Map(domains.map((d) => [d.id, d]))
-      const existing = parseEmailAliases(targetAccount.aliases, domainsById)
-      if (
-        existing.some(
-          (a) =>
-            a.name.toLowerCase() === parsed.local && a.domainId === domain.id
-        )
-      ) {
-        return fail(
-          new StalwartError(
-            `${source} is already an alias on ${targetAccount.email}.`,
-            "validation"
-          ),
-          src
-        )
-      }
-      const next = [
-        ...existing,
-        {
-          key: String(existing.length),
-          name: parsed.local,
-          domainId: domain.id,
-          enabled,
-          description: `Forward via alias → ${targetAccount.email}`,
-          email: source,
-        },
-      ]
-      await updateAccountAliases(targetAccount.id, serializeEmailAliases(next))
-      const rule: ForwardingRule = {
-        id: `alias-${targetAccount.id}-${parsed.local}`,
-        scope: "user",
-        domainId: domain.id,
-        domainName: domain.name,
-        source,
-        sourceAccountId: targetAccount.id,
-        targets: [targetAccount.email],
-        keepLocalCopy: true,
-        enabled,
-        backend: "alias",
-        updatedAt: now,
-      }
-      await audit("forwarding.upsert", {
-        target: rule.source,
-        detail: `Alias → ${targetAccount.email}`,
-      })
-      return ok(rule, src)
-    }
-
-    return fail(
-      new StalwartError(
-        "This forward shape is not representable on Stalwart Account/Domain fields. Use Filters (Sieve) or Stalwart Admin.",
-        "validation"
-      ),
-      src
-    )
+    return ok(rule, src)
   } catch (err) {
     return fail(err, src)
   }
@@ -2594,38 +2544,28 @@ export async function destroyForwardingRuleAction(
   try {
     const session = await getSession().catch(() => null)
     const isAdmin = session?.role === "admin"
-    if (session && !isAdmin) {
-      if (id.startsWith("catchall-")) {
-        const domainId = id.slice("catchall-".length)
-        if (!(await isDomainOwnedByUser(domainId, session.userId || ""))) {
-          return fail(new StalwartError("Unauthorized to delete this forwarding rule.", "auth"), src)
-        }
-      } else if (id.startsWith("alias-")) {
-        const rest = id.slice("alias-".length)
-        const dash = rest.indexOf("-")
-        const accountId = dash > 0 ? rest.slice(0, dash) : ""
-        const targetAcc =
-          src === "mock"
-            ? getMockStore().accounts.find((a) => a.id === accountId)
-            : await getAccount(accountId)
-        if (
-          !targetAcc ||
-          !targetAcc.domainId ||
-          !(await isDomainOwnedByUser(targetAcc.domainId, session.userId || ""))
-        ) {
-          return fail(new StalwartError("Unauthorized to delete this forwarding rule.", "auth"), src)
-        }
+
+    // 1. Fetch existing rule to check permissions and get domainId
+    let domainId: string | null = null
+    const existingRule = await getForwardingRule(id).catch(() => null)
+    if (existingRule) {
+      domainId = existingRule.domainId
+    }
+
+    if (session && !isAdmin && domainId) {
+      if (!(await isDomainOwnedByUser(domainId, session.userId || ""))) {
+        return fail(new StalwartError("Unauthorized to delete this forwarding rule.", "auth"), src)
       }
     }
 
+    // 2. Delete from database
+    await deleteForwardingRule(id).catch((err) => {
+      console.warn("[forwarding] DB delete warning:", err)
+    })
+
+    // 3. Delete from mock store if mock
     if (src === "mock") {
       const store = getMockStore()
-      if (!store.forwards.some((f) => f.id === id)) {
-        return fail(
-          new StalwartError("Forwarding rule not found.", "not_found"),
-          src
-        )
-      }
       store.setForwards(store.forwards.filter((f) => f.id !== id))
       await audit("forwarding.destroy", {
         target: id,
@@ -2634,53 +2574,125 @@ export async function destroyForwardingRuleAction(
       return ok(undefined, src)
     }
 
+    // 4. Handle legacy alias or catch-all IDs if applicable
     if (id.startsWith("catchall-")) {
-      const domainId = id.slice("catchall-".length)
-      await updateDomain(domainId, { catchAllAddress: null })
-      await audit("forwarding.destroy", {
-        target: id,
-        detail: "Cleared catch-all forward",
-      })
-      return ok(undefined, src)
-    }
-
-    if (id.startsWith("alias-")) {
-      // alias-{accountId}-{keyOrLocal}
+      const dId = id.slice("catchall-".length)
+      domainId = domainId || dId
+      await updateDomain(dId, { catchAllAddress: null }).catch(() => {})
+    } else if (id.startsWith("alias-")) {
       const rest = id.slice("alias-".length)
       const dash = rest.indexOf("-")
-      if (dash <= 0) {
-        return fail(
-          new StalwartError("Malformed alias rule id.", "validation"),
-          src
-        )
+      if (dash > 0) {
+        const accountId = rest.slice(0, dash)
+        const aliasKey = rest.slice(dash + 1)
+        const domains = await queryDomains()
+        const account = await getAccount(accountId, domains)
+        if (account) {
+          domainId = domainId || account.domainId || null
+          const domainsById = new Map(domains.map((d) => [d.id, d]))
+          const existingAliases = parseEmailAliases(account.aliases, domainsById)
+          const next = existingAliases.filter((a) => a.key !== aliasKey && a.name !== aliasKey)
+          await updateAccountAliases(accountId, serializeEmailAliases(next)).catch(() => {})
+        }
       }
-      const accountId = rest.slice(0, dash)
-      const aliasKey = rest.slice(dash + 1)
-      const domains = await queryDomains()
-      const account = await getAccount(accountId, domains)
-      if (!account) {
-        return fail(new StalwartError("Mailbox not found.", "not_found"), src)
-      }
-      const domainsById = new Map(domains.map((d) => [d.id, d]))
-      const existing = parseEmailAliases(account.aliases, domainsById)
-      const next = existing.filter(
-        (a) => a.key !== aliasKey && a.name !== aliasKey
-      )
-      await updateAccountAliases(accountId, serializeEmailAliases(next))
-      await audit("forwarding.destroy", {
-        target: account.email,
-        detail: `Removed alias ${aliasKey}`,
-      })
-      return ok(undefined, src)
     }
 
-    return fail(
-      new StalwartError(
-        "This forward cannot be deleted via JMAP — manage it in Filters or Stalwart Admin.",
-        "validation"
-      ),
-      src
-    )
+    // 5. Re-synchronize Sieve scripts for domain
+    if (domainId) {
+      await syncDomainSieveRules(domainId)
+    }
+
+    await audit("forwarding.destroy", {
+      target: id,
+      detail: "Destroyed forwarding rule",
+    })
+
+    return ok(undefined, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function toggleForwardingRuleAction(
+  id: string,
+  enabled?: boolean
+): Promise<ActionResult<ForwardingRule>> {
+  const denied = await denyUnlessAuthed<ForwardingRule>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+
+    const existing = await getForwardingRule(id).catch(() => null)
+    if (!existing) {
+      if (src === "mock") {
+        const store = getMockStore()
+        const found = store.forwards.find((f) => f.id === id)
+        if (found) {
+          found.enabled = enabled !== undefined ? enabled : !found.enabled
+          found.updatedAt = new Date().toISOString()
+          return ok(found, src)
+        }
+      }
+      return fail(new StalwartError("Forwarding rule not found.", "not_found"), src)
+    }
+
+    if (session && !isAdmin && !(await isDomainOwnedByUser(existing.domainId, session.userId || ""))) {
+      return fail(new StalwartError("Unauthorized to modify this forwarding rule.", "auth"), src)
+    }
+
+    const updated = await toggleForwardingRule(id, enabled)
+    if (!updated) {
+      return fail(new StalwartError("Failed to toggle forwarding rule.", "transport"), src)
+    }
+
+    if (src === "mock") {
+      const store = getMockStore()
+      store.setForwards(store.forwards.map((f) => (f.id === id ? updated : f)))
+    } else {
+      await syncDomainSieveRules(updated.domainId)
+    }
+
+    await audit("forwarding.upsert", {
+      target: updated.source,
+      detail: `Forwarding rule ${updated.enabled ? "enabled" : "paused"}`,
+    })
+
+    return ok(updated, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function syncCatchAllArchivalAction(
+  domainId: string,
+  archival: boolean
+): Promise<ActionResult<{ archival: boolean }>> {
+  const denied = await denyUnlessAuthed<{ archival: boolean }>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin && !(await isDomainOwnedByUser(domainId, session.userId || ""))) {
+      return fail(new StalwartError("Unauthorized to configure archival for this domain.", "auth"), src)
+    }
+
+    await setDomainCatchAllArchival(domainId, archival)
+
+    if (src !== "mock") {
+      await syncDomainSieveRules(domainId)
+    }
+
+    await audit("catchall.update", {
+      target: domainId,
+      detail: `Catch-all archival copy ${archival ? "enabled" : "disabled"}`,
+    })
+
+    return ok({ archival }, src)
   } catch (err) {
     return fail(err, src)
   }
@@ -2917,9 +2929,15 @@ export async function updateCatchAllAction(
   })
   if (!result.ok) return result
 
+  if (src !== "mock") {
+    await syncDomainSieveRules(domainId).catch((err) => {
+      console.warn("[catchall] Sieve archival sync notice:", err)
+    })
+  }
+
   await audit("catchall.update", {
     target: domainId,
-    detail: `Catch-all → ${validated.data.mode}`,
+    detail: `Catch-all → ${validated.data.mode}${validated.data.address ? ` (${validated.data.address}) with archival Sieve copy` : ""}`,
   })
 
   const note =
@@ -2929,7 +2947,9 @@ export async function updateCatchAllAction(
         ? "Unknown recipients are rejected at SMTP."
         : validated.data.mode === "blackhole"
           ? "Unknown recipients are discarded (mock)."
-          : undefined
+          : validated.data.address
+            ? `Catch-all active at ${validated.data.address}. All incoming domain deliveries duplicate an archival copy here via Sieve.`
+            : undefined
 
   return ok(
     {

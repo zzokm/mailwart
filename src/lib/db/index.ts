@@ -34,6 +34,8 @@ export function getPool(): Pool | null {
   if (poolInstance) return poolInstance
 
   const connectionString = resolveDatabaseUrl()
+  if (process.env.NODE_ENV !== "test" && !connectionString) return null
+
   try {
     const pool = new Pool({
       connectionString,
@@ -230,6 +232,32 @@ export async function initDatabase(): Promise<void> {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_user_webmail_user_id ON user_webmail_settings(user_id);
+
+        CREATE TABLE IF NOT EXISTS forwarding_rules (
+          id VARCHAR(64) PRIMARY KEY,
+          domain_id VARCHAR(128) NOT NULL,
+          domain_name VARCHAR(255) NOT NULL,
+          scope VARCHAR(32) NOT NULL DEFAULT 'user',
+          source_type VARCHAR(32) NOT NULL DEFAULT 'exact',
+          source VARCHAR(255) NOT NULL,
+          source_account_id VARCHAR(128),
+          targets JSONB NOT NULL DEFAULT '[]',
+          keep_local_copy BOOLEAN NOT NULL DEFAULT true,
+          enabled BOOLEAN NOT NULL DEFAULT true,
+          backend VARCHAR(32) NOT NULL DEFAULT 'sieve',
+          description TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_fwd_domain_id ON forwarding_rules(domain_id);
+        CREATE INDEX IF NOT EXISTS idx_fwd_source ON forwarding_rules(LOWER(source));
+
+        ALTER TABLE forwarding_rules ADD COLUMN IF NOT EXISTS source_type VARCHAR(32) DEFAULT 'exact';
+        ALTER TABLE forwarding_rules ADD COLUMN IF NOT EXISTS backend VARCHAR(32) DEFAULT 'sieve';
+        ALTER TABLE forwarding_rules ADD COLUMN IF NOT EXISTS keep_local_copy BOOLEAN DEFAULT true;
+        ALTER TABLE forwarding_rules ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT true;
+        ALTER TABLE forwarding_rules ADD COLUMN IF NOT EXISTS description TEXT;
+        ALTER TABLE domains ADD COLUMN IF NOT EXISTS catch_all_archival BOOLEAN DEFAULT true;
       `)
 
       // 2. Seed primary admin account yehia
@@ -1460,3 +1488,14 @@ export async function saveDbDeliverabilityReport(
     console.error("[postgres] saveDbDeliverabilityReport error:", err)
   }
 }
+
+export {
+  getForwardingRules,
+  getForwardingRule,
+  saveForwardingRule,
+  deleteForwardingRule,
+  toggleForwardingRule,
+  setDomainCatchAllArchival,
+  getDomainCatchAllArchival,
+} from "./forwarding"
+

@@ -43,6 +43,8 @@ export type StalwartDomain = {
   allowRelaying?: boolean
   /** Operator-facing MX posture; mock-tracked, derived from allowRelaying on live. */
   mailExchanger?: MailExchangerMode
+  /** When true, all delivered domain emails (to any mailbox or catch-all) are duplicated to the catch-all address */
+  catchAllArchival?: boolean
   /** Domain name aliases (other names treated as this domain). */
   domainAliases?: string[]
   subAddressing?: string | { "@type"?: string } | null
@@ -63,17 +65,20 @@ export type EmailAliasEntry = {
   email?: string
 }
 
+export type ForwardSourceType = "exact" | "wildcard" | "regex" | "domain"
+
 /**
  * Full forwarder: mail for source is redirected to targets.
  * Distinct from aliases (which expand acceptance into a mailbox).
  */
 export type ForwardingRule = {
   id: string
-  scope: "user" | "domain"
+  scope: "user" | "domain" | "wildcard" | "regex"
+  sourceType?: ForwardSourceType
   /** Domain that owns the source address. */
   domainId: string
   domainName: string
-  /** Full source address (user) or `*@domain` (domain). */
+  /** Full source address (user), wildcard pattern, regex pattern, or `*@domain` (domain). */
   source: string
   /** Existing mailbox id when user-scope and source is a real account. */
   sourceAccountId?: string | null
@@ -82,8 +87,10 @@ export type ForwardingRule = {
   keepLocalCopy: boolean
   enabled: boolean
   /** How this rule is backed when live. */
-  backend: "mock" | "alias" | "catchall" | "sieve-pending"
+  backend: "mock" | "alias" | "catchall" | "sieve" | "sieve-pending"
+  description?: string
   updatedAt: string
+  createdAt?: string
 }
 
 /** Per-mailbox vacation / out-of-office autoresponder. */

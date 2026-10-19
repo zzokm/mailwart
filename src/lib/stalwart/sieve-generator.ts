@@ -1,0 +1,154 @@
+import type { ForwardingRule } from "./types"
+
+/** Escape a string for use inside a Sieve quoted string. */
+export function sieveQuote(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
+}
+
+export interface SieveGeneratorOptions {
+  mailboxEmail: string
+  domainName: string
+  catchAllEmail?: string | null
+  isCatchAllMailbox?: boolean
+  archivalCopyEnabled?: boolean
+  rules: ForwardingRule[]
+}
+
+/**
+ * Normalizes a source pattern according to its type and domain.
+ * e.g., "support-*" on "example.com" -> "support-*@example.com"
+ */
+export function normalizeSourcePattern(
+  source: string,
+  sourceType: string,
+  domainName: string
+): string {
+  const trimmed = source.trim().toLowerCase()
+  if (sourceType === "domain") {
+    return `*@${domainName.toLowerCase()}`
+  }
+
+  if (sourceType === "wildcard") {
+    if (!trimmed.includes("@")) {
+      return `${trimmed}@${domainName.toLowerCase()}`
+    }
+    return trimmed
+  }
+
+  if (sourceType === "regex") {
+    return source.trim()
+  }
+
+  // exact
+  if (!trimmed.includes("@")) {
+    return `${trimmed}@${domainName.toLowerCase()}`
+  }
+  return trimmed
+}
+
+/**
+ * Generates an RFC-compliant Sieve script for a specific mailbox in Stalwart.
+ * Encapsulates:
+ * 1. Archival Copy (Requirement 3): All delivered emails duplicate a copy to domain catch-all.
+ * 2. Forwarding (Requirement 2 & 4): Redirect to external targets (e.g. Gmail) via Sieve,
+ *    handling exact addresses, wildcards (:matches), and regular expressions (:regex).
+ */
+export function generateMailboxSieve(options: SieveGeneratorOptions): string {
+  const {
+    mailboxEmail,
+    domainName,
+    catchAllEmail,
+    isCatchAllMailbox = false,
+    archivalCopyEnabled = true,
+    rules,
+  } = options
+
+  const lines: string[] = [
+    'require ["copy", "fileinto", "regex", "variables", "envelope", "subaddress"];',
+    "",
+    "# ==============================================================================",
+    `# mailwart Managed Sieve Script for: ${mailboxEmail}`,
+    `# Generated at: ${new Date().toISOString()}`,
+    "# ==============================================================================",
+    "",
+  ]
+
+  const cleanMailbox = mailboxEmail.trim().toLowerCase()
+  const cleanCatchAll = catchAllEmail ? catchAllEmail.trim().toLowerCase() : null
+
+  // 1. Archival journaling to catch-all mailbox (Requirement 3)
+  // If archival is enabled, catch-all exists, and this is NOT the catch-all mailbox itself
+  if (
+    archivalCopyEnabled &&
+    cleanCatchAll &&
+    cleanMailbox !== cleanCatchAll
+  ) {
+    lines.push("# --- 1. Archival Journaling Copy (Catch-All) ---")
+    lines.push("# Delivers a duplicate copy of every received email to the domain catch-all archive")
+    lines.push(`redirect :copy ${sieveQuote(cleanCatchAll)};`)
+    lines.push("")
+  }
+
+  // 2. Active Forwarding Rules (Requirement 2 & 4)
+  const activeRules = rules.filter((r) => r.enabled && r.targets.length > 0)
+  const matchedRules: ForwardingRule[] = []
+
+  for (const rule of activeRules) {
+    const sType = rule.sourceType || (rule.scope === "domain" ? "domain" : "exact")
+    const normSource = normalizeSourcePattern(rule.source, sType, domainName)
+
+    if (sType === "exact") {
+      // Only applies to this mailbox if the source matches this mailbox
+      if (normSource === cleanMailbox) {
+        matchedRules.push(rule)
+      }
+    } else if (isCatchAllMailbox || sType === "wildcard" || sType === "regex" || sType === "domain") {
+      // Wildcards, regex, domain rules, and catch-all fallthroughs are evaluated on catch-all
+      // or mailbox
+      matchedRules.push(rule)
+    }
+  }
+
+  if (matchedRules.length > 0) {
+    lines.push("# --- 2. Inbound Forwarding Rules ---")
+
+    for (const rule of matchedRules) {
+      const sType = rule.sourceType || (rule.scope === "domain" ? "domain" : "exact")
+      const normSource = normalizeSourcePattern(rule.source, sType, domainName)
+      const targets = rule.targets.map((t) => t.trim().toLowerCase()).filter(Boolean)
+
+      if (targets.length === 0) continue
+
+      lines.push(`# Forward Rule ID: ${rule.id} [${sType}] ${normSource} -> ${targets.join(", ")}`)
+
+      let testClause = ""
+      if (sType === "exact") {
+        testClause = `address :is ["to", "cc", "envelope-to", "x-original-to"] ${sieveQuote(normSource)}`
+      } else if (sType === "wildcard" || sType === "domain") {
+        testClause = `address :matches ["to", "cc", "envelope-to", "x-original-to"] ${sieveQuote(normSource)}`
+      } else if (sType === "regex") {
+        testClause = `address :regex ["to", "cc", "envelope-to", "x-original-to"] ${sieveQuote(normSource)}`
+      }
+
+      lines.push(`if ${testClause} {`)
+
+      if (rule.keepLocalCopy) {
+        for (const target of targets) {
+          lines.push(`    redirect :copy ${sieveQuote(target)};`)
+        }
+      } else {
+        // Do not keep local copy: redirect :copy to all but the last, then redirect and stop
+        for (let i = 0; i < targets.length - 1; i++) {
+          lines.push(`    redirect :copy ${sieveQuote(targets[i])};`)
+        }
+        lines.push(`    redirect ${sieveQuote(targets[targets.length - 1])};`)
+        lines.push("    stop;")
+      }
+
+      lines.push("}")
+      lines.push("")
+    }
+  }
+
+  return lines.join("\n")
+}
