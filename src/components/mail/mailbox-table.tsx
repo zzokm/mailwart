@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition } from "react"
-import { Ban, Plus, Search, Trash2, KeyRound, Info, Pencil, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react"
+import { Ban, Bell, Plus, Search, Trash2, KeyRound, Info, Pencil, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react"
 
 import {
   bulkDestroyMailboxesAction,
@@ -52,12 +52,14 @@ import type { StalwartAccount, StalwartDomain } from "@/lib/stalwart/types"
 type EmailSortMode = "alpha-asc" | "alpha-desc" | "domain-asc" | "domain-desc"
 type StatusSortMode = "active-first" | "suspended-first"
 type SpaceSortMode = "used-desc" | "used-asc"
+type NotificationSortMode = "new-first" | "unread-first"
 
 type SortState =
   | { field: null }
   | { field: "email"; mode: EmailSortMode }
   | { field: "status"; mode: StatusSortMode }
   | { field: "space"; mode: SpaceSortMode }
+  | { field: "notifications"; mode: NotificationSortMode }
 
 export function MailboxTable({
   accounts,
@@ -136,6 +138,18 @@ export function MailboxTable({
     })
   }
 
+  function toggleNotificationSort() {
+    setSortState((prev) => {
+      if (prev.field !== "notifications") {
+        return { field: "notifications", mode: "new-first" }
+      }
+      if (prev.mode === "new-first") {
+        return { field: "notifications", mode: "unread-first" }
+      }
+      return { field: null }
+    })
+  }
+
   const filtered = useMemo(() => {
     return accounts.filter((a) => {
       if (domainId !== "all" && a.domainId !== domainId) return false
@@ -195,6 +209,25 @@ export function MailboxTable({
         const uB = quotaSummary(b.quotas).used
         if (uA !== uB) {
           return mode === "used-desc" ? uB - uA : uA - uB
+        }
+        return a.email.toLowerCase().localeCompare(b.email.toLowerCase())
+      })
+    }
+
+    if (sortState.field === "notifications") {
+      const mode = sortState.mode
+      return list.sort((a, b) => {
+        const aNew = a.newCount ?? 0
+        const bNew = b.newCount ?? 0
+        const aUnread = a.unreadCount ?? 0
+        const bUnread = b.unreadCount ?? 0
+
+        if (mode === "new-first") {
+          if (bNew !== aNew) return bNew - aNew
+          if (bUnread !== aUnread) return bUnread - aUnread
+        } else {
+          if (bUnread !== aUnread) return bUnread - aUnread
+          if (bNew !== aNew) return bNew - aNew
         }
         return a.email.toLowerCase().localeCompare(b.email.toLowerCase())
       })
@@ -427,7 +460,7 @@ export function MailboxTable({
                     </button>
                   </div>
                 </TableHead>
-                <TableHead className="hidden text-center lg:table-cell">
+                <TableHead className="w-40 hidden text-center lg:table-cell">
                   <div className="flex justify-center">
                     <button
                       type="button"
@@ -449,6 +482,38 @@ export function MailboxTable({
                             <ArrowUp className="size-3 text-foreground" />
                             <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
                               low
+                            </span>
+                          </>
+                        )
+                      ) : (
+                        <ArrowUpDown className="size-3 opacity-40 group-hover:opacity-80 transition-opacity" />
+                      )}
+                    </button>
+                  </div>
+                </TableHead>
+                <TableHead className="w-48 text-center sm:table-cell">
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={toggleNotificationSort}
+                      className="group inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground transition-colors select-none cursor-pointer"
+                      title="Sort by notifications: New first, Unread first, or clear"
+                    >
+                      <Bell className="size-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+                      <span>Notifications</span>
+                      {sortState.field === "notifications" ? (
+                        sortState.mode === "new-first" ? (
+                          <>
+                            <ArrowDown className="size-3 text-foreground" />
+                            <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
+                              new
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <ArrowDown className="size-3 text-foreground" />
+                            <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
+                              unread
                             </span>
                           </>
                         )
@@ -504,9 +569,42 @@ export function MailboxTable({
                       </Badge>
                     </div>
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell">
+                  <TableCell className="w-40 hidden text-center lg:table-cell">
                     <div className="flex justify-center">
                       <QuotaBar quotas={a.quotas} />
+                    </div>
+                  </TableCell>
+                  <TableCell className="w-48 text-center sm:table-cell">
+                    <div className="flex items-center justify-center gap-1.5 font-mono text-[12px]">
+                      {a.newCount && a.newCount > 0 ? (
+                        <div
+                          className="inline-flex items-center gap-1.5 text-foreground font-medium select-none"
+                          title={`${a.newCount} new notification${a.newCount > 1 ? "s" : ""}${a.unreadCount ? ` (${a.unreadCount} unread)` : ""}`}
+                        >
+                          <div className="relative inline-flex items-center">
+                            <Bell className="size-3.5 text-muted-foreground" />
+                            <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-rose-500" />
+                          </div>
+                          <span>+{a.newCount} new</span>
+                          {a.unreadCount && a.unreadCount > a.newCount ? (
+                            <span className="text-[11px] font-normal text-muted-foreground">
+                              ({a.unreadCount} unread)
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : a.unreadCount && a.unreadCount > 0 ? (
+                        <div
+                          className="inline-flex items-center gap-1.5 text-muted-foreground select-none"
+                          title={`${a.unreadCount} unread email${a.unreadCount > 1 ? "s" : ""} (older/ignored, no new)`}
+                        >
+                          <Bell className="size-3.5 text-muted-foreground/60" />
+                          <span>{a.unreadCount} unread</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground/40 font-mono text-[11px] select-none" title="All caught up">
+                          —
+                        </span>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="w-[340px]">

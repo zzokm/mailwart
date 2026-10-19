@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { ExternalLink, Globe, Inbox, Import } from "lucide-react"
+import { Bell, ExternalLink, Globe, Inbox, Import } from "lucide-react"
 
 import { DataSourceBanner } from "@/components/layout/data-source-banner"
 import { PageHeader } from "@/components/layout/page-header"
@@ -41,6 +41,9 @@ export default async function OverviewPage() {
 
   const { stats, health, domains, adminUiUrl, roundcubeUrl } = result.data
 
+  const totalNewCount = stats.totalNewCount ?? 0
+  const totalUnreadCount = stats.totalUnreadCount ?? 0
+
   const metrics = [
     {
       key: "domains",
@@ -60,6 +63,20 @@ export default async function OverviewPage() {
         stats.mailboxesWithQuota > 0
           ? `${stats.mailboxesWithQuota} with quota`
           : undefined,
+      href: "/dashboard/mailboxes",
+    },
+    {
+      key: "notifications",
+      label: "Notifications",
+      isNotification: true,
+      newCount: totalNewCount,
+      value: totalNewCount > 0 ? `+${totalNewCount}` : String(totalUnreadCount),
+      hint:
+        totalNewCount > 0
+          ? `${totalUnreadCount} total unread`
+          : totalUnreadCount > 0
+            ? "Total unread"
+            : "All caught up",
       href: "/dashboard/mailboxes",
     },
     {
@@ -85,7 +102,7 @@ export default async function OverviewPage() {
           : "Server defaults",
       href: "/dashboard/mailboxes",
     },
-  ] as const
+  ]
 
   return (
     <div>
@@ -132,15 +149,33 @@ export default async function OverviewPage() {
       ) : null}
 
       <section className="overflow-hidden rounded-xl border border-border/80 bg-surface">
-        <div className="grid grid-cols-2 gap-px bg-border/50 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px bg-border/50 sm:grid-cols-3 lg:grid-cols-5">
           {metrics.map((m) => {
+            const isNotification = "isNotification" in m && m.isNotification
             const inner = (
               <div className="h-full bg-surface px-4 py-4 sm:px-5">
-                <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                  {m.label}
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                    {m.label}
+                  </span>
+                  {isNotification ? (
+                    <div className="relative inline-flex items-center">
+                      <Bell className="size-4 text-muted-foreground" />
+                      {m.newCount > 0 ? (
+                        <span className="absolute -top-1 -right-1 size-2 rounded-full bg-rose-500 animate-pulse" />
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
-                <div className="mt-2 font-mono text-2xl tracking-tight text-foreground">
-                  {m.value}
+                <div className="mt-2 flex items-baseline gap-1.5">
+                  <span className="font-mono text-2xl tracking-tight text-foreground">
+                    {m.value}
+                  </span>
+                  {isNotification && m.newCount > 0 ? (
+                    <span className="font-mono text-[11px] font-medium text-rose-500">
+                      new
+                    </span>
+                  ) : null}
                 </div>
                 {"hint" in m && m.hint ? (
                   <div className="mt-1 text-[11px] text-muted-foreground">
@@ -173,7 +208,7 @@ export default async function OverviewPage() {
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <section className="overflow-hidden rounded-xl border border-border/80">
+        <section className="overflow-hidden rounded-xl border border-border/80 flex flex-col">
           <div className="flex items-center justify-between border-b border-border/60 px-4 py-2.5">
             <h2 className="font-mono text-[11px] tracking-wide text-muted-foreground">
               domains
@@ -188,40 +223,42 @@ export default async function OverviewPage() {
             </Button>
           </div>
           {domains.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-muted-foreground sm:px-5">
+            <div className="flex h-[164px] items-center justify-center p-4 text-sm text-muted-foreground sm:px-5">
               No domains yet. Create one to start provisioning mailboxes.
-            </p>
+            </div>
           ) : (
-            <ul className="divide-y divide-border/40">
-              {domains.map((d) => (
-                <li key={d.id}>
-                  <Link
-                    href={`/dashboard/domains/${d.id}`}
-                    className="grid grid-cols-[minmax(0,1.4fr)_auto_auto_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/25 sm:px-5"
-                  >
-                    <span className="truncate font-mono text-[13px] text-foreground">
-                      {d.name}
-                    </span>
-                    <span
-                      className={cn(
-                        "font-mono text-[11px]",
-                        d.isEnabled === false
-                          ? "text-destructive"
-                          : "text-brand"
-                      )}
+            <div className="min-h-[164px] max-h-[164px] overflow-y-auto divide-y divide-border/40">
+              <ul className="divide-y divide-border/40">
+                {domains.map((d) => (
+                  <li key={d.id}>
+                    <Link
+                      href={`/dashboard/domains/${d.id}`}
+                      className="grid grid-cols-[minmax(0,1.4fr)_auto_auto_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/25 sm:px-5"
                     >
-                      {d.isEnabled === false ? "off" : "on"}
-                    </span>
-                    <span className="hidden font-mono text-[11px] text-muted-foreground sm:inline">
-                      {d.catchAllAddress ? "catch" : "—"}
-                    </span>
-                    <span className="font-mono text-[11px] text-muted-foreground">
-                      {d.mailboxCount} mbx
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+                      <span className="truncate font-mono text-[13px] text-foreground">
+                        {d.name}
+                      </span>
+                      <span
+                        className={cn(
+                          "font-mono text-[11px]",
+                          d.isEnabled === false
+                            ? "text-destructive"
+                            : "text-brand"
+                        )}
+                      >
+                        {d.isEnabled === false ? "off" : "on"}
+                      </span>
+                      <span className="hidden font-mono text-[11px] text-muted-foreground sm:inline">
+                        {d.catchAllAddress ? "catch" : "—"}
+                      </span>
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        {d.mailboxCount} mbx
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </section>
 

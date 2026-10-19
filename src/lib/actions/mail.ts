@@ -24,8 +24,10 @@ import {
   setDomainCatchAllArchival,
   getDomainCatchAllArchival,
 } from "@/lib/db"
+import { getUserWebmailSettings } from "@/lib/db/webmail-settings"
 import { generateMailboxSieve, normalizeSourcePattern } from "@/lib/stalwart/sieve-generator"
 import { syncMailboxSieveScript, probeManageSieve } from "@/lib/stalwart/managesieve"
+import { getMailboxesActivity } from "@/lib/stalwart/mailbox-status"
 import type { ForwardSourceType } from "@/lib/stalwart/types"
 import {
   dataSource as source,
@@ -218,6 +220,20 @@ async function loadScopedDirectory(): Promise<{
   const { domains: allDomains, accounts: allAccounts } =
     source() === "live" ? await loadLiveDirectory() : loadMockDirectory()
 
+  const webmailSettings = await getUserWebmailSettings(session?.userId).catch(() => null)
+  const activityMap = await getMailboxesActivity(
+    allAccounts.map((a) => a.email),
+    webmailSettings?.client || "rav"
+  ).catch(() => new Map())
+
+  for (const a of allAccounts) {
+    const act = activityMap.get(a.email.toLowerCase())
+    if (act) {
+      a.unreadCount = act.unreadCount
+      a.newCount = act.newCount
+    }
+  }
+
   if (!session || session.role === "admin") {
     return { domains: allDomains, accounts: allAccounts }
   }
@@ -311,7 +327,13 @@ export async function getOverview(): Promise<
     let hasQuota = false
     let hasUsed = false
     let mailboxesWithQuota = 0
+    let totalUnreadCount = 0
+    let totalNewCount = 0
+
     for (const a of accounts) {
+      totalUnreadCount += a.unreadCount ?? 0
+      totalNewCount += a.newCount ?? 0
+
       const q = quotaSummary(a.quotas)
       if (q.bytes != null) {
         hasQuota = true
@@ -338,6 +360,8 @@ export async function getOverview(): Promise<
           storageQuotaBytes,
           storageUsedBytes,
           activeSessions: null,
+          totalUnreadCount,
+          totalNewCount,
         },
         health,
         domains: list,

@@ -216,6 +216,8 @@ export type StalwartAccount = {
   email: string
   domainName?: string
   isAdmin?: boolean
+  unreadCount?: number
+  newCount?: number
 }
 
 export type DomainListItem = StalwartDomain & {
@@ -239,6 +241,8 @@ export type OverviewStats = {
   storageUsedBytes: number | null
   /** Soft session count — app sessions not wired until Phase 4. */
   activeSessions: number | null
+  totalUnreadCount?: number
+  totalNewCount?: number
 }
 
 export type HealthStatus = {

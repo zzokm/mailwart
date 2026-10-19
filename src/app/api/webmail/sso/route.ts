@@ -5,6 +5,7 @@ import { requireSession, sessionActor } from "@/lib/auth/session"
 import { getUserWebmailSettings } from "@/lib/db/webmail-settings"
 import { getRavUrl, getRoundcubeUrl } from "@/lib/env"
 import { createWebmailSsoToken } from "@/lib/webmail-sso"
+import { markMailboxReadInStore } from "@/lib/stalwart/mailbox-status"
 import type { WebmailClientType } from "@/lib/webmail/types"
 
 export const runtime = "nodejs"
@@ -83,6 +84,7 @@ async function handleWebmailSso(request: NextRequest) {
       target: email,
       detail: `Opened ${clientLabel} via SSO`,
     })
+    markMailboxReadInStore(email)
 
     let targetUrl: URL
     if (client === "roundcube") {
