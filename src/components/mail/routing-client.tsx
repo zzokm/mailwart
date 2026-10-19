@@ -8,6 +8,7 @@ import {
   Edit2,
   ExternalLink,
   Plus,
+  RefreshCw,
   Search,
   ShieldCheck,
   Trash2,
@@ -16,6 +17,7 @@ import {
 
 import {
   destroyForwardingRuleAction,
+  syncDomainForwardsAction,
   toggleForwardingRuleAction,
   updateCatchAllAction,
   updateMailExchangerAction,
@@ -546,9 +548,30 @@ function ForwardsSection({
   const [keepLocal, setKeepLocal] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [saving, setSaving] = useState(false)
+  const [syncingDomain, setSyncingDomain] = useState(false)
   const [actionPendingId, setActionPendingId] = useState<string | null>(null)
 
   const domain = domains.find((d) => d.id === domainId)
+
+  async function retrySieveSync(targetDomainId?: string) {
+    const dId = targetDomainId || domainId
+    if (!dId) return
+    setSyncingDomain(true)
+    try {
+      const res = await syncDomainForwardsAction(dId)
+      if (
+        toastActionResult(res, {
+          success: `ManageSieve synchronized (${res.ok ? res.data.syncedCount : 0} mailboxes updated).`,
+        })
+      ) {
+        startTransition(() => {
+          onDone()
+        })
+      }
+    } finally {
+      setSyncingDomain(false)
+    }
+  }
 
   function startEdit(rule: ForwardingRule) {
     setEditingId(rule.id)
@@ -716,13 +739,25 @@ function ForwardsSection({
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-medium">Forwarding Rules</h2>
           <p className="mt-1 text-xs text-muted-foreground">
             Redirect inbound emails to external targets (e.g. Gmail, Outlook) or internal mailboxes using Sieve filters. Supports exact addresses, wildcard patterns, and regex.
           </p>
         </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={syncingDomain}
+          onClick={() => retrySieveSync()}
+          className="h-8 text-xs gap-1.5 self-start sm:self-auto font-mono text-[11px]"
+          title="Force-synchronize ManageSieve filter scripts on port 4190 across all mailboxes for the selected domain"
+        >
+          <RefreshCw className={cn("size-3.5", syncingDomain && "animate-spin")} />
+          {syncingDomain ? "Syncing Sieve…" : "Sync Sieve Rules"}
+        </Button>
       </div>
 
       {/* Form for Creating / Editing Forwards */}
@@ -1090,19 +1125,35 @@ function ForwardsSection({
 
                       {/* Backend */}
                       <TableCell className="align-top py-3">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "font-mono text-[10px]",
-                            f.backend === "sieve"
-                              ? "border-emerald-500/30 text-emerald-500 bg-emerald-500/5"
-                              : f.backend === "sieve-pending"
-                                ? "border-amber-500/30 text-amber-500 bg-amber-500/5"
+                        {f.backend === "sieve-pending" ? (
+                          <button
+                            type="button"
+                            disabled={syncingDomain}
+                            onClick={() => retrySieveSync(f.domainId)}
+                            title="ManageSieve script pending upload to port 4190. Click to retry sync."
+                            className="inline-flex items-center gap-1 cursor-pointer group"
+                          >
+                            <Badge
+                              variant="outline"
+                              className="font-mono text-[10px] border-amber-500/30 text-amber-500 bg-amber-500/5 group-hover:bg-amber-500/15 transition-colors"
+                            >
+                              <RefreshCw className={cn("size-2.5 mr-0.5", syncingDomain && "animate-spin")} />
+                              sieve-pending
+                            </Badge>
+                          </button>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "font-mono text-[10px]",
+                              f.backend === "sieve"
+                                ? "border-emerald-500/30 text-emerald-500 bg-emerald-500/5"
                                 : "text-muted-foreground"
-                          )}
-                        >
-                          {f.backend}
-                        </Badge>
+                            )}
+                          >
+                            {f.backend}
+                          </Badge>
+                        )}
                       </TableCell>
 
                       {/* Status Toggle */}

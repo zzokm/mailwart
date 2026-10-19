@@ -2424,6 +2424,17 @@ export async function syncDomainSieveRules(
       }
     }
 
+    if (errors.length === 0) {
+      // Transition any sieve-pending rules to active sieve now that sync succeeded
+      const domainRules = await getForwardingRules(domain.id).catch(() => [])
+      for (const r of domainRules) {
+        if (r.backend === "sieve-pending") {
+          r.backend = "sieve"
+          await saveForwardingRule(r).catch(() => {})
+        }
+      }
+    }
+
     return { ok: errors.length === 0, syncedCount, errors }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -2683,6 +2694,36 @@ export async function toggleForwardingRuleAction(
     })
 
     return ok(updated, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function syncDomainForwardsAction(
+  domainId: string
+): Promise<ActionResult<{ syncedCount: number; errors: string[] }>> {
+  const denied = await denyUnlessAuthed<{ syncedCount: number; errors: string[] }>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    const session = await getSession().catch(() => null)
+    const isAdmin = session?.role === "admin"
+    if (session && !isAdmin && !(await isDomainOwnedByUser(domainId, session.userId || ""))) {
+      return fail(new StalwartError("Unauthorized to sync rules for this domain.", "auth"), src)
+    }
+
+    const res = await syncDomainSieveRules(domainId)
+    if (!res.ok) {
+      return fail(new StalwartError(res.errors.join("; ") || "ManageSieve sync failed", "transport"), src)
+    }
+
+    await audit("forwarding.upsert", {
+      target: domainId,
+      detail: `Synchronized Sieve rules across ${res.syncedCount} mailboxes`,
+    })
+
+    return ok({ syncedCount: res.syncedCount, errors: res.errors }, src)
   } catch (err) {
     return fail(err, src)
   }

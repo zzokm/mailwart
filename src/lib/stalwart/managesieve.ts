@@ -12,10 +12,19 @@ export interface ManageSieveOptions {
 
 function getManageSieveConfig(options?: ManageSieveOptions) {
   const stalwart = getStalwartConfig()
+  let defaultHost = process.env.NODE_ENV === "production" ? "stalwart-mail" : "127.0.0.1"
+  if (stalwart?.jmapUrl) {
+    try {
+      const u = new URL(stalwart.jmapUrl)
+      if (u.hostname) {
+        defaultHost = u.hostname
+      }
+    } catch {}
+  }
   const host =
     options?.host ||
     process.env.MANAGESIEVE_HOST ||
-    (process.env.NODE_ENV === "production" ? "stalwart-mail" : "127.0.0.1")
+    defaultHost
   const port = options?.port || Number(process.env.MANAGESIEVE_PORT || 4190)
   const impersonatorUser =
     process.env.WEBMAIL_IMPERSONATOR_USER ||
