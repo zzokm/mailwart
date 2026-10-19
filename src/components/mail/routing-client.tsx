@@ -752,10 +752,12 @@ function ForwardsSection({
           ) : null}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-start">
           {/* 1. Source Type Selector (Requirement 2: exact, wildcard, regex, domain) */}
-          <div className="grid gap-1.5">
-            <Label className="text-[11px] text-muted-foreground">Source Type</Label>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex h-5 items-center">
+              <Label className="text-[11px] text-muted-foreground">Source Type</Label>
+            </div>
             <Select
               items={Object.fromEntries(
                 Object.entries(FORWARD_SOURCE_TYPES).map(([k, v]) => [k, v.label])
@@ -772,7 +774,7 @@ function ForwardsSection({
               }}
               disabled={saving}
             >
-              <SelectTrigger className="w-full font-mono text-[13px]">
+              <SelectTrigger className="h-8 w-full font-mono text-[13px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -791,8 +793,10 @@ function ForwardsSection({
           </div>
 
           {/* 2. Target Domain */}
-          <div className="grid gap-1.5">
-            <Label className="text-[11px] text-muted-foreground">Domain</Label>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex h-5 items-center">
+              <Label className="text-[11px] text-muted-foreground">Domain</Label>
+            </div>
             <Select
               items={Object.fromEntries(domains.map((d) => [d.id, d.name]))}
               value={domainId}
@@ -802,7 +806,7 @@ function ForwardsSection({
               }}
               disabled={saving}
             >
-              <SelectTrigger className="w-full font-mono text-[13px]">
+              <SelectTrigger className="h-8 w-full font-mono text-[13px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -816,16 +820,11 @@ function ForwardsSection({
           </div>
 
           {/* 3. Source Pattern / Address */}
-          <div className="grid gap-1.5">
-            <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex h-5 items-center">
               <Label className="text-[11px] text-muted-foreground">
                 Source Pattern
               </Label>
-              {domain ? (
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  @{domain.name}
-                </span>
-              ) : null}
             </div>
             <div className="relative flex items-center">
               <Input
@@ -842,7 +841,7 @@ function ForwardsSection({
                   }
                 }}
                 className={cn(
-                  "font-mono text-[13px]",
+                  "h-8 font-mono text-[13px]",
                   domain ? "pr-28 sm:pr-36" : ""
                 )}
                 placeholder={FORWARD_SOURCE_TYPES[sourceType].placeholder}
@@ -856,7 +855,7 @@ function ForwardsSection({
                 </div>
               ) : null}
             </div>
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[10px] text-muted-foreground leading-tight">
               {sourceType === "domain"
                 ? `Applies to all incoming mail on @${domain?.name ?? "domain"}`
                 : `Pattern abstracts @${domain?.name ?? "domain"}. Including the full address also works.`}
@@ -864,15 +863,17 @@ function ForwardsSection({
           </div>
 
           {/* 4. Target Addresses (Supports external like Gmail) */}
-          <div className="grid gap-1.5">
-            <Label className="text-[11px] text-muted-foreground">
-              Targets (e.g. personal Gmail or internal)
-            </Label>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex h-5 items-center">
+              <Label className="text-[11px] text-muted-foreground truncate" title="Targets (e.g. personal Gmail or internal)">
+                Targets (e.g. personal Gmail or internal)
+              </Label>
+            </div>
             <Input
               value={targets}
               disabled={saving}
               onChange={(e) => setTargets(e.target.value)}
-              className="font-mono text-[13px]"
+              className="h-8 font-mono text-[13px]"
               placeholder="myemail@gmail.com, office@domain.com"
             />
           </div>

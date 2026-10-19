@@ -147,17 +147,19 @@ export function DeliverabilityClient({
       {/* Test Controls Bar */}
       <div className="rounded-xl border border-border/80 bg-card/40 p-4 sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:max-w-2xl">
-            <div>
-              <label htmlFor="deliverability-domain-scope" className="text-xs font-medium text-muted-foreground">
-                Domain Scope
-              </label>
+          <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:max-w-2xl items-start">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex h-5 items-center">
+                <label htmlFor="deliverability-domain-scope" className="text-xs font-medium text-muted-foreground">
+                  Domain Scope
+                </label>
+              </div>
               <select
                 id="deliverability-domain-scope"
                 value={selectedDomain}
                 onChange={(e) => setSelectedDomain(e.target.value)}
                 disabled={isRunning}
-                className="mt-1.5 flex h-9 w-full rounded-lg border border-border/80 bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                className="flex h-9 w-full rounded-lg border border-border/80 bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 <option value="all">All Domains ({availableDomains.length})</option>
                 {availableDomains.map((d) => (
@@ -168,8 +170,8 @@ export function DeliverabilityClient({
               </select>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex h-5 items-center justify-between">
                 <label htmlFor="deliverability-mail-tester-address" className="text-xs font-medium text-muted-foreground">
                   Optional Mail-Tester Address
                 </label>
@@ -190,7 +192,7 @@ export function DeliverabilityClient({
                 value={externalRecipient}
                 onChange={(e) => setExternalRecipient(e.target.value)}
                 disabled={isRunning}
-                className="mt-1.5 h-9 text-xs font-mono"
+                className="h-9 text-xs font-mono"
               />
             </div>
           </div>
