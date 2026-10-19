@@ -24,8 +24,9 @@ describe("Password Reset Email Templates", () => {
     expect(html).toContain("Plus+Jakarta+Sans")
     expect(html).toContain("Geist+Mono")
 
-    // Formatted OTP code
-    expect(html).toContain("654 321")
+    // Formatted OTP code with non-breaking space & nowrap to prevent phone email app 2-row wrapping
+    expect(html).toContain("654&nbsp;321")
+    expect(html).toContain("white-space: nowrap")
 
     // Window controls
     expect(html).toContain("#ff5f56")
@@ -49,8 +50,9 @@ describe("Password Reset Email Templates", () => {
     expect(html).toContain("Plus+Jakarta+Sans")
     expect(html).toContain("Geist+Mono")
 
-    // Formatted OTP code
-    expect(html).toContain("654 321")
+    // Formatted OTP code with non-breaking space & nowrap to prevent phone email app 2-row wrapping
+    expect(html).toContain("654&nbsp;321")
+    expect(html).toContain("white-space: nowrap")
 
     // Removed elements as requested by user
     expect(html).not.toContain("mailwart console &bull; automated security transmission")

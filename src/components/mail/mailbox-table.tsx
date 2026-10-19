@@ -2,13 +2,14 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useMemo, useState, useTransition } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { Ban, Bell, Plus, Search, Trash2, KeyRound, Info, Pencil, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react"
 
 import {
   bulkDestroyMailboxesAction,
   bulkResetPasswordsAction,
   bulkSuspendMailboxesAction,
+  refreshMailboxActivityAction,
 } from "@/lib/actions/mail"
 import { toastActionResult } from "@/lib/action-toast"
 import { CreateMailboxDialog } from "@/components/mail/create-mailbox-dialog"
@@ -82,14 +83,92 @@ export function MailboxTable({
   const [configAccount, setConfigAccount] = useState<StalwartAccount | null>(null)
   const [sortState, setSortState] = useState<SortState>({ field: null })
 
+  const [activityMap, setActivityMap] = useState<
+    Map<
+      string,
+      {
+        unreadCount: number
+        newCount: number
+        usedDiskQuota?: number
+        isEnabled?: boolean
+      }
+    >
+  >(() => new Map())
+
+  const isFetchingRef = useRef(false)
+  const fetchFreshActivity = useCallback(async () => {
+    if (isFetchingRef.current) return
+    isFetchingRef.current = true
+    try {
+      const res = await refreshMailboxActivityAction()
+      if (res.ok && Array.isArray(res.data)) {
+        const map = new Map(res.data.map((item) => [item.email.toLowerCase(), item]))
+        setActivityMap(map)
+      }
+    } catch {
+      // Ignore background network interruptions
+    } finally {
+      isFetchingRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    // 1. Initial live check deferred on mount
+    const timer = setTimeout(() => {
+      void fetchFreshActivity()
+    }, 0)
+
+    // 2. Refresh on tab switch / window focus
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void fetchFreshActivity()
+      }
+    }
+    const onFocus = () => {
+      void fetchFreshActivity()
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    window.addEventListener("focus", onFocus)
+
+    // 3. Keep checking continuously while page is open and static (every 10s)
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void fetchFreshActivity()
+      }
+    }, 10_000)
+
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener("visibilitychange", onVisibilityChange)
+      window.removeEventListener("focus", onFocus)
+      clearInterval(interval)
+    }
+  }, [fetchFreshActivity])
+
+  const accountList = useMemo(() => {
+    if (activityMap.size === 0) return accounts
+    return accounts.map((acc) => {
+      const fresh = activityMap.get(acc.email.toLowerCase())
+      if (!fresh) return acc
+      return {
+        ...acc,
+        unreadCount: fresh.unreadCount,
+        newCount: fresh.newCount,
+        usedDiskQuota: fresh.usedDiskQuota ?? acc.usedDiskQuota,
+        isEnabled: fresh.isEnabled ?? acc.isEnabled,
+      }
+    })
+  }, [accounts, activityMap])
+
   const uniqueDomains = useMemo(() => {
     const set = new Set<string>()
-    for (const a of accounts) {
+    for (const a of accountList) {
       if (a.domainId) set.add(a.domainId)
       else if (a.email.includes("@")) set.add(a.email.split("@")[1].toLowerCase())
     }
     return set
-  }, [accounts])
+  }, [accountList])
 
   const isSingleDomain = domainId !== "all" || uniqueDomains.size <= 1
 
@@ -151,7 +230,7 @@ export function MailboxTable({
   }
 
   const filtered = useMemo(() => {
-    return accounts.filter((a) => {
+    return accountList.filter((a) => {
       if (domainId !== "all" && a.domainId !== domainId) return false
       if (!query.trim()) return true
       const q = query.toLowerCase()
@@ -160,7 +239,7 @@ export function MailboxTable({
         (a.description ?? "").toLowerCase().includes(q)
       )
     })
-  }, [accounts, domainId, query])
+  }, [accountList, domainId, query])
 
   const sorted = useMemo(() => {
     if (!sortState.field) return filtered

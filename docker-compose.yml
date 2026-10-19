@@ -176,12 +176,12 @@ services:
       retries: 3
       start_period: 10s
     environment:
-      IMAP_HOST: ${STALWART_IMAP_HOST:-mail.yehia.dev}
+      IMAP_HOST: ${STALWART_IMAP_HOST:-stalwart-mail}
       IMAP_CONNECT_HOST: stalwart-mail
       IMAP_PORT: "993"
-      SMTP_HOST: ${STALWART_SMTP_HOST:-mail.yehia.dev}
+      SMTP_HOST: ${STALWART_SMTP_HOST:-stalwart-mail}
       SMTP_CONNECT_HOST: stalwart-mail
-      SMTP_PORT: "465"
+      SMTP_PORT: "587"
       ALLOW_CUSTOM_MAIL_SERVERS: "true"
       TLS_ENABLED: "true"
       DATA_DIR: /data

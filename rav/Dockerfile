@@ -49,12 +49,12 @@ ENV STATIC_DIR=/app/static \
     TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1/32
 
 # Internal cluster defaults for communication with Stalwart Mail Server
-ENV IMAP_HOST=mail.yehia.dev \
+ENV IMAP_HOST=stalwart-mail \
     IMAP_CONNECT_HOST=stalwart-mail \
     IMAP_PORT=993 \
-    SMTP_HOST=mail.yehia.dev \
+    SMTP_HOST=stalwart-mail \
     SMTP_CONNECT_HOST=stalwart-mail \
-    SMTP_PORT=465 \
+    SMTP_PORT=587 \
     TLS_ENABLED=true \
     ALLOW_CUSTOM_MAIL_SERVERS=true
 

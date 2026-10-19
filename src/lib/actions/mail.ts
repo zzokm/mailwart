@@ -1056,6 +1056,48 @@ export async function listMailboxesAction(domainId?: string): Promise<
   }
 }
 
+export async function refreshMailboxActivityAction(): Promise<
+  ActionResult<
+    Array<{
+      id: string
+      email: string
+      unreadCount: number
+      newCount: number
+      usedDiskQuota?: number
+      isEnabled?: boolean
+    }>
+  >
+> {
+  const authed = await denyUnlessAuthed<
+    Array<{
+      id: string
+      email: string
+      unreadCount: number
+      newCount: number
+      usedDiskQuota?: number
+      isEnabled?: boolean
+    }>
+  >()
+  if (authed) return authed
+  const src = source()
+  try {
+    const { accounts } = await loadScopedDirectory()
+    return ok(
+      accounts.map((a) => ({
+        id: a.id,
+        email: a.email,
+        unreadCount: a.unreadCount ?? 0,
+        newCount: a.newCount ?? 0,
+        usedDiskQuota: a.usedDiskQuota,
+        isEnabled: a.isEnabled !== false,
+      })),
+      src
+    )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
 export async function getMailboxDetailAction(id: string): Promise<
   ActionResult<{
     account: StalwartAccount

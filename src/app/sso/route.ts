@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
   }
 
   const clusterMailHost =
-    process.env.STALWART_IMAP_HOST?.trim() || "mail.yehia.dev"
+    process.env.STALWART_IMAP_HOST?.trim() || "stalwart-mail"
 
   let lastStatus = 401
   let setCookies: string[] = []
@@ -66,7 +66,9 @@ export async function GET(request: NextRequest) {
           email: username,
           password: config.adminPassword,
           imap_host: clusterMailHost,
+          imap_port: 993,
           smtp_host: clusterMailHost,
+          smtp_port: 587,
         }),
       })
 
