@@ -25,7 +25,7 @@ import {
   getDomainCatchAllArchival,
 } from "@/lib/db"
 import { generateMailboxSieve, normalizeSourcePattern } from "@/lib/stalwart/sieve-generator"
-import { syncMailboxSieveScript } from "@/lib/stalwart/managesieve"
+import { syncMailboxSieveScript, probeManageSieve } from "@/lib/stalwart/managesieve"
 import type { ForwardSourceType } from "@/lib/stalwart/types"
 import {
   dataSource as source,
@@ -2294,14 +2294,20 @@ function buildLiveForwardHints(
   domains: StalwartDomain[],
   accounts: StalwartAccount[]
 ): ForwardingRule[] {
-  const domainsById = new Map(domains.map((d) => [d.id, d]))
+  const domainsById = new Map<string, StalwartDomain>()
+  for (const d of domains) {
+    domainsById.set(d.id, d)
+    domainsById.set(d.name.toLowerCase(), d)
+  }
   const now = new Date().toISOString()
   const rules: ForwardingRule[] = []
 
   for (const account of accounts) {
     const aliases = parseEmailAliases(account.aliases, domainsById)
     for (const alias of aliases) {
-      const domain = domainsById.get(alias.domainId)
+      const domain =
+        domainsById.get(alias.domainId) ||
+        domains.find((d) => d.name.toLowerCase() === alias.email?.split("@")[1]?.toLowerCase())
       if (!domain || !alias.email) continue
       rules.push({
         id: `alias-${account.id}-${alias.key}`,
@@ -2360,36 +2366,61 @@ export async function syncDomainSieveRules(
 
     const allAccounts = accountsList ?? (await queryAccounts(domains))
     const domainAccounts = allAccounts.filter((a) => a.domainId === domain.id)
+    if (domainAccounts.length === 0) {
+      return { ok: true, syncedCount: 0, errors: [] }
+    }
+
+    // 1. Fast probe (1.2s): If ManageSieve daemon port 4190 is offline/unreachable, fail fast
+    // instead of blocking the user UI across multiple accounts.
+    const probe = await probeManageSieve({ timeoutMs: 1200 })
+    if (!probe.available) {
+      return {
+        ok: false,
+        syncedCount: 0,
+        errors: [`ManageSieve (port 4190) pending: ${probe.note}`],
+      }
+    }
+
     const domainRules = await getForwardingRules(domain.id)
     const archival = await getDomainCatchAllArchival(domain.id)
+
+    // 2. Parallel upload across all domain mailboxes (concurrency with 2s timeout)
+    const results = await Promise.allSettled(
+      domainAccounts.map(async (acc) => {
+        const isCatchAll = Boolean(
+          domain.catchAllAddress &&
+          domain.catchAllAddress.toLowerCase() === acc.email.toLowerCase()
+        )
+
+        const scriptContent = generateMailboxSieve({
+          mailboxEmail: acc.email,
+          domainName: domain.name,
+          catchAllEmail: domain.catchAllAddress,
+          isCatchAllMailbox: isCatchAll,
+          archivalCopyEnabled: archival,
+          rules: domainRules,
+        })
+
+        return syncMailboxSieveScript({
+          accountEmail: acc.email,
+          scriptContent,
+          options: { timeoutMs: 2000 },
+        })
+      })
+    )
 
     let syncedCount = 0
     const errors: string[] = []
 
-    for (const acc of domainAccounts) {
-      const isCatchAll = Boolean(
-        domain.catchAllAddress &&
-        domain.catchAllAddress.toLowerCase() === acc.email.toLowerCase()
-      )
-
-      const scriptContent = generateMailboxSieve({
-        mailboxEmail: acc.email,
-        domainName: domain.name,
-        catchAllEmail: domain.catchAllAddress,
-        isCatchAllMailbox: isCatchAll,
-        archivalCopyEnabled: archival,
-        rules: domainRules,
-      })
-
-      const res = await syncMailboxSieveScript({
-        accountEmail: acc.email,
-        scriptContent,
-      })
-
-      if (res.ok) {
+    for (let i = 0; i < results.length; i++) {
+      const res = results[i]
+      const acc = domainAccounts[i]
+      if (res.status === "fulfilled" && res.value.ok) {
         syncedCount++
-      } else if (res.error) {
-        errors.push(`${acc.email}: ${res.error}`)
+      } else if (res.status === "fulfilled" && res.value.error) {
+        errors.push(`${acc.email}: ${res.value.error}`)
+      } else if (res.status === "rejected") {
+        errors.push(`${acc.email}: ${(res.reason as Error)?.message || "Failed"}`)
       }
     }
 

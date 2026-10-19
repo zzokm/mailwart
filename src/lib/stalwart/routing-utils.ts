@@ -16,7 +16,20 @@ export function parseEmailAliases(
 
   if (Array.isArray(raw)) {
     raw.forEach((item, i) => {
-      if (item && typeof item === "object") {
+      if (typeof item === "string") {
+        const at = item.indexOf("@")
+        if (at > 0) {
+          entries.push({
+            key: String(i),
+            value: { name: item.slice(0, at), domainId: item.slice(at + 1), email: item },
+          })
+        } else {
+          entries.push({
+            key: String(i),
+            value: { name: item },
+          })
+        }
+      } else if (item && typeof item === "object") {
         entries.push({
           key: String(i),
           value: item as Record<string, unknown>,
@@ -27,7 +40,17 @@ export function parseEmailAliases(
     for (const [key, value] of Object.entries(
       raw as Record<string, unknown>
     )) {
-      if (value && typeof value === "object") {
+      if (typeof value === "string") {
+        const at = value.indexOf("@")
+        if (at > 0) {
+          entries.push({
+            key,
+            value: { name: value.slice(0, at), domainId: value.slice(at + 1), email: value },
+          })
+        } else {
+          entries.push({ key, value: { name: value } })
+        }
+      } else if (value && typeof value === "object") {
         entries.push({ key, value: value as Record<string, unknown> })
       }
     }
@@ -36,22 +59,40 @@ export function parseEmailAliases(
   const out: EmailAliasEntry[] = []
   for (const { key, value } of entries) {
     const name = typeof value.name === "string" ? value.name : ""
-    const domainId =
-      typeof value.domainId === "string" ? value.domainId : ""
-    if (!name || !domainId) continue
-    const domain = domainsById.get(domainId)
+    const domainId = typeof value.domainId === "string" ? value.domainId : ""
+
+    let domain = domainsById.get(domainId)
+    if (!domain && domainId) {
+      domain = Array.from(domainsById.values()).find(
+        (d) => d.name.toLowerCase() === domainId.toLowerCase()
+      )
+    }
+    if (!domain && typeof value.email === "string" && value.email.includes("@")) {
+      const emailDomain = value.email.split("@")[1].toLowerCase()
+      domain = Array.from(domainsById.values()).find(
+        (d) => d.name.toLowerCase() === emailDomain
+      )
+    }
+
+    const email =
+      typeof value.email === "string"
+        ? value.email.toLowerCase()
+        : domain?.name && name
+          ? `${name}@${domain.name}`.toLowerCase()
+          : undefined
+
+    if (!email && !name) continue
+
     out.push({
       key,
-      name,
-      domainId,
+      name: name || (email ? email.split("@")[0] : ""),
+      domainId: domain?.id || domainId,
       enabled: value.enabled !== false,
       description:
         typeof value.description === "string"
           ? value.description
           : undefined,
-      email: domain?.name
-        ? `${name}@${domain.name}`.toLowerCase()
-        : undefined,
+      email,
     })
   }
   return out

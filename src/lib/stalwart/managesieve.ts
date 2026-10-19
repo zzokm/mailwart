@@ -25,7 +25,7 @@ function getManageSieveConfig(options?: ManageSieveOptions) {
     process.env.WEBMAIL_IMPERSONATOR_PASSWORD ||
     stalwart?.adminPassword ||
     ""
-  const timeoutMs = options?.timeoutMs || 6000
+  const timeoutMs = options?.timeoutMs || 2500
 
   return { host, port, impersonatorUser, impersonatorPassword, timeoutMs }
 }
@@ -178,7 +178,10 @@ export async function syncMailboxSieveScript(params: {
       const s = net.connect({ host: config.host, port: config.port }, () => resolve(s))
       s.setTimeout(config.timeoutMs)
       s.on("error", reject)
-      s.on("timeout", () => reject(new Error(`Connection to ${config.host}:${config.port} timed out`)))
+      s.on("timeout", () => {
+        s.destroy()
+        reject(new Error(`Connection to ${config.host}:${config.port} timed out`))
+      })
     })
 
     conn = new SieveSocket(rawSocket)
@@ -264,15 +267,19 @@ export async function probeManageSieve(options?: ManageSieveOptions): Promise<{
   let conn: SieveSocket | null = null
 
   try {
+    const probeTimeout = options?.timeoutMs || 1200
     const rawSocket = await new Promise<net.Socket>((resolve, reject) => {
       const s = net.connect({ host: config.host, port: config.port }, () => resolve(s))
-      s.setTimeout(3000)
+      s.setTimeout(probeTimeout)
       s.on("error", reject)
-      s.on("timeout", () => reject(new Error("Timeout")))
+      s.on("timeout", () => {
+        s.destroy()
+        reject(new Error("Timeout"))
+      })
     })
 
     conn = new SieveSocket(rawSocket)
-    const banner = await conn.readResponse(3000)
+    const banner = await conn.readResponse(probeTimeout)
     await conn.write("LOGOUT\r\n").catch(() => {})
     conn.close()
 

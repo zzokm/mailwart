@@ -100,7 +100,7 @@ function catchAllModeOf(d: StalwartDomain): CatchAllMode {
 export function RoutingClient({
   domains,
   accounts,
-  forwards,
+  forwards: initialForwards,
   adminUiUrl,
   source,
 }: {
@@ -112,6 +112,13 @@ export function RoutingClient({
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
+  const [prevInitialForwards, setPrevInitialForwards] = useState(initialForwards)
+  const [forwards, setForwards] = useState<ForwardingRule[]>(initialForwards)
+
+  if (prevInitialForwards !== initialForwards) {
+    setPrevInitialForwards(initialForwards)
+    setForwards(initialForwards)
+  }
 
   const aliasRows = useMemo(() => {
     const domainsById = new Map(domains.map((d) => [d.id, d]))
@@ -160,9 +167,9 @@ export function RoutingClient({
           domains={domains}
           accounts={accounts}
           forwards={forwards}
+          onUpdateForwards={setForwards}
           source={source}
           adminUiUrl={adminUiUrl}
-          pending={pending}
           startTransition={startTransition}
           onDone={() => router.refresh()}
         />
@@ -516,18 +523,18 @@ function MxInline({
 function ForwardsSection({
   domains,
   forwards,
+  onUpdateForwards,
   source,
   adminUiUrl,
-  pending,
   startTransition,
   onDone,
 }: {
   domains: StalwartDomain[]
   accounts: StalwartAccount[]
   forwards: ForwardingRule[]
+  onUpdateForwards: React.Dispatch<React.SetStateAction<ForwardingRule[]>>
   source: "live" | "mock"
   adminUiUrl: string
-  pending: boolean
   startTransition: (fn: () => void) => void
   onDone: () => void
 }) {
@@ -538,6 +545,8 @@ function ForwardsSection({
   const [targets, setTargets] = useState("")
   const [keepLocal, setKeepLocal] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [actionPendingId, setActionPendingId] = useState<string | null>(null)
 
   const domain = domains.find((d) => d.id === domainId)
 
@@ -588,54 +597,110 @@ function ForwardsSection({
     setKeepLocal(true)
   }
 
-  function saveRule() {
-    startTransition(() => {
-      void (async () => {
-        const rawSource = sourceType === "domain" ? "*" : sourceAddr.trim()
+  async function saveRule() {
+    if (saving) return
+    setSaving(true)
+    try {
+      const rawSource = sourceType === "domain" ? "*" : sourceAddr.trim()
 
-        const result = await upsertForwardingRuleAction({
-          id: editingId || undefined,
-          scope: sourceType === "exact" ? "user" : sourceType,
-          sourceType,
-          domainId,
-          source: rawSource,
-          targets: targets.split(/[\s,;]+/).filter(Boolean),
-          keepLocalCopy: keepLocal,
-          enabled: true,
+      const result = await upsertForwardingRuleAction({
+        id: editingId || undefined,
+        scope: sourceType === "exact" ? "user" : sourceType,
+        sourceType,
+        domainId,
+        source: rawSource,
+        targets: targets.split(/[\s,;]+/).filter(Boolean),
+        keepLocalCopy: keepLocal,
+        enabled: true,
+      })
+
+      if (
+        !toastActionResult(result, {
+          success: result.ok
+            ? editingId
+              ? "Forward updated successfully."
+              : `Forward rule saved (${result.data.backend}).`
+            : "",
         })
+      ) {
+        return
+      }
 
-        if (
-          !toastActionResult(result, {
-            success: result.ok
-              ? editingId
-                ? "Forward updated successfully."
-                : `Forward rule saved (${result.data.backend}).`
-              : "",
-          })
-        ) {
-          return
+      // Optimistically update table immediately without waiting
+      const saved = result.data
+      onUpdateForwards((prev) => {
+        const idx = prev.findIndex((f) => f.id === saved.id)
+        if (idx !== -1) {
+          const next = [...prev]
+          next[idx] = saved
+          return next
         }
+        return [saved, ...prev]
+      })
 
-        cancelEdit()
+      cancelEdit()
+      startTransition(() => {
         onDone()
-      })()
-    })
+      })
+    } finally {
+      setSaving(false)
+    }
   }
 
-  function toggleStatus(rule: ForwardingRule) {
-    startTransition(() => {
-      void (async () => {
-        const result = await toggleForwardingRuleAction(rule.id, !rule.enabled)
-        if (
-          !toastActionResult(result, {
-            success: `Forward rule ${!rule.enabled ? "enabled" : "paused"}.`,
-          })
-        ) {
-          return
-        }
-        onDone()
-      })()
+  async function toggleStatus(rule: ForwardingRule) {
+    const nextState = !rule.enabled
+    setActionPendingId(rule.id)
+    onUpdateForwards((prev) =>
+      prev.map((f) => (f.id === rule.id ? { ...f, enabled: nextState } : f))
+    )
+
+    try {
+      const result = await toggleForwardingRuleAction(rule.id, nextState)
+      if (
+        !toastActionResult(result, {
+          success: `Forward rule ${nextState ? "enabled" : "paused"}.`,
+        })
+      ) {
+        onUpdateForwards((prev) =>
+          prev.map((f) => (f.id === rule.id ? { ...f, enabled: rule.enabled } : f))
+        )
+      } else {
+        startTransition(() => {
+          onDone()
+        })
+      }
+    } finally {
+      setActionPendingId(null)
+    }
+  }
+
+  async function deleteRule(ruleId: string) {
+    setActionPendingId(ruleId)
+    let removed: ForwardingRule | undefined
+    onUpdateForwards((prev) => {
+      removed = prev.find((f) => f.id === ruleId)
+      return prev.filter((f) => f.id !== ruleId)
     })
+
+    try {
+      const result = await destroyForwardingRuleAction(ruleId)
+      if (
+        !toastActionResult(result, {
+          success: "Forwarding rule removed.",
+        })
+      ) {
+        if (removed) {
+          onUpdateForwards((prev) => [removed!, ...prev])
+        }
+      } else {
+        if (editingId === ruleId) cancelEdit()
+        startTransition(() => {
+          onDone()
+        })
+      }
+    } finally {
+      setActionPendingId(null)
+    }
   }
 
   const filteredForwards = useMemo(() => {
@@ -705,7 +770,7 @@ function ForwardsSection({
                   setSourceAddr("")
                 }
               }}
-              disabled={pending}
+              disabled={saving}
             >
               <SelectTrigger className="w-full font-mono text-[13px]">
                 <SelectValue />
@@ -735,7 +800,7 @@ function ForwardsSection({
                 const nextId = v ?? ""
                 setDomainId(nextId)
               }}
-              disabled={pending}
+              disabled={saving}
             >
               <SelectTrigger className="w-full font-mono text-[13px]">
                 <SelectValue />
@@ -765,7 +830,7 @@ function ForwardsSection({
             <div className="relative flex items-center">
               <Input
                 value={sourceType === "domain" ? "*" : sourceAddr}
-                disabled={pending || sourceType === "domain"}
+                disabled={saving || sourceType === "domain"}
                 onChange={(e) => setSourceAddr(e.target.value)}
                 onBlur={() => {
                   if (domain && sourceAddr && sourceType !== "domain") {
@@ -805,7 +870,7 @@ function ForwardsSection({
             </Label>
             <Input
               value={targets}
-              disabled={pending}
+              disabled={saving}
               onChange={(e) => setTargets(e.target.value)}
               className="font-mono text-[13px]"
               placeholder="myemail@gmail.com, office@domain.com"
@@ -818,7 +883,7 @@ function ForwardsSection({
               <input
                 type="checkbox"
                 checked={keepLocal}
-                disabled={pending}
+                disabled={saving}
                 onChange={(e) => setKeepLocal(e.target.checked)}
                 className="size-3.5 rounded accent-primary"
               />
@@ -831,7 +896,7 @@ function ForwardsSection({
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={pending}
+                  disabled={saving}
                   onClick={cancelEdit}
                 >
                   Cancel
@@ -842,13 +907,18 @@ function ForwardsSection({
                 type="button"
                 size="sm"
                 disabled={
-                  pending ||
+                  saving ||
                   !targets.trim() ||
                   (sourceType !== "domain" && !sourceAddr.trim())
                 }
                 onClick={saveRule}
               >
-                {editingId ? (
+                {saving ? (
+                  <>
+                    <span className="size-3.5 mr-1 inline-block animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    {editingId ? "Updating..." : "Saving..."}
+                  </>
+                ) : editingId ? (
                   <>
                     <Check data-icon="inline-start" />
                     Update rule
@@ -1038,7 +1108,7 @@ function ForwardsSection({
                       <TableCell className="align-top py-3">
                         <button
                           type="button"
-                          disabled={pending}
+                          disabled={actionPendingId === f.id}
                           onClick={() => toggleStatus(f)}
                           className={cn(
                             "inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] transition-colors cursor-pointer border",
@@ -1052,7 +1122,7 @@ function ForwardsSection({
                         </button>
                       </TableCell>
 
-                      {/* Actions: Edit & Delete (Issue 5 fix) */}
+                      {/* Actions: Edit & Delete */}
                       <TableCell className="align-top py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Button
@@ -1061,7 +1131,7 @@ function ForwardsSection({
                             variant="ghost"
                             className="h-8 w-8 p-0"
                             title="Edit forward rule"
-                            disabled={pending}
+                            disabled={actionPendingId === f.id}
                             onClick={() => startEdit(f)}
                           >
                             <Edit2 className="size-3.5" />
@@ -1072,23 +1142,8 @@ function ForwardsSection({
                             variant="ghost"
                             className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                             title="Delete forward rule"
-                            disabled={pending}
-                            onClick={() => {
-                              startTransition(() => {
-                                void (async () => {
-                                  const result = await destroyForwardingRuleAction(f.id)
-                                  if (
-                                    !toastActionResult(result, {
-                                      success: "Forwarding rule removed.",
-                                    })
-                                  ) {
-                                    return
-                                  }
-                                  if (editingId === f.id) cancelEdit()
-                                  onDone()
-                                })()
-                              })
-                            }}
+                            disabled={actionPendingId === f.id}
+                            onClick={() => deleteRule(f.id)}
                           >
                             <Trash2 className="size-3.5" />
                           </Button>
