@@ -3,17 +3,44 @@ import { generateMailboxSieve, normalizeSourcePattern } from "./sieve-generator"
 import type { ForwardingRule } from "./types"
 
 describe("sieve-generator", () => {
-  it("normalizes source patterns accurately", () => {
+  it("normalizes source patterns accurately (abstracting domain and supporting full addresses)", () => {
+    // Abstracted local-parts (domain omitted)
     expect(normalizeSourcePattern("support-*", "wildcard", "example.com")).toBe(
       "support-*@example.com"
     )
     expect(normalizeSourcePattern("billing", "exact", "example.com")).toBe(
       "billing@example.com"
     )
+    expect(normalizeSourcePattern("^invoice-[0-9]+$", "regex", "example.com")).toBe(
+      "^invoice-[0-9]+@example\\.com$"
+    )
+    expect(normalizeSourcePattern("^invoice-[0-9]+", "regex", "example.com")).toBe(
+      "^invoice-[0-9]+@example\\.com"
+    )
+    expect(normalizeSourcePattern("*", "domain", "example.com")).toBe(
+      "*@example.com"
+    )
+    expect(normalizeSourcePattern("", "domain", "example.com")).toBe(
+      "*@example.com"
+    )
+
+    // Full addresses included by user (idempotent / graceful)
+    expect(normalizeSourcePattern("support-*@example.com", "wildcard", "example.com")).toBe(
+      "support-*@example.com"
+    )
+    expect(normalizeSourcePattern("billing@example.com", "exact", "example.com")).toBe(
+      "billing@example.com"
+    )
+    expect(normalizeSourcePattern("billing@", "exact", "example.com")).toBe(
+      "billing@example.com"
+    )
+    expect(normalizeSourcePattern("support-*@example.com@example.com", "wildcard", "example.com")).toBe(
+      "support-*@example.com"
+    )
     expect(normalizeSourcePattern("^invoice-[0-9]+@example\\.com$", "regex", "example.com")).toBe(
       "^invoice-[0-9]+@example\\.com$"
     )
-    expect(normalizeSourcePattern("", "domain", "example.com")).toBe(
+    expect(normalizeSourcePattern("*@example.com", "domain", "example.com")).toBe(
       "*@example.com"
     )
   })

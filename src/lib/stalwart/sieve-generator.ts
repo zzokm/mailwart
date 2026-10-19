@@ -16,34 +16,53 @@ export interface SieveGeneratorOptions {
 
 /**
  * Normalizes a source pattern according to its type and domain.
- * e.g., "support-*" on "example.com" -> "support-*@example.com"
+ * Abstracts the @domain part while still working if @domain.tld is included.
+ *
+ * e.g.,
+ * - "support-*" on "example.com" -> "support-*@example.com"
+ * - "support-*@example.com" on "example.com" -> "support-*@example.com"
+ * - "^invoice-[0-9]+$" on "example.com" -> "^invoice-[0-9]+@example\\.com$"
+ * - "^invoice-[0-9]+@example\\.com$" on "example.com" -> "^invoice-[0-9]+@example\\.com$"
  */
 export function normalizeSourcePattern(
   source: string,
   sourceType: string,
   domainName: string
 ): string {
-  const trimmed = source.trim().toLowerCase()
-  if (sourceType === "domain") {
-    return `*@${domainName.toLowerCase()}`
-  }
+  const trimmed = source.trim()
+  const domainLower = domainName.trim().toLowerCase()
 
-  if (sourceType === "wildcard") {
-    if (!trimmed.includes("@")) {
-      return `${trimmed}@${domainName.toLowerCase()}`
-    }
-    return trimmed
+  if (sourceType === "domain") {
+    return `*@${domainLower}`
   }
 
   if (sourceType === "regex") {
-    return source.trim()
+    // If the regex already includes an @ symbol, the user explicitly provided the domain/host
+    if (trimmed.includes("@")) {
+      return trimmed
+    }
+    // Abstracted: user provided regex for the local-part
+    const escapedDomain = domainLower.replace(/\./g, "\\.")
+    if (trimmed.endsWith("$")) {
+      return `${trimmed.slice(0, -1)}@${escapedDomain}$`
+    }
+    return `${trimmed}@${escapedDomain}`
   }
 
-  // exact
-  if (!trimmed.includes("@")) {
-    return `${trimmed}@${domainName.toLowerCase()}`
+  // Exact or Wildcard
+  const lower = trimmed.toLowerCase()
+  if (lower.includes("@")) {
+    if (lower.endsWith("@")) {
+      return `${lower}${domainLower}`
+    }
+    const parts = lower.split("@").filter(Boolean)
+    if (parts.length > 0) {
+      return `${parts[0]}@${domainLower}`
+    }
+    return `*@${domainLower}`
   }
-  return trimmed
+
+  return `${lower}@${domainLower}`
 }
 
 /**

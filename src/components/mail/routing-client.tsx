@@ -71,22 +71,22 @@ const FORWARD_SOURCE_TYPES: Record<
 > = {
   exact: {
     label: "Exact Address",
-    placeholder: "info or info@example.com",
+    placeholder: "info",
     helper: "Match a specific mailbox or free local-part",
   },
   wildcard: {
     label: "Wildcard Source",
-    placeholder: "support-* or support-*@example.com",
+    placeholder: "support-* or billing.*",
     helper: "Pattern with * or ? wildcards (e.g. support-*, billing.*)",
   },
   regex: {
     label: "Regex Source",
-    placeholder: "^invoice-[0-9]+@example\\.com$",
+    placeholder: "^invoice-[0-9]+",
     helper: "Regular expression pattern evaluated via Sieve :regex",
   },
   domain: {
     label: "Domain Catch-All (*@)",
-    placeholder: "*@example.com",
+    placeholder: "*",
     helper: "Match all incoming mail for the entire domain",
   },
 }
@@ -554,7 +554,28 @@ function ForwardsSection({
             : "exact")
     setSourceType(sType)
     setDomainId(rule.domainId)
-    setSourceAddr(rule.source)
+
+    // Abstract the @domain part for display if present
+    const targetDom = domains.find((d) => d.id === rule.domainId)
+    const dName = targetDom?.name || rule.domainName
+    let displaySource = rule.source
+    if (sType === "domain") {
+      displaySource = "*"
+    } else if (dName) {
+      const suffix = `@${dName.toLowerCase()}`
+      if (displaySource.toLowerCase().endsWith(suffix)) {
+        displaySource = displaySource.slice(0, -suffix.length)
+      } else if (sType === "regex") {
+        const escapedSuffix = `@${dName.toLowerCase().replace(/\./g, "\\.")}`
+        if (displaySource.toLowerCase().endsWith(`${escapedSuffix}$`)) {
+          displaySource = `${displaySource.slice(0, -(escapedSuffix.length + 1))}$`
+        } else if (displaySource.toLowerCase().endsWith(escapedSuffix)) {
+          displaySource = displaySource.slice(0, -escapedSuffix.length)
+        }
+      }
+    }
+
+    setSourceAddr(displaySource)
     setTargets(rule.targets.join(", "))
     setKeepLocal(rule.keepLocalCopy !== false)
   }
@@ -570,15 +591,14 @@ function ForwardsSection({
   function saveRule() {
     startTransition(() => {
       void (async () => {
-        const finalSource =
-          sourceType === "domain" ? `*@${domain?.name ?? ""}` : sourceAddr
+        const rawSource = sourceType === "domain" ? "*" : sourceAddr.trim()
 
         const result = await upsertForwardingRuleAction({
           id: editingId || undefined,
           scope: sourceType === "exact" ? "user" : sourceType,
           sourceType,
           domainId,
-          source: finalSource,
+          source: rawSource,
           targets: targets.split(/[\s,;]+/).filter(Boolean),
           keepLocalCopy: keepLocal,
           enabled: true,
@@ -679,8 +699,10 @@ function ForwardsSection({
               onValueChange={(v) => {
                 const nextType = (v as ForwardSourceType) ?? "exact"
                 setSourceType(nextType)
-                if (nextType === "domain" && domain) {
-                  setSourceAddr(`*@${domain.name}`)
+                if (nextType === "domain") {
+                  setSourceAddr("*")
+                } else if (sourceAddr === "*") {
+                  setSourceAddr("")
                 }
               }}
               disabled={pending}
@@ -712,10 +734,6 @@ function ForwardsSection({
               onValueChange={(v) => {
                 const nextId = v ?? ""
                 setDomainId(nextId)
-                const nextDom = domains.find((d) => d.id === nextId)
-                if (sourceType === "domain" && nextDom) {
-                  setSourceAddr(`*@${nextDom.name}`)
-                }
               }}
               disabled={pending}
             >
@@ -734,18 +752,50 @@ function ForwardsSection({
 
           {/* 3. Source Pattern / Address */}
           <div className="grid gap-1.5">
-            <Label className="text-[11px] text-muted-foreground">
-              Source Pattern {sourceType === "domain" ? "(Auto *@domain)" : ""}
-            </Label>
-            <Input
-              value={
-                sourceType === "domain" ? `*@${domain?.name ?? ""}` : sourceAddr
-              }
-              disabled={pending || sourceType === "domain"}
-              onChange={(e) => setSourceAddr(e.target.value)}
-              className="font-mono text-[13px]"
-              placeholder={FORWARD_SOURCE_TYPES[sourceType].placeholder}
-            />
+            <div className="flex items-center justify-between">
+              <Label className="text-[11px] text-muted-foreground">
+                Source Pattern
+              </Label>
+              {domain ? (
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  @{domain.name}
+                </span>
+              ) : null}
+            </div>
+            <div className="relative flex items-center">
+              <Input
+                value={sourceType === "domain" ? "*" : sourceAddr}
+                disabled={pending || sourceType === "domain"}
+                onChange={(e) => setSourceAddr(e.target.value)}
+                onBlur={() => {
+                  if (domain && sourceAddr && sourceType !== "domain") {
+                    const domName = domain.name.toLowerCase()
+                    const suffix = `@${domName}`
+                    if (sourceAddr.toLowerCase().endsWith(suffix)) {
+                      setSourceAddr(sourceAddr.slice(0, -suffix.length))
+                    }
+                  }
+                }}
+                className={cn(
+                  "font-mono text-[13px]",
+                  domain ? "pr-28 sm:pr-36" : ""
+                )}
+                placeholder={FORWARD_SOURCE_TYPES[sourceType].placeholder}
+              />
+              {domain ? (
+                <div
+                  className="pointer-events-none absolute right-2 flex max-w-[130px] items-center truncate rounded-md border border-border/60 bg-muted/70 px-2 py-0.5 font-mono text-[11px] text-muted-foreground select-none"
+                  title={`@${domain.name}`}
+                >
+                  @{domain.name}
+                </div>
+              ) : null}
+            </div>
+            <span className="text-[10px] text-muted-foreground">
+              {sourceType === "domain"
+                ? `Applies to all incoming mail on @${domain?.name ?? "domain"}`
+                : `Pattern abstracts @${domain?.name ?? "domain"}. Including the full address also works.`}
+            </span>
           </div>
 
           {/* 4. Target Addresses (Supports external like Gmail) */}

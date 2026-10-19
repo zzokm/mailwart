@@ -24,7 +24,7 @@ import {
   setDomainCatchAllArchival,
   getDomainCatchAllArchival,
 } from "@/lib/db"
-import { generateMailboxSieve } from "@/lib/stalwart/sieve-generator"
+import { generateMailboxSieve, normalizeSourcePattern } from "@/lib/stalwart/sieve-generator"
 import { syncMailboxSieveScript } from "@/lib/stalwart/managesieve"
 import type { ForwardSourceType } from "@/lib/stalwart/types"
 import {
@@ -2459,16 +2459,7 @@ export async function upsertForwardingRuleAction(input: {
       sourceType = "regex"
     }
 
-    let normalizedSource = rawSource
-    if (sourceType === "domain") {
-      normalizedSource = `*@${domain.name}`
-    } else if (sourceType === "wildcard") {
-      normalizedSource = rawSource.includes("@") ? rawSource : `${rawSource}@${domain.name}`
-    } else if (sourceType === "regex") {
-      normalizedSource = rawSource
-    } else {
-      normalizedSource = rawSource.includes("@") ? rawSource : `${rawSource}@${domain.name}`
-    }
+    const normalizedSource = normalizeSourcePattern(rawSource, sourceType, domain.name)
 
     const matchedAccount = accounts.find((a) => a.email.toLowerCase() === normalizedSource.toLowerCase())
     const sourceAccountId = validated.data.sourceAccountId ?? (matchedAccount ? matchedAccount.id : null)
