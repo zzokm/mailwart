@@ -1288,6 +1288,7 @@ export async function createMailboxAction(input: {
       target: email,
       detail: "Created mailbox",
     })
+    void syncDomainSieveRules(parsed.data.domainId).catch(() => {})
     return ok(account, src)
   } catch (err) {
     return fail(err, src)
@@ -2444,9 +2445,8 @@ export async function syncDomainSieveRules(
       return { ok: true, syncedCount: 0, errors: [] }
     }
 
-    // 1. Fast probe (1.2s): If ManageSieve daemon port 4190 is offline/unreachable, fail fast
-    // instead of blocking the user UI across multiple accounts.
-    const probe = await probeManageSieve({ timeoutMs: 1200 })
+    // 1. Probe ManageSieve daemon (port 4190)
+    const probe = await probeManageSieve({ timeoutMs: 3000 })
     if (!probe.available) {
       return {
         ok: false,
@@ -2458,7 +2458,7 @@ export async function syncDomainSieveRules(
     const domainRules = await getForwardingRules(domain.id)
     const archival = await getDomainCatchAllArchival(domain.id)
 
-    // 2. Parallel upload across all domain mailboxes (concurrency with 2s timeout)
+    // 2. Upload Sieve rules across all domain mailboxes (concurrency with 4s timeout)
     const results = await Promise.allSettled(
       domainAccounts.map(async (acc) => {
         const isCatchAll = Boolean(
@@ -2478,7 +2478,7 @@ export async function syncDomainSieveRules(
         return syncMailboxSieveScript({
           accountEmail: acc.email,
           scriptContent,
-          options: { timeoutMs: 2000 },
+          options: { timeoutMs: 4000 },
         })
       })
     )
@@ -3067,6 +3067,9 @@ export async function updateCatchAllAction(
   if (!result.ok) return result
 
   if (src !== "mock") {
+    if (validated.data.mode === "address" && validated.data.address) {
+      await setDomainCatchAllArchival(domainId, true).catch(() => {})
+    }
     await syncDomainSieveRules(domainId).catch((err) => {
       console.warn("[catchall] Sieve archival sync notice:", err)
     })

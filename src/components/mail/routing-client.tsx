@@ -10,6 +10,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Shield,
   ShieldCheck,
   Trash2,
   X,
@@ -17,6 +18,7 @@ import {
 
 import {
   destroyForwardingRuleAction,
+  syncCatchAllArchivalAction,
   syncDomainForwardsAction,
   toggleForwardingRuleAction,
   updateCatchAllAction,
@@ -29,6 +31,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import {
   Select,
   SelectContent,
@@ -328,15 +331,12 @@ function CatchAllsSection({
                         onDone={onDone}
                       />
                       {hasCatchAll ? (
-                        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2 text-xs">
-                          <div className="flex items-center gap-1.5 text-emerald-500 font-medium">
-                            <ShieldCheck className="size-3.5 shrink-0" />
-                            <span>Archival Mirroring Active</span>
-                          </div>
-                          <p className="mt-0.5 text-[11px] text-muted-foreground leading-relaxed">
-                            Delivered emails to any mailbox or catch-all on <code className="font-mono text-[10px]">{d.name}</code> duplicate a copy into <span className="font-mono font-medium text-foreground">{d.catchAllAddress}</span>.
-                          </p>
-                        </div>
+                        <CatchAllArchivalTrigger
+                          domain={d}
+                          pending={pending}
+                          startTransition={startTransition}
+                          onDone={onDone}
+                        />
                       ) : null}
                     </div>
                   </TableCell>
@@ -365,6 +365,115 @@ function CatchAllsSection({
         </Table>
       </div>
     </section>
+  )
+}
+
+function CatchAllArchivalTrigger({
+  domain,
+  pending,
+  startTransition,
+  onDone,
+}: {
+  domain: StalwartDomain
+  pending: boolean
+  startTransition: (fn: () => void) => void
+  onDone: () => void
+}) {
+  const isArchivalActive = domain.catchAllArchival !== false // Enabled by default unless explicitly turned off
+  const [syncing, setSyncing] = useState(false)
+
+  async function handleToggle(next: boolean) {
+    startTransition(() => {
+      void (async () => {
+        const res = await syncCatchAllArchivalAction(domain.id, next)
+        if (
+          toastActionResult(res, {
+            success: next
+              ? `Archival mirroring enabled for ${domain.name}. Sieve scripts synced.`
+              : `Archival mirroring paused for ${domain.name}.`,
+          })
+        ) {
+          onDone()
+        }
+      })()
+    })
+  }
+
+  async function handleResync() {
+    setSyncing(true)
+    try {
+      const res = await syncCatchAllArchivalAction(domain.id, isArchivalActive)
+      if (
+        toastActionResult(res, {
+          success: `Archival Sieve rules synchronized across all mailboxes for ${domain.name}.`,
+        })
+      ) {
+        startTransition(() => onDone())
+      }
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border p-2.5 text-xs transition-colors",
+        isArchivalActive
+          ? "border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-500/10"
+          : "border-border/60 bg-muted/30"
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 font-medium">
+          {isArchivalActive ? (
+            <ShieldCheck className="size-4 shrink-0 text-emerald-500" />
+          ) : (
+            <Shield className="size-4 shrink-0 text-muted-foreground" />
+          )}
+          <span className={cn(isArchivalActive ? "text-emerald-500" : "text-muted-foreground")}>
+            {isArchivalActive ? "Archival Mirroring Active" : "Archival Mirroring Paused"}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {isArchivalActive ? (
+            <Button
+              size="icon"
+              variant="ghost"
+              disabled={syncing || pending}
+              onClick={handleResync}
+              title="Force re-sync Sieve rules across all mailboxes"
+              className="size-6 text-muted-foreground hover:text-foreground"
+            >
+              <RefreshCw className={cn("size-3", syncing && "animate-spin")} />
+            </Button>
+          ) : null}
+          <Switch
+            checked={isArchivalActive}
+            disabled={pending || syncing}
+            onCheckedChange={handleToggle}
+            aria-label="Toggle Archival Mirroring"
+          />
+        </div>
+      </div>
+
+      <p className="mt-1.5 text-[11px] text-muted-foreground leading-relaxed">
+        {isArchivalActive ? (
+          <>
+            Delivered emails to any mailbox on{" "}
+            <code className="font-mono text-[10px] text-foreground font-semibold">{domain.name}</code>{" "}
+            automatically duplicate an archival copy into{" "}
+            <span className="font-mono font-medium text-foreground">{domain.catchAllAddress}</span>{" "}
+            via Sieve.
+          </>
+        ) : (
+          <>
+            Archival mirroring is paused. Delivered emails land only in the recipient mailbox without duplication.
+          </>
+        )}
+      </p>
+    </div>
   )
 }
 

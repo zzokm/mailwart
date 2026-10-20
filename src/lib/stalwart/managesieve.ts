@@ -161,8 +161,69 @@ class SieveSocket {
 }
 
 /**
+ * Connect to ManageSieve server with support for both STARTTLS and Implicit TLS.
+ */
+async function connectToManageSieve(config: ReturnType<typeof getManageSieveConfig>): Promise<SieveSocket> {
+  const timeoutMs = config.timeoutMs || 3000
+
+  // 1. First attempt: Plain TCP with STARTTLS
+  try {
+    const rawSocket = await new Promise<net.Socket>((resolve, reject) => {
+      const s = net.connect({ host: config.host, port: config.port }, () => resolve(s))
+      s.setTimeout(timeoutMs)
+      s.on("error", reject)
+      s.on("timeout", () => {
+        s.destroy()
+        reject(new Error(`TCP connection to ${config.host}:${config.port} timed out`))
+      })
+    })
+
+    const conn = new SieveSocket(rawSocket)
+    const banner = await conn.readResponse(timeoutMs)
+
+    if (banner.ok) {
+      const hasStartTls = banner.lines.some((l) => l.toUpperCase().includes('"STARTTLS"'))
+      if (hasStartTls) {
+        await conn.write("STARTTLS\r\n")
+        const startTlsRes = await conn.readResponse(timeoutMs)
+        if (startTlsRes.ok) {
+          await conn.upgradeToTls()
+          await conn.readResponse(timeoutMs).catch(() => ({}))
+        }
+      }
+      return conn
+    }
+    conn.close()
+  } catch {
+    // If plain connection fails or times out (common if port 4190 is Implicit TLS), try TLS directly below
+  }
+
+  // 2. Second attempt: Direct TLS (Implicit TLS)
+  const tlsSocket = await new Promise<tls.TLSSocket>((resolve, reject) => {
+    const s = tls.connect(
+      {
+        host: config.host,
+        port: config.port,
+        rejectUnauthorized: false,
+      },
+      () => resolve(s)
+    )
+    s.setTimeout(timeoutMs)
+    s.on("error", reject)
+    s.on("timeout", () => {
+      s.destroy()
+      reject(new Error(`Direct TLS connection to ${config.host}:${config.port} timed out`))
+    })
+  })
+
+  const secureConn = new SieveSocket(tlsSocket)
+  await secureConn.readResponse(timeoutMs).catch(() => ({}))
+  return secureConn
+}
+
+/**
  * Upload and activate a Sieve script for a specific mailbox in Stalwart using ManageSieve.
- * Leverages master impersonation `<email>%<adminUser>` to configure Sieve filters.
+ * Leverages multiple master impersonation candidate formats to ensure compatibility.
  */
 export async function syncMailboxSieveScript(params: {
   accountEmail: string
@@ -183,54 +244,48 @@ export async function syncMailboxSieveScript(params: {
   let conn: SieveSocket | null = null
 
   try {
-    const rawSocket = await new Promise<net.Socket>((resolve, reject) => {
-      const s = net.connect({ host: config.host, port: config.port }, () => resolve(s))
-      s.setTimeout(config.timeoutMs)
-      s.on("error", reject)
-      s.on("timeout", () => {
-        s.destroy()
-        reject(new Error(`Connection to ${config.host}:${config.port} timed out`))
-      })
-    })
+    conn = await connectToManageSieve(config)
 
-    conn = new SieveSocket(rawSocket)
+    // Build SASL PLAIN candidate payloads for master impersonation
+    const domain = accountEmail.split("@")[1] || ""
+    const adminUser = config.impersonatorUser
+    const adminPass = config.impersonatorPassword
 
-    // 1. Read initial banner / capabilities
-    const banner = await conn.readResponse(config.timeoutMs)
-    const hasStartTls = banner.lines.some((l) => l.toUpperCase().includes('"STARTTLS"'))
+    const candidatePayloads: string[] = [
+      // 1. Stalwart standard user%admin
+      `\0${accountEmail}%admin\0${adminPass}`,
+      // 2. Stalwart user%adminUser
+      `\0${accountEmail}%${adminUser}\0${adminPass}`,
+      // 3. RFC 4616 SASL PLAIN format: authzid\0authcid\0passwd
+      `${accountEmail}\0${adminUser}\0${adminPass}`,
+      `${accountEmail}\0admin\0${adminPass}`,
+    ]
 
-    // 2. Upgrade with STARTTLS if advertised
-    if (hasStartTls) {
-      await conn.write("STARTTLS\r\n")
-      const startTlsRes = await conn.readResponse(config.timeoutMs)
-      if (!startTlsRes.ok) {
-        throw new Error(`STARTTLS rejected: ${startTlsRes.statusLine}`)
+    if (domain) {
+      candidatePayloads.push(`\0${accountEmail}%admin@${domain}\0${adminPass}`)
+    }
+    // Fallback: direct admin auth
+    candidatePayloads.push(`\0${adminUser}\0${adminPass}`)
+
+    let authenticated = false
+    let lastStatusLine = ""
+
+    for (const payload of candidatePayloads) {
+      const b64Token = Buffer.from(payload, "utf8").toString("base64")
+      await conn.write(`AUTHENTICATE "PLAIN" ${b64Token}\r\n`)
+      const authRes = await conn.readResponse(config.timeoutMs)
+      if (authRes.ok) {
+        authenticated = true
+        break
       }
-      await conn.upgradeToTls()
-      // Post-TLS capabilities response
-      await conn.readResponse(config.timeoutMs)
+      lastStatusLine = authRes.statusLine
     }
 
-    // 3. Authenticate using SASL PLAIN with master impersonation
-    // Format: \0<authzid>\0<password> where authzid is <email>%<impersonator>
-    const authIdentity = `${accountEmail}%${config.impersonatorUser}`
-    const plainPayload = `\0${authIdentity}\0${config.impersonatorPassword}`
-    const b64Token = Buffer.from(plainPayload, "utf8").toString("base64")
-
-    await conn.write(`AUTHENTICATE "PLAIN" ${b64Token}\r\n`)
-    const authRes = await conn.readResponse(config.timeoutMs)
-    if (!authRes.ok) {
-      // Fallback: try authenticating directly as admin if impersonation format differs
-      const altPayload = `\0${config.impersonatorUser}\0${config.impersonatorPassword}`
-      const altToken = Buffer.from(altPayload, "utf8").toString("base64")
-      await conn.write(`AUTHENTICATE "PLAIN" ${altToken}\r\n`)
-      const altAuthRes = await conn.readResponse(config.timeoutMs)
-      if (!altAuthRes.ok) {
-        throw new Error(`ManageSieve authentication failed: ${authRes.statusLine}`)
-      }
+    if (!authenticated) {
+      throw new Error(`ManageSieve authentication failed: ${lastStatusLine}`)
     }
 
-    // 4. Upload script via PUTSCRIPT
+    // Upload script via PUTSCRIPT
     const scriptBytes = Buffer.from(scriptContent, "utf8")
     await conn.write(`PUTSCRIPT "${scriptName}" {${scriptBytes.length}+}\r\n${scriptContent}\r\n`)
     const putRes = await conn.readResponse(config.timeoutMs)
@@ -238,14 +293,14 @@ export async function syncMailboxSieveScript(params: {
       throw new Error(`PUTSCRIPT failed: ${putRes.statusLine}`)
     }
 
-    // 5. Activate script via SETACTIVE
+    // Activate script via SETACTIVE
     await conn.write(`SETACTIVE "${scriptName}"\r\n`)
     const activeRes = await conn.readResponse(config.timeoutMs)
     if (!activeRes.ok) {
       throw new Error(`SETACTIVE failed: ${activeRes.statusLine}`)
     }
 
-    // 6. Graceful Logout
+    // Graceful Logout
     await conn.write("LOGOUT\r\n").catch(() => {})
     conn.close()
 
@@ -276,31 +331,14 @@ export async function probeManageSieve(options?: ManageSieveOptions): Promise<{
   let conn: SieveSocket | null = null
 
   try {
-    const probeTimeout = options?.timeoutMs || 1200
-    const rawSocket = await new Promise<net.Socket>((resolve, reject) => {
-      const s = net.connect({ host: config.host, port: config.port }, () => resolve(s))
-      s.setTimeout(probeTimeout)
-      s.on("error", reject)
-      s.on("timeout", () => {
-        s.destroy()
-        reject(new Error("Timeout"))
-      })
-    })
-
-    conn = new SieveSocket(rawSocket)
-    const banner = await conn.readResponse(probeTimeout)
+    const probeTimeout = options?.timeoutMs || 3000
+    conn = await connectToManageSieve({ ...config, timeoutMs: probeTimeout })
     await conn.write("LOGOUT\r\n").catch(() => {})
     conn.close()
 
-    if (banner.ok) {
-      return {
-        available: true,
-        note: `ManageSieve port 4190 reachable on ${config.host}.`,
-      }
-    }
     return {
-      available: false,
-      note: `ManageSieve responded with ${banner.statusLine}.`,
+      available: true,
+      note: `ManageSieve port 4190 reachable on ${config.host}.`,
     }
   } catch (err) {
     conn?.close()
