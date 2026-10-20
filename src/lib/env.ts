@@ -27,6 +27,10 @@ const envSchema = z.object({
   CLOUDFLARE_API_TOKEN: z.string().optional(),
   /** Path to persistent Cloudflare settings JSON file. */
   CLOUDFLARE_SETTINGS_PATH: z.string().optional(),
+  /** Stalwart IMAP host name presented for TLS validation (e.g. mail.yehia.dev). */
+  STALWART_IMAP_HOST: z.string().optional(),
+  /** Stalwart SMTP host name presented for TLS validation (e.g. mail.yehia.dev). */
+  STALWART_SMTP_HOST: z.string().optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -59,6 +63,8 @@ function readRawEnv(): Record<string, string | undefined> {
     AUDIT_LOG_PATH: unset(process.env.AUDIT_LOG_PATH),
     CLOUDFLARE_API_TOKEN: unset(process.env.CLOUDFLARE_API_TOKEN),
     CLOUDFLARE_SETTINGS_PATH: unset(process.env.CLOUDFLARE_SETTINGS_PATH),
+    STALWART_IMAP_HOST: unset(process.env.STALWART_IMAP_HOST),
+    STALWART_SMTP_HOST: unset(process.env.STALWART_SMTP_HOST),
   };
 }
 
@@ -116,6 +122,33 @@ export function getDefaultWebmailClient(): "rav" | "roundcube" {
 
 export function getStalwartAdminUiUrl(): string {
   return getEnv().STALWART_ADMIN_UI_URL;
+}
+
+export function getStalwartImapHost(): string {
+  const env = getEnv();
+  const configured = env.STALWART_IMAP_HOST?.trim();
+  if (configured && configured !== "stalwart-mail") {
+    return configured;
+  }
+  try {
+    const adminUrl = env.STALWART_ADMIN_UI_URL;
+    if (adminUrl) {
+      const u = new URL(adminUrl);
+      if (u.hostname && u.hostname !== "mail.example.com" && u.hostname !== "stalwart-mail") {
+        return u.hostname;
+      }
+    }
+  } catch {}
+  return "mail.yehia.dev";
+}
+
+export function getStalwartSmtpHost(): string {
+  const env = getEnv();
+  const configured = env.STALWART_SMTP_HOST?.trim();
+  if (configured && configured !== "stalwart-mail") {
+    return configured;
+  }
+  return getStalwartImapHost();
 }
 
 export function hasStalwartConfig(): boolean {

@@ -31,6 +31,8 @@ services:
       STALWART_ADMIN_USER: ${STALWART_ADMIN_USER}
       STALWART_ADMIN_PASSWORD: ${STALWART_ADMIN_PASSWORD}
       STALWART_ADMIN_UI_URL: ${STALWART_ADMIN_UI_URL:-https://mail.yehia.dev/admin}
+      STALWART_IMAP_HOST: ${STALWART_IMAP_HOST:-mail.yehia.dev}
+      STALWART_SMTP_HOST: ${STALWART_SMTP_HOST:-mail.yehia.dev}
       ROUNDCUBE_URL: ${ROUNDCUBE_URL:-https://email.yehia.dev/webmail/}
       RAV_URL: ${RAV_URL:-https://webmail.yehia.dev/}
       DEFAULT_WEBMAIL_CLIENT: ${DEFAULT_WEBMAIL_CLIENT:-rav}
@@ -176,11 +178,11 @@ services:
       retries: 3
       start_period: 10s
     environment:
-      IMAP_HOST: ${STALWART_IMAP_HOST:-stalwart-mail}
-      IMAP_CONNECT_HOST: stalwart-mail
+      IMAP_HOST: ${STALWART_IMAP_HOST:-mail.yehia.dev}
+      IMAP_CONNECT_HOST: ${STALWART_IMAP_CONNECT_HOST:-stalwart-mail}
       IMAP_PORT: "993"
-      SMTP_HOST: ${STALWART_SMTP_HOST:-stalwart-mail}
-      SMTP_CONNECT_HOST: stalwart-mail
+      SMTP_HOST: ${STALWART_SMTP_HOST:-mail.yehia.dev}
+      SMTP_CONNECT_HOST: ${STALWART_SMTP_CONNECT_HOST:-stalwart-mail}
       SMTP_PORT: "587"
       ALLOW_CUSTOM_MAIL_SERVERS: "true"
       TLS_ENABLED: "true"

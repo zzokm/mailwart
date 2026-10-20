@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 
-import { getStalwartConfig } from "@/lib/env"
+import { getStalwartConfig, getStalwartImapHost, getStalwartSmtpHost } from "@/lib/env"
 import { verifyWebmailSsoToken } from "@/lib/webmail-sso"
 
 export const runtime = "nodejs"
@@ -48,8 +48,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const clusterMailHost =
-    process.env.STALWART_IMAP_HOST?.trim() || "stalwart-mail"
+  const clusterImapHost = getStalwartImapHost()
+  const clusterSmtpHost = getStalwartSmtpHost()
 
   let lastStatus = 401
   let setCookies: string[] = []
@@ -65,9 +65,9 @@ export async function GET(request: NextRequest) {
         body: JSON.stringify({
           email: username,
           password: config.adminPassword,
-          imap_host: clusterMailHost,
+          imap_host: clusterImapHost,
           imap_port: 993,
-          smtp_host: clusterMailHost,
+          smtp_host: clusterSmtpHost,
           smtp_port: 587,
         }),
       })

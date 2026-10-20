@@ -108,6 +108,22 @@ describe("Rav Webmail SSO Endpoint (/sso)", () => {
     expect(joined).toContain("rav_session_acc1=sess_abc")
     expect(joined).toContain("SameSite=Lax")
 
+    // Verify Rav login payload uses valid TLS host mail.yehia.dev
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/auth/login"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"imap_host":"mail.yehia.dev"'),
+      })
+    )
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/auth/login"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.not.stringContaining('"imap_host":"stalwart-mail"'),
+      })
+    )
+
     // Verify identity was updated to clean target email
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringContaining("/api/identities/ident-1"),
