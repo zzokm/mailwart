@@ -2,8 +2,9 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import {
+  AlertCircle,
   Check,
   Edit2,
   ExternalLink,
@@ -15,9 +16,11 @@ import {
   Trash2,
   X,
 } from "lucide-react"
+import { toast } from "sonner"
 
 import {
   destroyForwardingRuleAction,
+  markDomainRulesFailedAction,
   syncCatchAllArchivalAction,
   syncDomainForwardsAction,
   toggleForwardingRuleAction,
@@ -659,12 +662,104 @@ function ForwardsSection({
   const [saving, setSaving] = useState(false)
   const [syncingDomain, setSyncingDomain] = useState(false)
   const [actionPendingId, setActionPendingId] = useState<string | null>(null)
+  const MAX_SIEVE_RETRIES = 5
+  const [retryCounts, setRetryCounts] = useState<Record<string, number>>({})
 
   const domain = domains.find((d) => d.id === domainId)
+
+  // Auto-refresh: when there are rules in sieve-pending, poll / auto-sync periodically
+  // until success or until MAX_SIEVE_RETRIES is reached, at which point it transitions to sieve-failed
+  const pendingRules = forwards.filter((f) => f.backend === "sieve-pending")
+  const hasPendingRules = pendingRules.length > 0
+
+  useEffect(() => {
+    if (!hasPendingRules || syncingDomain) return
+
+    const timer = setTimeout(async () => {
+      const domainsWithPending = Array.from(new Set(pendingRules.map((r) => r.domainId)))
+
+      for (const dId of domainsWithPending) {
+        const currentRetry = retryCounts[dId] || 0
+
+        if (currentRetry >= MAX_SIEVE_RETRIES) {
+          // Transition to sieve-failed
+          setRetryCounts((prev) => ({ ...prev, [dId]: MAX_SIEVE_RETRIES }))
+          onUpdateForwards((prev) =>
+            prev.map((f) =>
+              f.domainId === dId && f.backend === "sieve-pending"
+                ? { ...f, backend: "sieve-failed" }
+                : f
+            )
+          )
+          await markDomainRulesFailedAction(dId).catch(() => {})
+          toast.error(`ManageSieve sync timed out after ${MAX_SIEVE_RETRIES} attempts. Click retry to attempt again.`)
+          continue
+        }
+
+        const nextRetry = currentRetry + 1
+        setRetryCounts((prev) => ({ ...prev, [dId]: nextRetry }))
+
+        try {
+          const res = await syncDomainForwardsAction(dId)
+          if (res.ok) {
+            setRetryCounts((prev) => {
+              const copy = { ...prev }
+              delete copy[dId]
+              return copy
+            })
+            onUpdateForwards((prev) =>
+              prev.map((f) =>
+                f.domainId === dId && (f.backend === "sieve-pending" || f.backend === "sieve-failed")
+                  ? { ...f, backend: "sieve" }
+                  : f
+              )
+            )
+            toast.success(`ManageSieve synchronized successfully (${res.data.syncedCount} mailboxes updated).`)
+            startTransition(() => {
+              onDone()
+            })
+          } else {
+            if (nextRetry >= MAX_SIEVE_RETRIES) {
+              onUpdateForwards((prev) =>
+                prev.map((f) =>
+                  f.domainId === dId && f.backend === "sieve-pending"
+                    ? { ...f, backend: "sieve-failed" }
+                    : f
+                )
+              )
+              await markDomainRulesFailedAction(dId).catch(() => {})
+              toast.error(`ManageSieve sync failed after ${MAX_SIEVE_RETRIES} retries: ${res.error}`)
+            }
+          }
+        } catch {
+          if (nextRetry >= MAX_SIEVE_RETRIES) {
+            onUpdateForwards((prev) =>
+              prev.map((f) =>
+                f.domainId === dId && f.backend === "sieve-pending"
+                  ? { ...f, backend: "sieve-failed" }
+                  : f
+              )
+            )
+            await markDomainRulesFailedAction(dId).catch(() => {})
+          }
+        }
+      }
+    }, 3500)
+
+    return () => clearTimeout(timer)
+  }, [hasPendingRules, pendingRules, syncingDomain, retryCounts, onUpdateForwards, onDone, startTransition])
 
   async function retrySieveSync(targetDomainId?: string) {
     const dId = targetDomainId || domainId
     if (!dId) return
+    setRetryCounts((prev) => ({ ...prev, [dId]: 0 }))
+    onUpdateForwards((prev) =>
+      prev.map((f) =>
+        f.domainId === dId && f.backend === "sieve-failed"
+          ? { ...f, backend: "sieve-pending" }
+          : f
+      )
+    )
     setSyncingDomain(true)
     try {
       const res = await syncDomainForwardsAction(dId)
@@ -673,6 +768,13 @@ function ForwardsSection({
           success: `ManageSieve synchronized (${res.ok ? res.data.syncedCount : 0} mailboxes updated).`,
         })
       ) {
+        onUpdateForwards((prev) =>
+          prev.map((f) =>
+            f.domainId === dId && (f.backend === "sieve-pending" || f.backend === "sieve-failed")
+              ? { ...f, backend: "sieve" }
+              : f
+          )
+        )
         startTransition(() => {
           onDone()
         })
@@ -1239,15 +1341,31 @@ function ForwardsSection({
                             type="button"
                             disabled={syncingDomain}
                             onClick={() => retrySieveSync(f.domainId)}
-                            title="ManageSieve script pending upload to port 4190. Click to retry sync."
+                            title={`ManageSieve sync pending (attempt ${retryCounts[f.domainId] || 1}/${MAX_SIEVE_RETRIES}). Click to force immediate sync.`}
                             className="inline-flex items-center gap-1 cursor-pointer group"
                           >
                             <Badge
                               variant="outline"
                               className="font-mono text-[10px] border-amber-500/30 text-amber-500 bg-amber-500/5 group-hover:bg-amber-500/15 transition-colors"
                             >
-                              <RefreshCw className={cn("size-2.5 mr-0.5", syncingDomain && "animate-spin")} />
-                              sieve-pending
+                              <RefreshCw className="size-2.5 mr-0.5 animate-spin" />
+                              sieve-pending {retryCounts[f.domainId] ? `(${retryCounts[f.domainId]}/${MAX_SIEVE_RETRIES})` : ""}
+                            </Badge>
+                          </button>
+                        ) : f.backend === "sieve-failed" ? (
+                          <button
+                            type="button"
+                            disabled={syncingDomain}
+                            onClick={() => retrySieveSync(f.domainId)}
+                            title="ManageSieve sync timed out after retries. Click to retry sync."
+                            className="inline-flex items-center gap-1 cursor-pointer group"
+                          >
+                            <Badge
+                              variant="outline"
+                              className="font-mono text-[10px] border-rose-500/40 text-rose-500 bg-rose-500/10 group-hover:bg-rose-500/20 transition-colors"
+                            >
+                              <AlertCircle className="size-2.5 mr-0.5" />
+                              sieve-failed (retry)
                             </Badge>
                           </button>
                         ) : (

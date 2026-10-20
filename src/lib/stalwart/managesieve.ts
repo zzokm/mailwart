@@ -45,6 +45,7 @@ function getManageSieveConfig(options?: ManageSieveOptions) {
 class SieveSocket {
   private socket: net.Socket | tls.TLSSocket
   private buffer = ""
+  private receivedLines: string[] = []
   private queue: Array<(line: string) => void> = []
   private isDestroyed = false
 
@@ -68,12 +69,19 @@ class SieveSocket {
       const resolve = this.queue.shift()
       if (resolve) {
         resolve(line)
+      } else {
+        this.receivedLines.push(line)
       }
     }
   }
 
   public readLine(timeoutMs = 5000): Promise<string> {
     if (this.isDestroyed) return Promise.reject(new Error("Socket destroyed"))
+
+    if (this.receivedLines.length > 0) {
+      return Promise.resolve(this.receivedLines.shift()!)
+    }
+
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         const qIdx = this.queue.indexOf(handler)
@@ -86,15 +94,7 @@ class SieveSocket {
         resolve(line)
       }
 
-      if (this.buffer.includes("\r\n")) {
-        const idx = this.buffer.indexOf("\r\n")
-        const line = this.buffer.slice(0, idx)
-        this.buffer = this.buffer.slice(idx + 2)
-        clearTimeout(timer)
-        resolve(line)
-      } else {
-        this.queue.push(handler)
-      }
+      this.queue.push(handler)
     })
   }
 
@@ -131,19 +131,19 @@ class SieveSocket {
       const plainSocket = this.socket
       plainSocket.removeAllListeners("data")
 
-      const secureSocket = tls.connect(
-        {
-          socket: plainSocket,
-          rejectUnauthorized: false, // accommodate self-signed cluster certificates
-        },
-        () => {
-          this.socket = secureSocket
-          this.setupListeners()
-          resolve()
-        }
-      )
+      const secureSocket = tls.connect({
+        socket: plainSocket,
+        rejectUnauthorized: false, // accommodate self-signed cluster certificates
+      })
 
-      secureSocket.on("error", (err) => {
+      this.socket = secureSocket
+      this.setupListeners()
+
+      secureSocket.once("secureConnect", () => {
+        resolve()
+      })
+
+      secureSocket.once("error", (err) => {
         reject(err)
       })
     })
@@ -160,65 +160,91 @@ class SieveSocket {
   }
 }
 
+function getCandidateHosts(primaryHost: string): string[] {
+  const hosts: string[] = []
+  if (primaryHost && !hosts.includes(primaryHost)) hosts.push(primaryHost)
+  const envHost = process.env.MANAGESIEVE_HOST
+  if (envHost && !hosts.includes(envHost)) hosts.push(envHost)
+  const imapHost = process.env.STALWART_IMAP_HOST
+  if (imapHost && !hosts.includes(imapHost)) hosts.push(imapHost)
+  if (!hosts.includes("stalwart-mail")) hosts.push("stalwart-mail")
+  if (!hosts.includes("127.0.0.1")) hosts.push("127.0.0.1")
+  return hosts
+}
+
 /**
- * Connect to ManageSieve server with support for both STARTTLS and Implicit TLS.
+ * Connect to ManageSieve server with support for candidate host fallback, STARTTLS, and Implicit TLS.
  */
 async function connectToManageSieve(config: ReturnType<typeof getManageSieveConfig>): Promise<SieveSocket> {
-  const timeoutMs = config.timeoutMs || 3000
+  const timeoutMs = config.timeoutMs || 3500
+  const candidateHosts = getCandidateHosts(config.host)
+  let lastError: Error | null = null
 
-  // 1. First attempt: Plain TCP with STARTTLS
-  try {
-    const rawSocket = await new Promise<net.Socket>((resolve, reject) => {
-      const s = net.connect({ host: config.host, port: config.port }, () => resolve(s))
-      s.setTimeout(timeoutMs)
-      s.on("error", reject)
-      s.on("timeout", () => {
-        s.destroy()
-        reject(new Error(`TCP connection to ${config.host}:${config.port} timed out`))
+  for (const host of candidateHosts) {
+    // 1. First attempt: Plain TCP with STARTTLS
+    try {
+      const rawSocket = new net.Socket()
+      const conn = new SieveSocket(rawSocket)
+
+      await new Promise<void>((resolve, reject) => {
+        rawSocket.setTimeout(timeoutMs)
+        rawSocket.once("connect", () => resolve())
+        rawSocket.once("error", reject)
+        rawSocket.once("timeout", () => {
+          rawSocket.destroy()
+          reject(new Error(`TCP connect to ${host}:${config.port} timed out`))
+        })
+        rawSocket.connect(config.port, host)
       })
-    })
 
-    const conn = new SieveSocket(rawSocket)
-    const banner = await conn.readResponse(timeoutMs)
-
-    if (banner.ok) {
-      const hasStartTls = banner.lines.some((l) => l.toUpperCase().includes('"STARTTLS"'))
-      if (hasStartTls) {
-        await conn.write("STARTTLS\r\n")
-        const startTlsRes = await conn.readResponse(timeoutMs)
-        if (startTlsRes.ok) {
-          await conn.upgradeToTls()
-          await conn.readResponse(timeoutMs).catch(() => ({}))
+      const banner = await conn.readResponse(timeoutMs)
+      if (banner.ok) {
+        const hasStartTls = banner.lines.some((l) => l.toUpperCase().includes('"STARTTLS"'))
+        if (hasStartTls) {
+          await conn.write("STARTTLS\r\n")
+          const startTlsRes = await conn.readResponse(timeoutMs)
+          if (startTlsRes.ok) {
+            await conn.upgradeToTls()
+            await conn.readResponse(timeoutMs).catch(() => ({}))
+          }
         }
+        return conn
       }
-      return conn
+      conn.close()
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
     }
-    conn.close()
-  } catch {
-    // If plain connection fails or times out (common if port 4190 is Implicit TLS), try TLS directly below
-  }
 
-  // 2. Second attempt: Direct TLS (Implicit TLS)
-  const tlsSocket = await new Promise<tls.TLSSocket>((resolve, reject) => {
-    const s = tls.connect(
-      {
-        host: config.host,
+    // 2. Second attempt: Direct TLS (Implicit TLS)
+    try {
+      const tlsSocket = tls.connect({
+        host,
         port: config.port,
         rejectUnauthorized: false,
-      },
-      () => resolve(s)
-    )
-    s.setTimeout(timeoutMs)
-    s.on("error", reject)
-    s.on("timeout", () => {
-      s.destroy()
-      reject(new Error(`Direct TLS connection to ${config.host}:${config.port} timed out`))
-    })
-  })
+      })
+      const secureConn = new SieveSocket(tlsSocket)
 
-  const secureConn = new SieveSocket(tlsSocket)
-  await secureConn.readResponse(timeoutMs).catch(() => ({}))
-  return secureConn
+      await new Promise<void>((resolve, reject) => {
+        tlsSocket.setTimeout(timeoutMs)
+        tlsSocket.once("secureConnect", () => resolve())
+        tlsSocket.once("error", reject)
+        tlsSocket.once("timeout", () => {
+          tlsSocket.destroy()
+          reject(new Error(`Direct TLS to ${host}:${config.port} timed out`))
+        })
+      })
+
+      const banner = await secureConn.readResponse(timeoutMs).catch(() => null)
+      if (banner && banner.ok) {
+        return secureConn
+      }
+      return secureConn
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+    }
+  }
+
+  throw lastError || new Error(`ManageSieve unreachable on all candidate hosts: ${candidateHosts.join(", ")}:${config.port}`)
 }
 
 /**

@@ -87,7 +87,7 @@ export type ForwardingRule = {
   keepLocalCopy: boolean
   enabled: boolean
   /** How this rule is backed when live. */
-  backend: "mock" | "alias" | "catchall" | "sieve" | "sieve-pending"
+  backend: "mock" | "alias" | "catchall" | "sieve" | "sieve-pending" | "sieve-failed"
   description?: string
   updatedAt: string
   createdAt?: string
@@ -108,7 +108,7 @@ export type Autoresponder = {
   endAt?: string | null
   /** Minimum days between replies to the same sender. */
   daysBetween: number
-  backend: "mock" | "sieve" | "sieve-pending"
+  backend: "mock" | "sieve" | "sieve-pending" | "sieve-failed"
   updatedAt: string
 }
 
@@ -152,7 +152,7 @@ export type FilterRule = {
   action: FilterAction
   /** Lower runs first. */
   priority: number
-  backend: "mock" | "sieve" | "sieve-pending"
+  backend: "mock" | "sieve" | "sieve-pending" | "sieve-failed"
   updatedAt: string
 }
 

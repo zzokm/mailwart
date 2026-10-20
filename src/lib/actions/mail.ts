@@ -2499,10 +2499,10 @@ export async function syncDomainSieveRules(
     }
 
     if (errors.length === 0) {
-      // Transition any sieve-pending rules to active sieve now that sync succeeded
+      // Transition any sieve-pending or sieve-failed rules to active sieve now that sync succeeded
       const domainRules = await getForwardingRules(domain.id).catch(() => [])
       for (const r of domainRules) {
-        if (r.backend === "sieve-pending") {
+        if (r.backend === "sieve-pending" || r.backend === "sieve-failed") {
           r.backend = "sieve"
           await saveForwardingRule(r).catch(() => {})
         }
@@ -2798,6 +2798,29 @@ export async function syncDomainForwardsAction(
     })
 
     return ok({ syncedCount: res.syncedCount, errors: res.errors }, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function markDomainRulesFailedAction(
+  domainId: string
+): Promise<ActionResult<{ failedCount: number }>> {
+  const denied = await denyUnlessAuthed<{ failedCount: number }>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    const rules = await getForwardingRules(domainId).catch(() => [])
+    let failedCount = 0
+    for (const r of rules) {
+      if (r.backend === "sieve-pending") {
+        r.backend = "sieve-failed"
+        await saveForwardingRule(r)
+        failedCount++
+      }
+    }
+    return ok({ failedCount }, src)
   } catch (err) {
     return fail(err, src)
   }
