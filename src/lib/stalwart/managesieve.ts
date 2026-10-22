@@ -3,11 +3,65 @@ import "server-only"
 import net from "node:net"
 import tls from "node:tls"
 import { getStalwartConfig } from "@/lib/env"
+import { jmapCall } from "./client"
 
 export interface ManageSieveOptions {
   host?: string
   port?: number
   timeoutMs?: number
+}
+
+/**
+ * Ensures that Stalwart's SieveUserInterpreter has a sufficient maxRedirects limit
+ * (default is 1, which blocks external forwarding when archival journaling or multiple
+ * forward targets are configured).
+ */
+export async function ensureSieveInterpreterLimits(): Promise<void> {
+  try {
+    const config = getStalwartConfig()
+    if (!config) return
+
+    const res = await jmapCall(
+      [["x:SieveUserInterpreter/get", { ids: ["singleton"] }, "s0"]],
+      { timeoutMs: 5000, retry: false }
+    )
+
+    const [method, data] = res.methodResponses?.[0] || []
+    if (method === "x:SieveUserInterpreter/get") {
+      const current = (data as { list?: Array<{ maxRedirects?: number }> })?.list?.[0]
+      if (current && (current.maxRedirects === undefined || current.maxRedirects < 10)) {
+        await jmapCall(
+          [
+            [
+              "x:SieveUserInterpreter/set",
+              {
+                update: {
+                  singleton: {
+                    maxRedirects: 10,
+                  },
+                },
+              },
+              "s1",
+            ],
+            [
+              "x:Action/set",
+              {
+                create: {
+                  reload: {
+                    "@type": "ReloadSettings",
+                  },
+                },
+              },
+              "s2",
+            ],
+          ],
+          { timeoutMs: 5000, retry: false }
+        )
+      }
+    }
+  } catch (err) {
+    console.warn("[ManageSieve] Could not verify/update SieveUserInterpreter maxRedirects:", err)
+  }
 }
 
 function getManageSieveConfig(options?: ManageSieveOptions) {
@@ -270,6 +324,9 @@ export async function syncMailboxSieveScript(params: {
   let conn: SieveSocket | null = null
 
   try {
+    // Ensure Stalwart allows >= 10 redirects per user script execution
+    await ensureSieveInterpreterLimits().catch(() => {})
+
     conn = await connectToManageSieve(config)
 
     // Build SASL PLAIN candidate payloads for master impersonation

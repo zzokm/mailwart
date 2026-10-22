@@ -134,6 +134,87 @@ describe("Rav Webmail SSO Endpoint (/sso)", () => {
     )
   })
 
+  it("repairs identity when email is empty string or corrupted", async () => {
+    const token = createWebmailSsoToken("charles@example.com")
+    const req = new NextRequest(`https://webmail.example.com/sso?token=${token}`)
+
+    const fakeHeaders = new Headers()
+    fakeHeaders.append("set-cookie", "rav_session_acc1=sess_123; HttpOnly; Path=/")
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const urlStr = url.toString()
+      if (urlStr.endsWith("/api/auth/login")) {
+        return new Response(JSON.stringify({ account: { id: "acc1" } }), {
+          status: 201,
+          headers: fakeHeaders,
+        })
+      }
+      if (urlStr.endsWith("/api/identities")) {
+        return new Response(
+          JSON.stringify({
+            identities: [
+              {
+                id: "ident-empty",
+                email: "",
+                display_name: "Charles",
+                is_default: true,
+              },
+            ],
+          }),
+          { status: 200 }
+        )
+      }
+      if (urlStr.includes("/api/identities/ident-empty")) {
+        return new Response(JSON.stringify({ success: true }), { status: 200 })
+      }
+      return new Response("Not Found", { status: 404 })
+    })
+
+    const res = await GET(req)
+    expect(res.status).toBe(302)
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/identities/ident-empty"),
+      expect.objectContaining({
+        method: "PUT",
+        body: expect.stringContaining('"email":"charles@example.com"'),
+      })
+    )
+  })
+
+  it("creates a default identity via POST when identities array is empty", async () => {
+    const token = createWebmailSsoToken("dan@example.com")
+    const req = new NextRequest(`https://webmail.example.com/sso?token=${token}`)
+
+    const fakeHeaders = new Headers()
+    fakeHeaders.append("set-cookie", "rav_session_acc1=sess_456; HttpOnly; Path=/")
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const urlStr = url.toString()
+      if (urlStr.endsWith("/api/auth/login")) {
+        return new Response(JSON.stringify({ account: { id: "acc1" } }), {
+          status: 201,
+          headers: fakeHeaders,
+        })
+      }
+      if (urlStr.endsWith("/api/identities")) {
+        return new Response(JSON.stringify({ identities: [] }), { status: 200 })
+      }
+      return new Response("Not Found", { status: 404 })
+    })
+
+    const res = await GET(req)
+    expect(res.status).toBe(302)
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/identities$/),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"email":"dan@example.com"'),
+      })
+    )
+  })
+
   it("returns 502 when Rav login fails", async () => {
     const token = createWebmailSsoToken("bob@example.com")
     const req = new NextRequest(`https://webmail.example.com/sso?token=${token}`)

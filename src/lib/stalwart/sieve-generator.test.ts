@@ -127,20 +127,26 @@ describe("sieve-generator", () => {
     // Sieve capabilities header
     expect(sieve).toContain('require ["copy", "fileinto", "regex", "variables", "envelope", "subaddress"];')
 
-    // Archival copy
-    expect(sieve).toContain('redirect :copy "catch@example.com";')
-
     // Exact match
-    expect(sieve).toContain('address :is ["to", "cc", "envelope-to", "x-original-to"] "sales@example.com"')
+    expect(sieve).toContain('anyof (envelope :is "to" "sales@example.com", address :is ["to", "cc", "envelope-to", "x-original-to"] "sales@example.com")')
     expect(sieve).toContain('redirect :copy "personal@gmail.com";')
 
     // Wildcard match
-    expect(sieve).toContain('address :matches ["to", "cc", "envelope-to", "x-original-to"] "support-*@example.com"')
+    expect(sieve).toContain('anyof (envelope :matches "to" "support-*@example.com", address :matches ["to", "cc", "envelope-to", "x-original-to"] "support-*@example.com")')
     expect(sieve).toContain('redirect "helpdesk@gmail.com";')
     expect(sieve).toContain("stop;")
 
     // Regex match
-    expect(sieve).toContain('address :regex ["to", "cc", "envelope-to", "x-original-to"] "^billing-[0-9]+@example\\\\.com$"')
+    expect(sieve).toContain('anyof (envelope :regex "to" "^billing-[0-9]+@example\\\\.com$", address :regex ["to", "cc", "envelope-to", "x-original-to"] "^billing-[0-9]+@example\\\\.com$")')
     expect(sieve).toContain('redirect :copy "finance@gmail.com";')
+
+    // Archival copy
+    expect(sieve).toContain('redirect :copy "catch@example.com";')
+
+    // Ensure forwarding rules appear before archival copy in the script
+    const forwardIdx = sieve.indexOf("Inbound Forwarding Rules")
+    const archivalIdx = sieve.indexOf("Archival Journaling Copy")
+    expect(forwardIdx).toBeGreaterThan(0)
+    expect(archivalIdx).toBeGreaterThan(forwardIdx)
   })
 })

@@ -95,20 +95,7 @@ export function generateMailboxSieve(options: SieveGeneratorOptions): string {
   const cleanMailbox = mailboxEmail.trim().toLowerCase()
   const cleanCatchAll = catchAllEmail ? catchAllEmail.trim().toLowerCase() : null
 
-  // 1. Archival journaling to catch-all mailbox (Requirement 3)
-  // If archival is enabled, catch-all exists, and this is NOT the catch-all mailbox itself
-  if (
-    archivalCopyEnabled &&
-    cleanCatchAll &&
-    cleanMailbox !== cleanCatchAll
-  ) {
-    lines.push("# --- 1. Archival Journaling Copy (Catch-All) ---")
-    lines.push("# Delivers a duplicate copy of every received email to the domain catch-all archive")
-    lines.push(`redirect :copy ${sieveQuote(cleanCatchAll)};`)
-    lines.push("")
-  }
-
-  // 2. Active Forwarding Rules (Requirement 2 & 4)
+  // 1. Active Forwarding Rules (Evaluated FIRST so user forwarding has highest priority)
   const activeRules = rules.filter((r) => r.enabled && r.targets.length > 0)
   const matchedRules: ForwardingRule[] = []
 
@@ -129,7 +116,7 @@ export function generateMailboxSieve(options: SieveGeneratorOptions): string {
   }
 
   if (matchedRules.length > 0) {
-    lines.push("# --- 2. Inbound Forwarding Rules ---")
+    lines.push("# --- 1. Inbound Forwarding Rules ---")
 
     for (const rule of matchedRules) {
       const sType = rule.sourceType || (rule.scope === "domain" ? "domain" : "exact")
@@ -142,11 +129,11 @@ export function generateMailboxSieve(options: SieveGeneratorOptions): string {
 
       let testClause = ""
       if (sType === "exact") {
-        testClause = `address :is ["to", "cc", "envelope-to", "x-original-to"] ${sieveQuote(normSource)}`
+        testClause = `anyof (envelope :is "to" ${sieveQuote(normSource)}, address :is ["to", "cc", "envelope-to", "x-original-to"] ${sieveQuote(normSource)})`
       } else if (sType === "wildcard" || sType === "domain") {
-        testClause = `address :matches ["to", "cc", "envelope-to", "x-original-to"] ${sieveQuote(normSource)}`
+        testClause = `anyof (envelope :matches "to" ${sieveQuote(normSource)}, address :matches ["to", "cc", "envelope-to", "x-original-to"] ${sieveQuote(normSource)})`
       } else if (sType === "regex") {
-        testClause = `address :regex ["to", "cc", "envelope-to", "x-original-to"] ${sieveQuote(normSource)}`
+        testClause = `anyof (envelope :regex "to" ${sieveQuote(normSource)}, address :regex ["to", "cc", "envelope-to", "x-original-to"] ${sieveQuote(normSource)})`
       }
 
       lines.push(`if ${testClause} {`)
@@ -167,6 +154,19 @@ export function generateMailboxSieve(options: SieveGeneratorOptions): string {
       lines.push("}")
       lines.push("")
     }
+  }
+
+  // 2. Archival journaling to catch-all mailbox (Catch-All)
+  // If archival is enabled, catch-all exists, and this is NOT the catch-all mailbox itself
+  if (
+    archivalCopyEnabled &&
+    cleanCatchAll &&
+    cleanMailbox !== cleanCatchAll
+  ) {
+    lines.push("# --- 2. Archival Journaling Copy (Catch-All) ---")
+    lines.push("# Delivers a duplicate copy of every received email to the domain catch-all archive")
+    lines.push(`redirect :copy ${sieveQuote(cleanCatchAll)};`)
+    lines.push("")
   }
 
   return lines.join("\n")

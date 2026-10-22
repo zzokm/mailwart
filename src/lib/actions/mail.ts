@@ -26,7 +26,7 @@ import {
 } from "@/lib/db"
 import { getUserWebmailSettings } from "@/lib/db/webmail-settings"
 import { generateMailboxSieve, normalizeSourcePattern } from "@/lib/stalwart/sieve-generator"
-import { syncMailboxSieveScript, probeManageSieve } from "@/lib/stalwart/managesieve"
+import { syncMailboxSieveScript, probeManageSieve, ensureSieveInterpreterLimits } from "@/lib/stalwart/managesieve"
 import { getMailboxesActivity } from "@/lib/stalwart/mailbox-status"
 import type { ForwardSourceType } from "@/lib/stalwart/types"
 import {
@@ -2457,6 +2457,9 @@ export async function syncDomainSieveRules(
 
     const domainRules = await getForwardingRules(domain.id)
     const archival = await getDomainCatchAllArchival(domain.id)
+
+    // Ensure Stalwart allows >= 10 redirects per user script execution
+    await ensureSieveInterpreterLimits().catch(() => {})
 
     // 2. Upload Sieve rules across all domain mailboxes (concurrency with 4s timeout)
     const results = await Promise.allSettled(

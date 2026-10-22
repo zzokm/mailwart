@@ -120,28 +120,46 @@ export async function GET(request: NextRequest) {
           ? data
           : []
 
-      for (const ident of identities) {
-        if (
-          ident.email &&
-          (ident.email.includes("%") ||
-            ident.email.toLowerCase() !== targetEmail.toLowerCase())
-        ) {
-          await fetch(`${ravInternalUrl}/api/identities/${ident.id}`, {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              Cookie: cookieHeader,
-              "X-Requested-With": "XMLHttpRequest",
-            },
-            body: JSON.stringify({
-              email: targetEmail,
-              display_name: ident.display_name || "",
-              signature_html: ident.signature_html || "",
-              is_default: ident.is_default ?? true,
-              reply_to: ident.reply_to || null,
-              bcc: ident.bcc || null,
-            }),
-          })
+      if (identities.length === 0) {
+        await fetch(`${ravInternalUrl}/api/identities`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: cookieHeader,
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: JSON.stringify({
+            email: targetEmail,
+            display_name: targetEmail.split("@")[0] || "",
+            is_default: true,
+          }),
+        })
+      } else {
+        for (const ident of identities) {
+          const needsRepair =
+            !ident.email ||
+            ident.email.trim() === "" ||
+            ident.email.includes("%") ||
+            ident.email.toLowerCase() !== targetEmail.toLowerCase()
+
+          if (needsRepair) {
+            await fetch(`${ravInternalUrl}/api/identities/${ident.id}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                Cookie: cookieHeader,
+                "X-Requested-With": "XMLHttpRequest",
+              },
+              body: JSON.stringify({
+                email: targetEmail,
+                display_name: ident.display_name || "",
+                signature_html: ident.signature_html || "",
+                is_default: ident.is_default ?? true,
+                reply_to: ident.reply_to || null,
+                bcc: ident.bcc || null,
+              }),
+            })
+          }
         }
       }
     }
