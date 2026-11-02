@@ -100,7 +100,7 @@ graph TD
     - **Mailboxes:** Total active accounts and count of mailboxes with quotas.
     - **Catch-alls:** Number of domains with catch-all routing enabled.
     - **Storage Used:** Total disk usage vs. allocated storage quota formatted in human-readable bytes (e.g. `1.24 GB / 10 GB`).
-  - **Storage Meter (`StorageMeter`):** Visual progress bar showing directory storage utilization.
+  - **Storage Meter (`StorageMeter`):** Visual progress bar showing directory storage utilization. Mailboxes with unmetered infinite capacity dynamically scale their contribution in 0.25 GB tiers (starting at 0.25 GB if $\le 0.25\text{ GB}$ used, expanding to 0.5 GB, 0.75 GB, 1.0 GB, etc.), providing a smooth, realistic utilization gauge without artificial ceilings.
   - **System Health Panel (`SystemHealthPanel`):** Reports JMAP latency, webmail reachability, and memory metrics.
   - **Recent Domains List:** Quick table of top domains with status badges and mailbox counts.
   - **Quick Action Buttons:** Direct shortcuts to Create Mailbox, Add Domain, Bulk Import, and Stalwart Admin.
@@ -165,7 +165,7 @@ graph TD
 - **Features:**
   1. **One-Click Webmail Launch (`RoundcubeButton`):** Mints a short-lived HMAC SSO token and opens Roundcube directly into the mailbox.
   2. **Password Reset Card:** Generate or enter a new password. Copies to clipboard with one click. Plaintext is never stored.
-  3. **Quota Manager:** Set custom storage quotas in MB/GB or leave unlimited (server default).
+  3. **Quota Manager (`StorageCapacitySelect`):** Set storage quotas using standard presets (64 MB to 10 GB), unmetered infinite capacity, or custom values with MB/GB/KB unit selection.
   4. **Account Suspension:** Suspend or reactivate login and message delivery.
   5. **Email Aliases Panel (`AliasesPanel`):** Add/remove alternate local-parts that route into this mailbox (e.g. `billing@domain` &rarr; `admin@domain`).
   6. **App Passwords Panel (`AppPasswordPanel`):** Generate and revoke dedicated application passwords for IMAP/SMTP clients (Thunderbird, Apple Mail, Outlook).

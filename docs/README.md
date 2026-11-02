@@ -59,6 +59,7 @@ graph TD
 2. **Zero Plaintext Mailbox Passwords in Browser:** User mailbox passwords are generated or reset in single-flight operations. When opening webmail, administrators never enter or view the mailbox password - short-lived signed HMAC tokens and Stalwart SASL PLAIN master impersonation handle authentication transparently.
 3. **Graceful Fallback & Mock Runtime:** If Stalwart or PostgreSQL credentials are unset (e.g. during local frontend development or automated testing), the application boots cleanly in `mock` mode with a stateful in-memory directory store.
 4. **Strict Isolation & Safe Operations:** Destructive actions (deleting domains, removing mailboxes, mass password resets) require explicit typed confirmations or operator approval modals in the AI Copilot.
+5. **Intelligent Quotas & Archival Mirroring:** Mailbox storage defaults to unmetered infinite capacity with dynamic 0.25 GB tier scaling on system overview meters. Catch-alls serve as active domain archives with automated Sieve postmaster/DMARC report filtering and retroactive JMAP cleanup abstractions.
 
 ---
 

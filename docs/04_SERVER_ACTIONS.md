@@ -27,13 +27,13 @@ export type ActionResult<T = void> =
 
 ## 2. Mail & Directory Server Actions (`src/lib/actions/mail.ts`)
 
-`mail.ts` is the central action module containing 46 server actions:
+`mail.ts` is the central action module containing 49 server actions:
 
 ### Overview & Diagnostics
 | Action Name | Input Parameters | Return Type | Description |
 | :--- | :--- | :--- | :--- |
 | `getHealth()` | None | `HealthStatus` | Probes JMAP latency and webmail HTTP reachability. |
-| `getOverview()` | None | `ActionResult<OverviewData>` | Computes directory counts, active domains, quota usage, and service URLs. |
+| `getOverview()` | None | `ActionResult<OverviewData>` | Computes directory counts, active domains, dynamic 0.25GB-scaled quota metrics, and service URLs. |
 
 ### Domain Management Actions
 | Action Name | Input Parameters | Description |
@@ -53,24 +53,25 @@ export type ActionResult<T = void> =
 | :--- | :--- | :--- |
 | `listMailboxesAction(domainId?)` | `domainId?: string` | Lists accounts across all domains or filtered by domain ID. |
 | `getMailboxDetailAction(id)` | `id: string` | Returns account details, quota, aliases, app passwords, 2FA status, and forwarders. |
-| `createMailboxAction(input)` | `{ domainId, localPart, password, quotaMib?, description? }` | Creates Stalwart account `x:Account`, enforces password complexity, syncs to DB. |
-| `updateMailboxAction(input)` | `{ id, isEnabled?, quotaMib?, description? }` | Updates mailbox status, adjusts storage quota, or updates operator description. |
-| `resetMailboxPasswordAction(input)` | `{ id, newPassword }` | Updates account credentials in Stalwart. Never stores plaintext password. |
-| `destroyMailboxAction(input)` | `{ id, confirmEmail }` | Deletes mailbox from Stalwart after email confirmation. Cleans up aliases. |
+| `createMailboxAction(input)` | `{ domainId, local, password, diskQuotaBytes?, description? }` | Creates Stalwart account `x:Account`. Accepts numeric bytes or `null` for unmetered infinite capacity. |
+| `updateMailboxAction(input)` | `{ id, isEnabled?, diskQuotaBytes?, description? }` | Updates mailbox status, adjusts storage quota (`null` for infinite, or bytes), or updates description. |
+| `resetMailboxPasswordAction(input)` | `{ id, password }` | Updates account credentials in Stalwart. Never stores plaintext password. |
+| `destroyMailboxAction(input)` | `{ id, typedEmail, adminConfirm? }` | Deletes mailbox from Stalwart after email confirmation. Cleans up aliases. |
 | `bulkDestroyMailboxesAction(ids)` | `ids: string[]` | Batch deletes multiple mailboxes. Returns per-item outcome status. |
-| `bulkResetPasswordsAction(ids)` | `ids: string[]` | Generates cryptographically secure passwords for selected mailboxes. |
-| `bulkSuspendMailboxesAction(input)`| `{ ids: string[], suspend: boolean }` | Batch activates or suspends multiple mailboxes. |
+| `bulkResetPasswordsAction(ids, password)` | `ids: string[], password: string` | Applies password reset across selected mailboxes. |
+| `bulkSuspendMailboxesAction(ids, suspend)`| `ids: string[], suspend: boolean` | Batch activates or suspends multiple mailboxes. |
+| `bulkSetStorageCapacityAction(ids, diskQuotaBytes)` | `ids: string[], diskQuotaBytes: number \| null` | Sets storage capacity in bulk across selected mailboxes (`null` for unmetered infinite). |
 
 ### Application Passwords & 2FA
 | Action Name | Input Parameters | Description |
 | :--- | :--- | :--- |
-| `createAppPasswordAction(input)` | `{ accountId, label }` | Mints a dedicated IMAP/SMTP client password; returns token once. |
-| `revokeAppPasswordAction(input)` | `{ accountId, passwordId }` | Revokes specific app password token in Stalwart. |
+| `createAppPasswordAction(input)` | `{ accountId, description }` | Mints a dedicated IMAP/SMTP client password; returns token once. |
+| `revokeAppPasswordAction(input)` | `{ accountId, appPasswordId }` | Revokes specific app password token in Stalwart. |
 
 ### Bulk CSV Provisioning Actions
 | Action Name | Input Parameters | Description |
 | :--- | :--- | :--- |
-| `prepareBulkMailboxJobAction(input)` | `{ csvText }` | Parses and validates mailbox CSV; initializes chunked job store session. |
+| `prepareBulkMailboxJobAction(input)` | `{ csvText, overwritePasswords? }` | Parses and validates mailbox CSV (supports infinite/unlimited quota cells); initializes job store session. |
 | `prepareBulkForwardingJobAction(input)`| `{ csvText }` | Parses and validates forwarding CSV; checks domain ownership and target syntax. |
 | `commitBulkJobChunkAction(input)` | `{ jobId, chunkIndex }` | Commits a single 25-row chunk to Stalwart to avoid gateway timeouts. |
 | `getBulkJobAction(jobId)` | `jobId: string` | Fetches real-time progress, processed count, and row errors for a bulk job. |
@@ -78,15 +79,19 @@ export type ActionResult<T = void> =
 | `resumeBulkJobAction(jobId)` | `jobId: string` | Resumes a paused bulk execution job. |
 | `abortBulkJobAction(jobId)` | `jobId: string` | Aborts remaining chunks and marks job as terminated. |
 
-### Routing & Forwarding Actions
+### Routing, Catch-All & Sieve Actions
 | Action Name | Input Parameters | Description |
 | :--- | :--- | :--- |
-| `getRoutingOverviewAction()` | None | Aggregates catch-alls, domain aliases, and user forwarders. |
-| `upsertForwardingRuleAction(input)` | `{ source, targets, keepLocalCopy, enabled }` | Configures Sieve-based or alias-based email redirection. |
-| `destroyForwardingRuleAction(input)` | `{ id: string }` | Removes an active forwarding rule. |
-| `updateMailboxAliasesAction(input)` | `{ accountId, aliases: string[] }` | Replaces secondary inbound local-parts delivering into a mailbox. |
-| `updateCatchAllAction(input)` | `{ domainId, mode, targetMailboxId? }` | Sets domain catch-all behavior (Address, Bounce, or Blackhole). |
-| `updateMailExchangerAction(input)` | `{ domainId, mode: "local"\|"backup"\|"remote" }` | Updates Stalwart `allowRelaying` to reflect MX topology. |
+| `getRoutingOverviewAction()` | None | Aggregates catch-alls, domain aliases, archival statuses, and user forwarders. |
+| `upsertForwardingRuleAction(input)` | `{ scope, domainId, source, targets, keepLocalCopy, enabled }` | Configures Sieve-based or alias-based email redirection. |
+| `destroyForwardingRuleAction(input)` | `{ id: string }` | Removes an active forwarding rule and resyncs Sieve scripts. |
+| `syncDomainForwardsAction(domainId)` | `domainId: string` | Re-syncs all ManageSieve rules and forwarding scripts for a domain. |
+| `syncCatchAllArchivalAction(domainId, archival)` | `domainId: string, archival: boolean` | Toggles automatic archival mirroring of all incoming domain traffic into the catch-all mailbox. |
+| `purgeCatchAllPostmasterAction(domainId?)` | `domainId?: string` | Purges automated postmaster/DMARC/TLS-RPT messages from catch-all mailboxes via JMAP `Email/set: destroy`. |
+| `markDomainRulesFailedAction(domainId)` | `domainId: string` | Marks pending ManageSieve rules as failed after retry timeouts. |
+| `updateMailboxAliasesAction(input)` | `{ accountId, aliases }` | Replaces secondary inbound local-parts delivering into a mailbox. |
+| `updateCatchAllAction(domainId, input)` | `domainId: string, input: { mode, address? }` | Sets domain catch-all behavior (Address, Bounce, or Blackhole) and triggers Sieve synchronization. |
+| `updateMailExchangerAction(domainId, mode)` | `domainId: string, mode: "local"\|"backup"\|"remote"` | Updates Stalwart `allowRelaying` to reflect MX topology. |
 
 ### Filters, Sieve & Logs Actions
 | Action Name | Input Parameters | Description |

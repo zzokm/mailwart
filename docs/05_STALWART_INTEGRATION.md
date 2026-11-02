@@ -8,7 +8,7 @@
 
 All management requests declare two JMAP capabilities:
 - `urn:ietf:params:jmap:core` (RFC 8620)
-- `urn:stalwart:jmap` (Stalwart directory & MTA management extensions)
+- `https://stalw.art/jmap/admin/` (Stalwart administrative directory & MTA management extensions)
 
 ---
 
@@ -22,7 +22,7 @@ sequenceDiagram
     participant Stalwart as Stalwart Server (:8080/jmap)
 
     App->>Client: jmapCall([["x:Domain/get", {ids: ["dom_example_com"]}, "c0"]])
-    Note over Client: 1. Basic Auth: base64(adminUser:adminPassword)<br/>2. Capabilities: urn:ietf:params:jmap:core, urn:stalwart:jmap<br/>3. Timeout signal (AbortController 10s)
+    Note over Client: 1. Basic Auth: base64(adminUser:adminPassword)<br/>2. Capabilities: core, stalwart/admin<br/>3. Timeout signal (AbortController 10s)
     Client->>Stalwart: POST /jmap (JSON Payload)
     Note over Stalwart: Process methodCalls batch
     Stalwart-->>Client: 200 OK ({methodResponses: [["x:Domain/get", {...}, "c0"]]})
@@ -46,7 +46,7 @@ export async function jmapCall(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      using: ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
+      using: ["urn:ietf:params:jmap:core", "https://stalw.art/jmap/admin/"],
       methodCalls,
     }),
     signal: controller.signal,
@@ -109,16 +109,40 @@ Managed via `src/lib/stalwart/accounts.ts`:
 | Stalwart Attribute | TypeScript Type | Description |
 | :--- | :--- | :--- |
 | `email` | `string` | Primary email address (`user@domain.com`). |
-| `name` | `string` | User display name. |
+| `name` | `string` | User display name / local-part. |
 | `secrets` | `object` | Holds password hashes or clear credentials on creation. |
-| `quota.storage` | `number` | Maximum allowed mailbox storage in bytes. |
+| `quotas` | `object` | Storage quotas map: `{ maxDiskQuota: number }` or `{}`. |
 | `isEnabled` | `boolean` | Account active or suspended state. |
 | `roles` | `string[]` | Account permissions (e.g. `["user"]`). |
 
-#### Storage Quota Mapping
-Stalwart tracks storage quotas in bytes. Mailwart exposes operator-friendly inputs in Megabytes (MB) or Gigabytes (GB) and normalizes values before JMAP submission:
-- `quotaBytes = inputMib * 1024 * 1024`
-- Unlimited / Server Default = `0` or `null`.
+#### Storage Quota Architecture & Normalization
+Stalwart's JMAP schema strictly expects the key **`maxDiskQuota`** (an integer byte count) inside the `quotas` dictionary:
+- **Set quota:** `quotas: { maxDiskQuota: 2147483648 }` (e.g. 2 GB)
+- **Unmetered / Infinite:** `quotas: {}`
+
+```typescript
+export function normalizeQuotasForStalwart(
+  quotas?: Record<string, unknown> | null
+): Record<string, number> {
+  if (!quotas || typeof quotas !== "object") return {}
+  const candidate = quotas.maxDiskQuota ?? quotas.diskQuota ?? quotas.storage
+  if (typeof candidate === "number" && Number.isFinite(candidate) && candidate > 0) {
+    return { maxDiskQuota: Math.round(candidate) }
+  }
+  return {}
+}
+```
+
+> [!NOTE]
+> Passing unauthorized keys (such as `diskQuota`) causes Stalwart's schema validator to reject the request with:  
+> `invalidPatch: Invalid key for object property`.  
+> The `normalizeQuotasForStalwart()` sanitizer ensures every creation, update, and bulk patch payload is fully compliant.
+
+#### Infinite Capacity & Dynamic 0.25GB Meter Scaling
+- **Default:** All newly created and default mailboxes have unmetered capacity (`DEFAULT_MAILBOX_QUOTA_BYTES = null`).
+- **Overview Scaling Meter:** To ensure the global storage meter on the dashboard displays meaningful progress without an arbitrary cap, infinite mailboxes dynamically scale their allocated contribution using `scaleInfiniteMailboxQuota(usedBytes)`:
+  - $le 0.25	ext{ GB used} implies 0.25	ext{ GB allocated}$
+  - Scales up in $0.25	ext{ GB}$ increments ($0.50	ext{ GB}$, $0.75	ext{ GB}$, $1.00	ext{ GB}$, $1.25	ext{ GB}$, etc.) as disk usage grows.
 
 ---
 
@@ -128,17 +152,71 @@ Stalwart tracks storage quotas in bytes. Mailwart exposes operator-friendly inpu
 
 ---
 
-### 3.4 Catch-All Implementation (`src/lib/stalwart/catchall.ts`)
-Stalwart provides native catch-all routing on the domain level:
-1. **Address Mode:** `catchAllAddress` is set to an existing mailbox address (e.g. `catch@example.com`). All unrouted mail arriving at `@example.com` lands in this inbox.
-2. **Bounce Mode:** `catchAllAddress` is set to `null`. Unknown local-parts are rejected at the SMTP RCPT TO phase with a `550 User unknown` response.
-3. **Blackhole Mode:** Advisory mode that drops unrouted mail silently.
+### 3.4 Catch-All & Archival Journaling Architecture (`src/lib/stalwart/catchall.ts` & `sieve-generator.ts`)
 
-The helper `ensureCatchAllMailbox()` checks if a designated catch-all mailbox exists and creates it automatically with an unlimited quota if requested by the operator.
+Stalwart provides native catch-all routing on the domain level:
+1. **Address Mode:** `catchAllAddress` is set to an existing mailbox (e.g. `catch@example.com`). Unrouted mail lands in this mailbox.
+2. **Bounce Mode:** `catchAllAddress` is set to `null`. Unknown recipients are rejected at SMTP with `550 User unknown`.
+3. **Blackhole Mode:** Drops unrouted mail silently.
+
+#### Archival Mirroring
+When Archival Mirroring is enabled (active by default for all domains), every email delivered to any mailbox on the domain automatically mirrors a copy into the catch-all address via Sieve.
+
+#### 3-Tier Sieve Rule Architecture
+Mailwart generates clean, RFC 5228 compliant ManageSieve scripts across all domain mailboxes:
+
+```sieve
+# -------------------------------------------------------------
+# 0. Postmaster Traffic Filter (on catch-all mailbox)
+# Drop DMARC / TLS-RPT / postmaster reports arriving at catch-all
+# -------------------------------------------------------------
+if anyof (
+  envelope :matches "to" "postmaster@*",
+  envelope :matches "to" "mailer-daemon@*",
+  header :matches "to" "postmaster@*",
+  header :matches "to" "mailer-daemon@*",
+  header :contains "subject" "Report Domain:",
+  header :contains "subject" "DMARC",
+  header :contains "subject" "SMTP TLS Reporting"
+) {
+  discard;
+  stop;
+}
+
+# -------------------------------------------------------------
+# 1. User Inbound Forwarding Rules
+# -------------------------------------------------------------
+if envelope :matches "to" "me@example.com" {
+  redirect :copy "external@gmail.com";
+}
+
+# -------------------------------------------------------------
+# 2. Archival Journaling Copy (Catch-All)
+# -------------------------------------------------------------
+if not anyof (
+  envelope :matches "to" "postmaster@*",
+  envelope :matches "to" "mailer-daemon@*",
+  header :matches "to" "postmaster@*",
+  header :contains "subject" "Report Domain:",
+  header :contains "subject" "DMARC",
+  header :contains "subject" "SMTP TLS Reporting"
+) {
+  redirect :copy "catch@example.com";
+}
+```
 
 ---
 
-### 3.5 Application Passwords (`src/lib/stalwart/app-passwords.ts`)
+### 3.5 Postmaster Purge System Abstraction (`src/lib/stalwart/postmaster-filter.ts`)
+
+Because automated DMARC, TLS-RPT, and NDR messages sent to `postmaster@domain` can clutter catch-all inboxes before filtering is established, mailwart includes a retroactive cleanup engine:
+- Queries messages in catch-all inboxes via JMAP `Email/query` targeting postmaster recipients and report subjects.
+- Invokes `Email/set` with `destroy: [ids...]` to delete orphaned report messages.
+- Exposed as an on-demand **Purge old reports** action in `/dashboard/routing`.
+
+---
+
+### 3.6 Application Passwords (`src/lib/stalwart/app-passwords.ts`)
 Stalwart supports application-specific passwords allowing third-party email clients (Thunderbird, iOS Mail, Outlook) to connect without using the master account password.
 - **Method:** `x:AppPassword/set`
 - Mints a cryptographically secure 16-character random token.
@@ -153,6 +231,7 @@ When Stalwart credentials are not present in `.env.local` or environment variabl
 
 ### Mock Store Capabilities:
 - Stateful in-memory database holding pre-seeded domains (`example.com`, `example.net`, `example.org`, `internal.test`).
-- Mock accounts (`admin@example.com`, `ops@example.com`, `hello@example.com`) with randomized quota usage metrics.
+- Mock accounts (`admin@example.com`, `ops@example.com`, `hello@example.com`) with unmetered infinite capacity and randomized usage.
+- Dynamic 0.25GB scaling metrics on mock overview statistics.
 - Simulated delivery traces and audit events.
 - Allows full interactive testing of the UI, wizards, and Copilot tools without network dependencies.
