@@ -25,3 +25,4 @@ main().catch((err) => {
   console.error("Fatal error running Mailwart MCP stdio server:", err)
   process.exit(1)
 })
+

@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest"
 import {
   SORT_FIELD_OPTIONS,
   getDirectionLabel,
-  type MailboxSortField,
-  type MailboxSortDirection,
 } from "@/components/mail/mailbox-table"
 
 describe("Mailbox Sorting Options and Helpers", () => {
@@ -31,3 +29,4 @@ describe("Mailbox Sorting Options and Helpers", () => {
     expect(getDirectionLabel("notifications", "desc")).toBe("Most unread")
   })
 })
+

@@ -142,3 +142,4 @@ describe("JMAP Mailbox Direct Engine (mailbox-jmap)", () => {
     expect(sent.email?.mailboxIds["mb-sent"]).toBe(true)
   })
 })
+
