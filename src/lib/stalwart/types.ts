@@ -218,6 +218,7 @@ export type StalwartAccount = {
   isAdmin?: boolean
   unreadCount?: number
   newCount?: number
+  createdAt?: string
 }
 
 export type DomainListItem = StalwartDomain & {

@@ -132,6 +132,15 @@ export const DOCS_REGISTRY: DocMetadata[] = [
     order: 13,
     readTime: "6 min read",
   },
+  {
+    slug: "mcp-server",
+    title: "Model Context Protocol (MCP) Server",
+    description: "External AI agent integration, direct JMAP mailbox access, tool catalog, SSE & stdio transports.",
+    category: "Features & Tools",
+    filename: "12_MCP_SERVER.md",
+    order: 14,
+    readTime: "8 min read",
+  },
 ]
 
 export function getDocsCategories(): Array<{
@@ -187,4 +196,6 @@ export const FILE_TO_DOC_MAP: Record<string, { slug: string; title: string }> = 
   "10_database_and_security.md": { slug: "database-and-security", title: "Database, Security & Deployment" },
   "11_RAV_WEBMAIL.md": { slug: "rav-webmail", title: "Rav Webmail & Dual Engine" },
   "11_rav_webmail.md": { slug: "rav-webmail", title: "Rav Webmail & Dual Engine" },
+  "12_MCP_SERVER.md": { slug: "mcp-server", title: "Model Context Protocol (MCP) Server" },
+  "12_mcp_server.md": { slug: "mcp-server", title: "Model Context Protocol (MCP) Server" },
 }

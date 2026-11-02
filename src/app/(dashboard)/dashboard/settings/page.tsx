@@ -17,6 +17,7 @@ import { queryDomains } from "@/lib/stalwart/domains"
 import { getOutboundEmailConfig, getEmailTemplateSetting } from "@/lib/db/system-settings"
 import { isPrimaryAdmin } from "@/lib/db/users"
 import { queryAccounts } from "@/lib/stalwart/accounts"
+import { listMcpApiKeys } from "@/lib/db/mcp-keys"
 import { getWebmailSettingsAction } from "@/lib/actions/webmail"
 import { getRavUrl, getRoundcubeUrl } from "@/lib/env"
 
@@ -104,6 +105,7 @@ export default async function SettingsPage({
           isPrimary: isPrimaryAdmin(session.username),
         }}
         initialTab={initialTab}
+        mcpKeys={isAdmin ? await listMcpApiKeys().catch(() => []) : []}
       />
     </div>
   )

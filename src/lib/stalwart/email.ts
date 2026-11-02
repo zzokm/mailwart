@@ -128,6 +128,8 @@ export function hydrateAccounts(
         ? credProbe.appPasswords
         : undefined,
       twoFactor: credProbe.twoFactor,
+      createdAt:
+        typeof item.createdAt === "string" ? item.createdAt : undefined,
     }
     const { email, domainName } = resolveAccountEmail(base, domainsById)
     const isAdmin =

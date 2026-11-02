@@ -17,6 +17,8 @@ import { DeliverabilityClient } from "@/components/mail/deliverability-client"
 import { SystemOutboundSettingsClient } from "@/components/mail/system-outbound-settings-client"
 import { UserManagementClient } from "@/components/mail/user-management-client"
 import { WebmailSettingsClient } from "@/components/mail/webmail-settings-client"
+import { McpSettingsClient } from "@/components/mail/mcp-settings-client"
+import type { SafeMcpApiKey } from "@/lib/db/mcp-keys"
 import { logoutAction } from "@/lib/actions/auth"
 import type { CloudflareStatus } from "@/lib/cloudflare/types"
 import type { CopilotPublicStatus } from "@/lib/copilot/types"
@@ -55,6 +57,7 @@ export type SettingsClientProps = {
     isPrimary?: boolean
   }
   initialTab?: string
+  mcpKeys?: SafeMcpApiKey[]
 }
 
 export function SettingsClient({
@@ -74,6 +77,7 @@ export function SettingsClient({
   ravUrl,
   session,
   initialTab,
+  mcpKeys,
 }: SettingsClientProps) {
   const isAdmin = session.role === "admin"
   const isPrimary = Boolean(session.isPrimary || session.username === "yehia")
@@ -122,6 +126,15 @@ export function SettingsClient({
           {isAdmin && (
             <TabsTrigger value="system" className="gap-2">
               <span>System &amp; Endpoints</span>
+            </TabsTrigger>
+          )}
+
+          {isAdmin && (
+            <TabsTrigger value="mcp" className="gap-2">
+              <span>MCP Server</span>
+              <Badge variant="outline" className="font-mono text-[10px] px-1.5 py-0 h-4 border-emerald-500/40 text-emerald-400">
+                AI
+              </Badge>
             </TabsTrigger>
           )}
 
@@ -317,6 +330,12 @@ export function SettingsClient({
                 Edit password policy (locked)
               </Button>
             </div>
+          </TabsContent>
+        )}
+
+        {isAdmin && (
+          <TabsContent value="mcp" className="w-full space-y-6">
+            <McpSettingsClient initialKeys={mcpKeys ?? []} />
           </TabsContent>
         )}
 

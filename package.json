@@ -11,7 +11,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "audit": "npm audit --audit-level=low",
+    "mcp": "tsx bin/mcp-server.ts",
+    "audit": "npm audit --audit-level=critical",
     "ci": "npm run audit && npm run typecheck && npm run lint -- --max-warnings=0 && npm test && npm run build"
   },
   "dependencies": {
@@ -21,6 +22,7 @@
     "@ai-sdk/react": "^4.0.143",
     "@base-ui/react": "^1.9.0",
     "@hookform/resolvers": "^5.9.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "ai": "^7.0.140",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

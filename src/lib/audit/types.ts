@@ -50,6 +50,8 @@ export type AuditAction =
   | "system.email_template_updated"
   | "system.email_sent"
   | "system.email_failed"
+  | "mcp.key_create"
+  | "mcp.key_revoke"
 
 export type AuditEvent = {
   id: string
