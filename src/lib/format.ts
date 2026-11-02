@@ -10,26 +10,41 @@ export function formatBytes(bytes: number | null | undefined): string {
   return `${value < 10 && i > 0 ? value.toFixed(1) : Math.round(value)} ${units[i]}`
 }
 
-export const DEFAULT_MAILBOX_QUOTA_BYTES = 10 * 1024 * 1024 * 1024 // 10 GB
+export const DEFAULT_MAILBOX_QUOTA_BYTES: number | null = null // Infinite / Unmetered default
+
+export const QUOTA_SCALE_STEP_BYTES = 0.25 * 1024 * 1024 * 1024 // 0.25 GB = 268,435,456 bytes
+
+/**
+ * For infinite storage mailboxes, scales the allocated capacity dynamically for overview display:
+ * 0.25GB if <= 0.25GB, then 0.5GB, 0.75GB, 1GB, 1.25GB, and so on.
+ */
+export function scaleInfiniteMailboxQuota(usedBytes: number | null | undefined): number {
+  const u = typeof usedBytes === "number" && usedBytes > 0 ? usedBytes : 0
+  if (u <= QUOTA_SCALE_STEP_BYTES) {
+    return QUOTA_SCALE_STEP_BYTES
+  }
+  return Math.ceil(u / QUOTA_SCALE_STEP_BYTES) * QUOTA_SCALE_STEP_BYTES
+}
 
 export function quotaSummary(
   quotas: Record<string, unknown> | undefined | null
-): { label: string; bytes: number; used: number } {
+): { label: string; bytes: number | null; used: number; isUnlimited: boolean } {
   const disk =
+    quotas?.maxDiskQuota ??
     quotas?.diskQuota ??
     quotas?.disk ??
-    quotas?.storage ??
-    quotas?.maxDiskQuota
+    quotas?.storage
   const usedRaw = quotas?.diskUsed ?? quotas?.used ?? quotas?.storageUsed
   const used = typeof usedRaw === "number" ? Math.max(0, usedRaw) : 0
 
   if (typeof disk === "number" && disk > 0) {
-    return { label: formatBytes(disk), bytes: disk, used }
+    return { label: formatBytes(disk), bytes: disk, used, isUnlimited: false }
   }
   return {
-    label: formatBytes(DEFAULT_MAILBOX_QUOTA_BYTES),
-    bytes: DEFAULT_MAILBOX_QUOTA_BYTES,
+    label: "∞ Infinite",
+    bytes: null,
     used,
+    isUnlimited: true,
   }
 }
 
@@ -42,7 +57,7 @@ export function storageProgressPercent(
   const q =
     typeof quota === "number" && quota > 0
       ? quota
-      : DEFAULT_MAILBOX_QUOTA_BYTES
+      : scaleInfiniteMailboxQuota(u)
   return Math.min(100, Math.round((u / q) * 100))
 }
 

@@ -92,12 +92,15 @@ export function hydrateAccounts(
 
     // Normalize maxDiskQuota / usedDiskQuota into QuotaBar keys.
     const diskFromMap =
-      typeof rawQuotas.diskQuota === "number"
-        ? rawQuotas.diskQuota
-        : typeof rawQuotas.maxDiskQuota === "number"
-          ? rawQuotas.maxDiskQuota
+      typeof rawQuotas.maxDiskQuota === "number"
+        ? rawQuotas.maxDiskQuota
+        : typeof rawQuotas.diskQuota === "number"
+          ? rawQuotas.diskQuota
           : undefined
-    if (diskFromMap != null) rawQuotas.diskQuota = diskFromMap
+    if (diskFromMap != null) {
+      rawQuotas.diskQuota = diskFromMap
+      rawQuotas.maxDiskQuota = diskFromMap
+    }
     if (usedDiskQuota != null) rawQuotas.diskUsed = usedDiskQuota
     else if (
       typeof rawQuotas.diskUsed !== "number" &&

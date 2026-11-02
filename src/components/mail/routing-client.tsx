@@ -8,6 +8,7 @@ import {
   Check,
   Edit2,
   ExternalLink,
+  Filter,
   Plus,
   RefreshCw,
   Search,
@@ -21,6 +22,7 @@ import { toast } from "sonner"
 import {
   destroyForwardingRuleAction,
   markDomainRulesFailedAction,
+  purgeCatchAllPostmasterAction,
   syncCatchAllArchivalAction,
   syncDomainForwardsAction,
   toggleForwardingRuleAction,
@@ -384,6 +386,23 @@ function CatchAllArchivalTrigger({
 }) {
   const isArchivalActive = domain.catchAllArchival !== false // Enabled by default unless explicitly turned off
   const [syncing, setSyncing] = useState(false)
+  const [purging, setPurging] = useState(false)
+
+  async function handlePurgePostmaster() {
+    setPurging(true)
+    try {
+      const res = await purgeCatchAllPostmasterAction(domain.id)
+      if (
+        toastActionResult(res, {
+          success: `Purged ${res.ok ? res.data.destroyedCount : 0} postmaster report emails from catch-all.`,
+        })
+      ) {
+        startTransition(() => onDone())
+      }
+    } finally {
+      setPurging(false)
+    }
+  }
 
   async function handleToggle(next: boolean) {
     startTransition(() => {
@@ -476,6 +495,24 @@ function CatchAllArchivalTrigger({
           </>
         )}
       </p>
+
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2 text-[11px]">
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <Filter className="size-3 text-emerald-500" />
+          <span>Postmaster traffic (<code className="font-mono text-[10px]">postmaster@*</code>, TLS-RPT, DMARC) filtered out</span>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+          disabled={purging || pending}
+          onClick={handlePurgePostmaster}
+          title="Clean any older delivered postmaster/report emails from this domain's catch-all"
+        >
+          <Trash2 className={cn("size-3 mr-1", purging && "animate-spin")} />
+          {purging ? "Purging…" : "Purge old reports"}
+        </Button>
+      </div>
     </div>
   )
 }

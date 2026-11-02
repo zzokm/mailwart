@@ -1,3 +1,4 @@
+import { scaleInfiniteMailboxQuota } from "../format"
 import type {
   Autoresponder,
   DomainListItem,
@@ -425,6 +426,9 @@ export function mockOverviewStats(): OverviewStats {
       hasQuota = true
       withQuota++
       quotaSum += q
+    } else {
+      hasQuota = true
+      quotaSum += scaleInfiniteMailboxQuota(typeof u === "number" ? u : null)
     }
     if (typeof u === "number") {
       hasUsed = true

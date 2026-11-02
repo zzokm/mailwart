@@ -53,6 +53,28 @@ export async function getAccount(
   return hydrateAccounts([list[0]], domainList)[0] ?? null
 }
 
+/**
+ * Normalizes quota map for Stalwart JMAP x:Account schema:
+ * Stalwart strictly expects `maxDiskQuota` (bytes integer) inside the `quotas` map.
+ * Passing `diskQuota` or unrecognized keys triggers an `invalidPatch` error.
+ * An empty object `{}` represents unlimited / unmetered quota.
+ */
+export function normalizeQuotasForStalwart(
+  quotas?: Record<string, unknown> | null
+): Record<string, unknown> {
+  if (!quotas) return {}
+  const clean: Record<string, unknown> = {}
+  const rawDisk =
+    quotas.maxDiskQuota ??
+    quotas.diskQuota ??
+    quotas.storage ??
+    quotas.disk
+  if (typeof rawDisk === "number" && rawDisk > 0) {
+    clean.maxDiskQuota = Math.round(rawDisk)
+  }
+  return clean
+}
+
 function userCreatePayload(input: {
   local: string
   email: string
@@ -72,7 +94,7 @@ function userCreatePayload(input: {
     memberGroupIds: {},
     roles: { "@type": "User" },
     permissions: { "@type": "Inherit" },
-    quotas: input.quotas ?? {},
+    quotas: normalizeQuotasForStalwart(input.quotas),
     aliases: {},
     encryptionAtRest: { "@type": "Disabled" },
   }
@@ -164,8 +186,13 @@ export async function updateAccount(
     aliases: Record<string, unknown> | unknown[]
   }>
 ): Promise<void> {
+  const normalizedPatch: typeof patch = { ...patch }
+  if (patch.quotas !== undefined) {
+    normalizedPatch.quotas = normalizeQuotasForStalwart(patch.quotas)
+  }
+
   const r = await jmapCall([
-    ["x:Account/set", { update: { [id]: patch } }, "a2"],
+    ["x:Account/set", { update: { [id]: normalizedPatch } }, "a2"],
   ])
   const body = responseById(r, "a2")
   const notUpdated = body.notUpdated as

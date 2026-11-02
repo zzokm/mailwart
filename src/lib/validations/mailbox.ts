@@ -63,6 +63,11 @@ export const bulkSuspendSchema = z.object({
   suspend: z.boolean(),
 })
 
+export const bulkSetStorageCapacitySchema = z.object({
+  ids: mailboxIdsSchema,
+  diskQuotaBytes: z.number().int().nonnegative().nullable(),
+})
+
 export const aliasEntrySchema = z.object({
   name: localPartSchema,
   domainId: entityIdSchema,

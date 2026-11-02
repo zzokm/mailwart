@@ -2,11 +2,11 @@
 
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
-import { toast } from "sonner"
 
 import { createMailboxAction } from "@/lib/actions/mail"
 import { toastActionResult } from "@/lib/action-toast"
 import { PasswordField } from "@/components/mail/password-field"
+import { StorageCapacitySelect } from "@/components/mail/storage-capacity-select"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -46,7 +46,7 @@ export function CreateMailboxDialog({
   const [local, setLocal] = useState("")
   const [password, setPassword] = useState(() => generatePassword())
   const [description, setDescription] = useState("")
-  const [quotaGb, setQuotaGb] = useState("")
+  const [quotaBytes, setQuotaBytes] = useState<number | null>(null) // Default infinite
   const [pending, startTransition] = useTransition()
 
   const domain = domains.find((d) => d.id === domainId)
@@ -56,20 +56,12 @@ export function CreateMailboxDialog({
   function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     startTransition(async () => {
-      const diskQuotaBytes =
-        quotaGb.trim() === ""
-          ? null
-          : Math.round(Number(quotaGb) * 1024 ** 3)
-      if (quotaGb.trim() && Number.isNaN(diskQuotaBytes)) {
-        toast.error("Quota must be a number (GB).")
-        return
-      }
       const result = await createMailboxAction({
         domainId,
         local,
         password,
         description: description || undefined,
-        diskQuotaBytes,
+        diskQuotaBytes: quotaBytes,
       })
       if (!result.ok) {
         toastActionResult(result, { success: "" })
@@ -79,7 +71,7 @@ export function CreateMailboxDialog({
       onOpenChange(false)
       setLocal("")
       setDescription("")
-      setQuotaGb("")
+      setQuotaBytes(null)
       setPassword(generatePassword())
       router.refresh()
     })
@@ -121,20 +113,19 @@ export function CreateMailboxDialog({
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="local">Local-part</Label>
+              <Label htmlFor="mb-local">Local part</Label>
               <Input
-                id="local"
+                id="mb-local"
                 value={local}
                 onChange={(e) => setLocal(e.target.value)}
-                placeholder="hi"
-                className="font-mono text-[13px]"
-                required
+                placeholder="e.g. info, support"
+                autoComplete="off"
                 disabled={pending}
               />
               {preview ? (
-                <p className="font-mono text-[12px] text-brand">
-                  {preview}
-                </p>
+                <div className="font-mono text-xs text-muted-foreground">
+                  Address: {preview}
+                </div>
               ) : null}
             </div>
             <PasswordField
@@ -153,13 +144,11 @@ export function CreateMailboxDialog({
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="quota">Quota (GB, optional)</Label>
-              <Input
-                id="quota"
-                inputMode="decimal"
-                value={quotaGb}
-                onChange={(e) => setQuotaGb(e.target.value)}
-                placeholder="Server default"
+              <Label htmlFor="quota-select">Storage capacity</Label>
+              <StorageCapacitySelect
+                id="quota-select"
+                value={quotaBytes}
+                onChange={setQuotaBytes}
                 disabled={pending}
               />
             </div>

@@ -1,6 +1,6 @@
 /**
  * Parse CSV quota cell into disk bytes.
- * Empty / "default" → null (server default).
+ * Empty / "default" / "infinite" / "unlimited" → null (server unmetered).
  * Supports B, K/KB, M/MB, G/GB suffixes; bare number = bytes.
  */
 export function parseQuotaCell(raw: string | undefined | null): {
@@ -12,7 +12,7 @@ export function parseQuotaCell(raw: string | undefined | null): {
 } {
   if (raw == null) return { ok: true, bytes: null }
   const trimmed = raw.trim()
-  if (!trimmed || /^default$/i.test(trimmed)) {
+  if (!trimmed || /^(default|infinite|unlimited|none)$/i.test(trimmed)) {
     return { ok: true, bytes: null }
   }
 
@@ -49,6 +49,5 @@ export function formatQuotaForCsv(bytes: number | null | undefined): string {
   if (bytes === 0) return "0"
   if (bytes % 1024 ** 3 === 0) return `${bytes / 1024 ** 3}G`
   if (bytes % 1024 ** 2 === 0) return `${bytes / 1024 ** 2}M`
-  if (bytes % 1024 === 0) return `${bytes / 1024}K`
-  return String(bytes)
+  return `${bytes}`
 }

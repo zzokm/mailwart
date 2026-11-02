@@ -51,6 +51,7 @@ import {
   ADMIN_DESTROY_CONFIRM,
   bulkResetPasswordsSchema,
   bulkSuspendSchema,
+  bulkSetStorageCapacitySchema,
   bulkJobIdSchema,
   commitBulkChunkSchema,
   createAppPasswordSchema,
@@ -78,7 +79,7 @@ import {
   upsertFilterRuleSchema,
   upsertForwardingSchema,
 } from "@/lib/validations"
-import { hostFromUrl, quotaSummary } from "@/lib/format"
+import { hostFromUrl, quotaSummary, scaleInfiniteMailboxQuota } from "@/lib/format"
 import {
   abortJob,
   createForwardingJob,
@@ -95,6 +96,7 @@ import {
   parseForwardingCsvText,
   parseMailboxCsvText,
 } from "@/lib/bulk/prepare"
+import { purgeCatchAllPostmasterEmails } from "@/lib/stalwart/postmaster-filter"
 import { buildRoundcubeUrl } from "@/lib/roundcube"
 import {
   clearDnsCache,
@@ -347,6 +349,9 @@ export async function getOverview(): Promise<
         hasQuota = true
         mailboxesWithQuota++
         storageQuotaBytes! += q.bytes
+      } else {
+        hasQuota = true
+        storageQuotaBytes! += scaleInfiniteMailboxQuota(q.used)
       }
       if (q.used != null) {
         hasUsed = true
@@ -1278,7 +1283,7 @@ export async function createMailboxAction(input: {
       description: parsed.data.description?.trim() || email,
       quotas:
         parsed.data.diskQuotaBytes != null
-          ? { diskQuota: parsed.data.diskQuotaBytes }
+          ? { maxDiskQuota: parsed.data.diskQuotaBytes }
           : {},
     })
     if (session?.userId) {
@@ -1332,7 +1337,7 @@ export async function updateMailboxAction(
         ? undefined
         : patch.diskQuotaBytes == null
           ? {}
-          : { diskQuota: patch.diskQuotaBytes }
+          : { maxDiskQuota: patch.diskQuotaBytes }
 
     if (src === "mock") {
       const store = getMockStore()
@@ -1805,6 +1810,33 @@ export async function bulkSuspendMailboxesAction(
   return ok({ updated, failed }, src)
 }
 
+export async function bulkSetStorageCapacityAction(
+  ids: string[],
+  diskQuotaBytes: number | null
+): Promise<ActionResult<{ updated: number; failed: string[] }>> {
+  const denied = await denyUnlessAuthed<{ updated: number; failed: string[] }>()
+  if (denied) return denied
+
+  const src = source()
+  const parsed = validateInput(
+    bulkSetStorageCapacitySchema,
+    { ids, diskQuotaBytes },
+    src
+  )
+  if (!parsed.ok) return parsed.result
+
+  const failed: string[] = []
+  let updated = 0
+  for (const id of parsed.data.ids) {
+    const result = await updateMailboxAction(id, {
+      diskQuotaBytes: parsed.data.diskQuotaBytes,
+    })
+    if (result.ok) updated++
+    else failed.push(id)
+  }
+  return ok({ updated, failed }, src)
+}
+
 export async function prepareBulkMailboxJobAction(input: {
   csvText: string
   overwritePasswords?: boolean
@@ -2203,7 +2235,7 @@ async function commitMailboxChunk(
         email: row.email,
         domainName: row.domainName,
         quotas:
-          row.quotaBytes != null ? { diskQuota: row.quotaBytes } : {},
+          row.quotaBytes != null ? { maxDiskQuota: row.quotaBytes } : {},
         aliases: {},
         isEnabled: true,
       }
@@ -2222,7 +2254,7 @@ async function commitMailboxChunk(
       password: row.password,
       description: row.description,
       quotas:
-        row.quotaBytes != null ? { diskQuota: row.quotaBytes } : {},
+        row.quotaBytes != null ? { maxDiskQuota: row.quotaBytes } : {},
     })),
     toCreate.length
   )
@@ -2824,6 +2856,46 @@ export async function markDomainRulesFailedAction(
       }
     }
     return ok({ failedCount }, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+export async function purgeCatchAllPostmasterAction(
+  domainId?: string
+): Promise<ActionResult<{ destroyedCount: number; details: Array<{ domain: string; address: string; purged: number }> }>> {
+  const denied = await denyUnlessAuthed<{
+    destroyedCount: number
+    details: Array<{ domain: string; address: string; purged: number }>
+  }>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    if (src === "mock") {
+      return ok({ destroyedCount: 0, details: [] }, src)
+    }
+
+    const purgeRes = await purgeCatchAllPostmasterEmails(domainId)
+    if (!purgeRes.ok && purgeRes.error) {
+      return fail(new StalwartError(purgeRes.error, "transport"), src)
+    }
+
+    if (domainId) {
+      await syncDomainSieveRules(domainId).catch(() => {})
+    } else {
+      const { domains } = await loadScopedDirectory().catch(() => ({ domains: [] }))
+      for (const d of domains) {
+        await syncDomainSieveRules(d.id).catch(() => {})
+      }
+    }
+
+    await audit("catchall.update", {
+      target: domainId ?? "all",
+      detail: `Purged ${purgeRes.purgedCount} postmaster messages from catch-all mailboxes`,
+    })
+
+    return ok({ destroyedCount: purgeRes.purgedCount, details: purgeRes.details }, src)
   } catch (err) {
     return fail(err, src)
   }

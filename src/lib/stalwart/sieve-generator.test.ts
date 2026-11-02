@@ -45,7 +45,7 @@ describe("sieve-generator", () => {
     )
   })
 
-  it("generates archival copy to catch-all when mailbox is not the catch-all itself", () => {
+  it("generates archival copy to catch-all when mailbox is not the catch-all itself, excluding postmaster", () => {
     const sieve = generateMailboxSieve({
       mailboxEmail: "yehia@example.com",
       domainName: "example.com",
@@ -57,9 +57,10 @@ describe("sieve-generator", () => {
 
     expect(sieve).toContain('redirect :copy "catch@example.com";')
     expect(sieve).toContain("Archival Journaling Copy")
+    expect(sieve).toContain('if not anyof (envelope :matches "to" "postmaster@*", address :matches ["to", "cc", "envelope-to", "x-original-to"] "postmaster@*")')
   })
 
-  it("does not generate duplicate archival copy when mailbox is the catch-all itself", () => {
+  it("silently drops postmaster traffic on catch-all mailboxes and does not duplicate archival copy", () => {
     const sieve = generateMailboxSieve({
       mailboxEmail: "catch@example.com",
       domainName: "example.com",
@@ -69,6 +70,10 @@ describe("sieve-generator", () => {
       rules: [],
     })
 
+    expect(sieve).toContain("Postmaster Traffic Filter")
+    expect(sieve).toContain('if anyof (envelope :matches "to" "postmaster@*", address :matches ["to", "cc", "envelope-to", "x-original-to"] "postmaster@*")')
+    expect(sieve).toContain("discard;")
+    expect(sieve).toContain("stop;")
     expect(sieve).not.toContain('redirect :copy "catch@example.com";')
   })
 

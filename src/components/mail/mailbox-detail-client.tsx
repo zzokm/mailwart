@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
-import { toast } from "sonner"
 
 import {
   destroyMailboxAction,
@@ -18,6 +17,7 @@ import { CopyButton } from "@/components/mail/copy-button"
 import { PasswordField } from "@/components/mail/password-field"
 import { QuotaBar } from "@/components/mail/quota-bar"
 import { RoundcubeButton } from "@/components/mail/roundcube-button"
+import { StorageCapacitySelect } from "@/components/mail/storage-capacity-select"
 import { TwoFactorStatusPanel } from "@/components/mail/two-factor-status"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -58,12 +58,12 @@ export function MailboxDetailClient({
 }) {
   const router = useRouter()
   const [description, setDescription] = useState(account.description ?? "")
-  const [quotaGb, setQuotaGb] = useState(() => {
-    const disk = account.quotas?.diskQuota
+  const [quotaBytes, setQuotaBytes] = useState<number | null>(() => {
+    const disk = account.quotas?.maxDiskQuota ?? account.quotas?.diskQuota
     if (typeof disk === "number" && disk > 0) {
-      return String(Math.round((disk / 1024 ** 3) * 10) / 10)
+      return disk
     }
-    return ""
+    return null
   })
   const [password, setPassword] = useState(() => generatePassword())
   const [enabled, setEnabled] = useState(account.isEnabled !== false)
@@ -172,12 +172,11 @@ export function MailboxDetailClient({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="mb-quota">Quota (GB)</Label>
-            <Input
+            <Label htmlFor="mb-quota">Storage capacity</Label>
+            <StorageCapacitySelect
               id="mb-quota"
-              value={quotaGb}
-              onChange={(e) => setQuotaGb(e.target.value)}
-              placeholder="10 (Default GB)"
+              value={quotaBytes}
+              onChange={setQuotaBytes}
               disabled={pending}
             />
           </div>
@@ -187,17 +186,9 @@ export function MailboxDetailClient({
             disabled={pending}
             onClick={() => {
               startTransition(async () => {
-                const diskQuotaBytes =
-                  quotaGb.trim() === ""
-                    ? null
-                    : Math.round(Number(quotaGb) * 1024 ** 3)
-                if (quotaGb.trim() && Number.isNaN(diskQuotaBytes)) {
-                  toast.error("Quota must be a number (GB).")
-                  return
-                }
                 const result = await updateMailboxAction(account.id, {
                   description: description.trim() || account.email,
-                  diskQuotaBytes,
+                  diskQuotaBytes: quotaBytes,
                 })
                 if (
                   !toastActionResult(result, {
@@ -443,4 +434,3 @@ function MailboxForwardForm({ account }: { account: StalwartAccount }) {
     </div>
   )
 }
-

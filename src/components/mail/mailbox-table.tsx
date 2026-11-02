@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react"
-import { Ban, Bell, Plus, Search, Trash2, KeyRound, Info, Pencil, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react"
+import { Ban, Bell, Plus, Search, Trash2, KeyRound, Info, Pencil, ArrowUp, ArrowDown, ArrowUpDown, HardDrive } from "lucide-react"
 
 import {
   bulkDestroyMailboxesAction,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/actions/mail"
 import { toastActionResult } from "@/lib/action-toast"
 import { CreateMailboxDialog } from "@/components/mail/create-mailbox-dialog"
+import { BulkStorageDialog } from "@/components/mail/bulk-storage-dialog"
 import { ConfirmDestroy } from "@/components/mail/confirm-destroy"
 import { EmptyState } from "@/components/mail/empty-state"
 import { QuotaBar } from "@/components/mail/quota-bar"
@@ -78,6 +79,7 @@ export function MailboxTable({
   const [pending, startTransition] = useTransition()
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [bulkResetOpen, setBulkResetOpen] = useState(false)
+  const [bulkStorageOpen, setBulkStorageOpen] = useState(false)
   const [bulkPassword, setBulkPassword] = useState(() => generatePassword())
   const [createOpen, setCreateOpen] = useState(false)
   const [configAccount, setConfigAccount] = useState<StalwartAccount | null>(null)
@@ -391,6 +393,15 @@ export function MailboxTable({
           >
             <KeyRound data-icon="inline-start" />
             Reset passwords
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => setBulkStorageOpen(true)}
+          >
+            <HardDrive data-icon="inline-start" />
+            Set capacity
           </Button>
           <Button
             size="sm"
@@ -813,6 +824,16 @@ export function MailboxTable({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BulkStorageDialog
+        open={bulkStorageOpen}
+        onOpenChange={setBulkStorageOpen}
+        accountIds={[...selected]}
+        onSuccess={() => {
+          setSelected(new Set())
+          router.refresh()
+        }}
+      />
 
       <MailboxConfigDialog
         account={configAccount}

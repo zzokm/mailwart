@@ -68,9 +68,11 @@ export function normalizeSourcePattern(
 /**
  * Generates an RFC-compliant Sieve script for a specific mailbox in Stalwart.
  * Encapsulates:
- * 1. Archival Copy (Requirement 3): All delivered emails duplicate a copy to domain catch-all.
- * 2. Forwarding (Requirement 2 & 4): Redirect to external targets (e.g. Gmail) via Sieve,
+ * 0. System Abstraction: Drops all postmaster@* reports (DMARC, TLS-RPT, NDRs) on catch-all mailboxes.
+ * 1. Forwarding: Redirect to external targets (e.g. Gmail) via Sieve,
  *    handling exact addresses, wildcards (:matches), and regular expressions (:regex).
+ * 2. Archival Copy: All delivered emails duplicate a copy to domain catch-all,
+ *    strictly filtering out postmaster@* emails so they never enter the archive.
  */
 export function generateMailboxSieve(options: SieveGeneratorOptions): string {
   const {
@@ -95,7 +97,19 @@ export function generateMailboxSieve(options: SieveGeneratorOptions): string {
   const cleanMailbox = mailboxEmail.trim().toLowerCase()
   const cleanCatchAll = catchAllEmail ? catchAllEmail.trim().toLowerCase() : null
 
-  // 1. Active Forwarding Rules (Evaluated FIRST so user forwarding has highest priority)
+  // 0. System Abstraction: Postmaster filter on catch-all mailbox
+  // Drops automated postmaster reports (DMARC, TLS-RPT, delivery reports) from catch-all inbox
+  if (isCatchAllMailbox) {
+    lines.push("# --- 0. Postmaster Traffic Filter ---")
+    lines.push("# Silently drops automated postmaster reports (DMARC, TLS-RPT, NDRs) from catch-all mailbox")
+    lines.push('if anyof (envelope :matches "to" "postmaster@*", address :matches ["to", "cc", "envelope-to", "x-original-to"] "postmaster@*") {')
+    lines.push("    discard;")
+    lines.push("    stop;")
+    lines.push("}")
+    lines.push("")
+  }
+
+  // 1. Active Forwarding Rules (Evaluated so user forwarding has highest priority)
   const activeRules = rules.filter((r) => r.enabled && r.targets.length > 0)
   const matchedRules: ForwardingRule[] = []
 
@@ -164,8 +178,10 @@ export function generateMailboxSieve(options: SieveGeneratorOptions): string {
     cleanMailbox !== cleanCatchAll
   ) {
     lines.push("# --- 2. Archival Journaling Copy (Catch-All) ---")
-    lines.push("# Delivers a duplicate copy of every received email to the domain catch-all archive")
-    lines.push(`redirect :copy ${sieveQuote(cleanCatchAll)};`)
+    lines.push("# Delivers a duplicate copy of every received email to the domain catch-all archive, excluding postmaster traffic")
+    lines.push('if not anyof (envelope :matches "to" "postmaster@*", address :matches ["to", "cc", "envelope-to", "x-original-to"] "postmaster@*") {')
+    lines.push(`    redirect :copy ${sieveQuote(cleanCatchAll)};`)
+    lines.push("}")
     lines.push("")
   }
 
