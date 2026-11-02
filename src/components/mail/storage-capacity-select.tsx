@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { Infinity as InfinityIcon } from "lucide-react"
 import { formatBytes } from "@/lib/format"
 import { Input } from "@/components/ui/input"
 import {
@@ -14,8 +15,7 @@ import { cn } from "@/lib/utils"
 
 export type StorageUnit = "KB" | "MB" | "GB"
 
-const PRESETS: Array<{ key: string; label: string; bytes: number | null }> = [
-  { key: "infinite", label: "∞ Infinite (Unmetered)", bytes: null },
+export const PRESETS: Array<{ key: string; label: string; bytes: number | null }> = [
   { key: "64mb", label: "64 MB", bytes: 64 * 1024 * 1024 },
   { key: "128mb", label: "128 MB", bytes: 128 * 1024 * 1024 },
   { key: "256mb", label: "256 MB", bytes: 256 * 1024 * 1024 },
@@ -24,6 +24,7 @@ const PRESETS: Array<{ key: string; label: string; bytes: number | null }> = [
   { key: "2gb", label: "2 GB", bytes: 2 * 1024 * 1024 * 1024 },
   { key: "5gb", label: "5 GB", bytes: 5 * 1024 * 1024 * 1024 },
   { key: "10gb", label: "10 GB", bytes: 10 * 1024 * 1024 * 1024 },
+  { key: "infinite", label: "Infinite", bytes: null },
   { key: "custom", label: "Custom capacity…", bytes: -1 },
 ]
 
@@ -135,12 +136,26 @@ export function StorageCapacitySelect({
           disabled={disabled}
         >
           <SelectTrigger id={id} className="w-full">
-            <SelectValue placeholder="Select storage limit…" />
+            {selectedKey === "infinite" ? (
+              <span data-slot="select-value" className="flex flex-1 items-center gap-2 text-left">
+                <InfinityIcon className="size-6 shrink-0 text-foreground" strokeWidth={2.5} />
+                <span>Infinite</span>
+              </span>
+            ) : (
+              <SelectValue placeholder="Select storage limit…" />
+            )}
           </SelectTrigger>
           <SelectContent>
             {PRESETS.map((p) => (
               <SelectItem key={p.key} value={p.key}>
-                {p.label}
+                {p.key === "infinite" ? (
+                  <span className="flex items-center gap-2">
+                    <InfinityIcon className="size-6 shrink-0 text-foreground" strokeWidth={2.5} />
+                    <span>Infinite</span>
+                  </span>
+                ) : (
+                  p.label
+                )}
               </SelectItem>
             ))}
           </SelectContent>
@@ -183,8 +198,8 @@ export function StorageCapacitySelect({
 
       <p className="text-[11px] text-muted-foreground leading-relaxed">
         {selectedKey === "infinite" ? (
-          <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-            ✓ Storage is unmetered (infinite). Mailbox can grow indefinitely.
+          <span className="text-muted-foreground font-medium">
+            ✓ Storage is infinite. Mailbox can grow without quota restrictions.
           </span>
         ) : (
           <span>

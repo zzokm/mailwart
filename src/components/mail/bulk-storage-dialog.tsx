@@ -58,7 +58,7 @@ export function BulkStorageDialog({
             <DialogTitle>Set Storage Capacity</DialogTitle>
           </div>
           <DialogDescription>
-            Apply a preset storage quota or unmetered infinite capacity across{" "}
+            Apply a preset storage quota or infinite capacity across{" "}
             <span className="font-semibold text-foreground">{accountIds.length}</span> selected
             mailboxes.
           </DialogDescription>

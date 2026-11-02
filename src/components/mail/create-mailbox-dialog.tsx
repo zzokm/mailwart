@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { generatePassword } from "@/lib/format"
+import { DEFAULT_MAILBOX_QUOTA_BYTES, generatePassword } from "@/lib/format"
 import type { StalwartDomain } from "@/lib/stalwart/types"
 
 export function CreateMailboxDialog({
@@ -46,7 +46,7 @@ export function CreateMailboxDialog({
   const [local, setLocal] = useState("")
   const [password, setPassword] = useState(() => generatePassword())
   const [description, setDescription] = useState("")
-  const [quotaBytes, setQuotaBytes] = useState<number | null>(null) // Default infinite
+  const [quotaBytes, setQuotaBytes] = useState<number | null>(DEFAULT_MAILBOX_QUOTA_BYTES) // 64 MB default
   const [pending, startTransition] = useTransition()
 
   const domain = domains.find((d) => d.id === domainId)
@@ -71,7 +71,7 @@ export function CreateMailboxDialog({
       onOpenChange(false)
       setLocal("")
       setDescription("")
-      setQuotaBytes(null)
+      setQuotaBytes(DEFAULT_MAILBOX_QUOTA_BYTES)
       setPassword(generatePassword())
       router.refresh()
     })

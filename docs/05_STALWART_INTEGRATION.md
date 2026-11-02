@@ -139,7 +139,7 @@ export function normalizeQuotasForStalwart(
 > The `normalizeQuotasForStalwart()` sanitizer ensures every creation, update, and bulk patch payload is fully compliant.
 
 #### Infinite Capacity & Dynamic 0.25GB Meter Scaling
-- **Default:** All newly created and default mailboxes have unmetered capacity (`DEFAULT_MAILBOX_QUOTA_BYTES = null`).
+- **Default:** Mailbox creation defaults to 64 MB (`DEFAULT_MAILBOX_QUOTA_BYTES = 64 * 1024 * 1024`), with infinite capacity selectable.
 - **Overview Scaling Meter:** To ensure the global storage meter on the dashboard displays meaningful progress without an arbitrary cap, infinite mailboxes dynamically scale their allocated contribution using `scaleInfiniteMailboxQuota(usedBytes)`:
   - $le 0.25	ext{ GB used} implies 0.25	ext{ GB allocated}$
   - Scales up in $0.25	ext{ GB}$ increments ($0.50	ext{ GB}$, $0.75	ext{ GB}$, $1.00	ext{ GB}$, $1.25	ext{ GB}$, etc.) as disk usage grows.

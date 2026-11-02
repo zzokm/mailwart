@@ -10,7 +10,7 @@ export function formatBytes(bytes: number | null | undefined): string {
   return `${value < 10 && i > 0 ? value.toFixed(1) : Math.round(value)} ${units[i]}`
 }
 
-export const DEFAULT_MAILBOX_QUOTA_BYTES: number | null = null // Infinite / Unmetered default
+export const DEFAULT_MAILBOX_QUOTA_BYTES: number = 64 * 1024 * 1024 // 64 MB default
 
 export const QUOTA_SCALE_STEP_BYTES = 0.25 * 1024 * 1024 * 1024 // 0.25 GB = 268,435,456 bytes
 
