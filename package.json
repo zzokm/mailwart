@@ -11,6 +11,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "mcp": "tsx bin/mcp-server.ts",
     "audit": "npm audit --audit-level=low",
     "ci": "npm run audit && npm run typecheck && npm run lint -- --max-warnings=0 && npm test && npm run build"
   },
