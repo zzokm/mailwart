@@ -1,3 +1,4 @@
+import { Infinity as InfinityIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatBytes, quotaSummary } from "@/lib/format"
 
@@ -13,15 +14,37 @@ export function QuotaBar({
   const total = summary.bytes
   const isUnlimited = summary.isUnlimited
 
+  const radius = 12
+  const circumference = 2 * Math.PI * radius
+
   if (isUnlimited) {
     return (
       <div className={cn("flex items-center gap-3", className)}>
-        {/* Subtle Infinity Badge Ring */}
-        <div
-          className="relative flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-emerald-500/30 bg-emerald-500/10 text-emerald-500 select-none"
-          title="Unmetered Infinite Storage"
-        >
-          <span className="font-mono text-[14px] font-bold leading-none">∞</span>
+        {/* Completed White Progress Ring */}
+        <div className="relative flex size-8 shrink-0 items-center justify-center">
+          <svg className="size-8 -rotate-90" viewBox="0 0 32 32">
+            <circle
+              cx="16"
+              cy="16"
+              r={radius}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="4"
+              className="text-zinc-300 dark:text-zinc-700/80"
+            />
+            <circle
+              cx="16"
+              cy="16"
+              r={radius}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="4"
+              strokeDasharray={circumference}
+              strokeDashoffset={0}
+              strokeLinecap="round"
+              className="text-zinc-900 dark:text-white"
+            />
+          </svg>
         </div>
 
         {/* Space values strictly aligned with 3-column layout */}
@@ -30,13 +53,13 @@ export function QuotaBar({
             <span className="text-right truncate pr-0.5">{formatBytes(used)}</span>
             <span className="text-center text-muted-foreground/60 select-none">/</span>
             <span
-              className="text-left font-semibold text-emerald-500 pl-0.5"
+              className="flex items-center justify-center text-foreground"
               title="Infinite capacity"
             >
-              ∞
+              <InfinityIcon className="size-[18px]" strokeWidth={2.2} />
             </span>
           </div>
-          <div className="text-center font-mono text-[10px] text-muted-foreground font-medium text-emerald-600 dark:text-emerald-400">
+          <div className="text-center font-mono text-[10px] text-muted-foreground font-medium">
             Infinite
           </div>
         </div>
@@ -60,8 +83,6 @@ export function QuotaBar({
     pctDisplay = `${pct.toFixed(1)}% used`
   }
 
-  const radius = 12
-  const circumference = 2 * Math.PI * radius
   const strokeOffset = circumference - (pct / 100) * circumference
 
   return (
