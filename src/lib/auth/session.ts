@@ -1,5 +1,6 @@
 import "server-only"
 
+import { AsyncLocalStorage } from "node:async_hooks"
 import { cookies } from "next/headers"
 import { getIronSession, type IronSession } from "iron-session"
 
@@ -9,11 +10,38 @@ import {
   SESSION_TTL_SECONDS,
   type SessionData,
 } from "@/lib/auth/session-options"
-import { isPrimaryAdmin } from "@/lib/db/users"
+import { getPrimaryAdminUsername, isPrimaryAdmin } from "@/lib/db/users"
 
 export type { SessionData }
 
+export const ambientSessionStorage = new AsyncLocalStorage<SessionData>()
+
+export function runWithAdminSession<T>(
+  fn: () => Promise<T>,
+  actor?: string
+): Promise<T> {
+  const primaryUsername = getPrimaryAdminUsername()
+  const username = actor || primaryUsername
+  const adminSession: SessionData = {
+    userId: `mcp-${username}`,
+    username,
+    role: "admin",
+    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+    isPrimary: true,
+  }
+  return ambientSessionStorage.run(adminSession, fn)
+}
+
 export async function getSession(): Promise<IronSession<SessionData>> {
+  const ambient = ambientSessionStorage.getStore()
+  if (ambient) {
+    return {
+      ...ambient,
+      destroy: async () => {},
+      save: async () => {},
+      updateConfig: () => {},
+    } as unknown as IronSession<SessionData>
+  }
   return getIronSession<SessionData>(await cookies(), getSessionOptions())
 }
 
