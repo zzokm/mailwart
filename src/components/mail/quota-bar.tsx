@@ -53,10 +53,10 @@ export function QuotaBar({
             <span className="text-right truncate pr-0.5">{formatBytes(used)}</span>
             <span className="text-center text-muted-foreground/60 select-none">/</span>
             <span
-              className="flex items-center justify-center text-foreground"
+              className="flex items-center justify-start pl-0.5 text-foreground"
               title="Infinite capacity"
             >
-              <InfinityIcon className="size-[18px]" strokeWidth={2.2} />
+              <InfinityIcon className="size-4" strokeWidth={2.2} />
             </span>
           </div>
           <div className="text-center font-mono text-[10px] text-muted-foreground font-medium">

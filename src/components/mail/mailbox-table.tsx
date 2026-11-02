@@ -118,8 +118,8 @@ export function MailboxTable({
   const [bulkPassword, setBulkPassword] = useState(() => generatePassword())
   const [createOpen, setCreateOpen] = useState(false)
   const [configAccount, setConfigAccount] = useState<StalwartAccount | null>(null)
-  const [sortField, setSortField] = useState<MailboxSortField>("email")
-  const [sortDirection, setSortDirection] = useState<MailboxSortDirection>("asc")
+  const [sortField, setSortField] = useState<MailboxSortField>("date")
+  const [sortDirection, setSortDirection] = useState<MailboxSortDirection>("desc")
 
   const [activityMap, setActivityMap] = useState<
     Map<
@@ -207,6 +207,36 @@ export function MailboxTable({
     }
     return set
   }, [accountList])
+
+  const domainMap = useMemo(() => {
+    const map = new Map<string, StalwartDomain>()
+    for (const d of domains) {
+      map.set(d.id, d)
+      map.set(d.name.toLowerCase(), d)
+    }
+    return map
+  }, [domains])
+
+  const getAccountTimestamp = useCallback(
+    (acc: StalwartAccount) => {
+      if (acc.createdAt) {
+        const t = new Date(acc.createdAt).getTime()
+        if (!Number.isNaN(t) && t > 0) return t
+      }
+      const dom =
+        (acc.domainId ? domainMap.get(acc.domainId) : undefined) ??
+        (acc.domainName ? domainMap.get(acc.domainName.toLowerCase()) : undefined) ??
+        (acc.email.includes("@")
+          ? domainMap.get(acc.email.split("@")[1].toLowerCase())
+          : undefined)
+      if (dom?.createdAt) {
+        const t = new Date(dom.createdAt).getTime()
+        if (!Number.isNaN(t) && t > 0) return t
+      }
+      return 0
+    },
+    [domainMap]
+  )
 
   const isSingleDomain = domainId !== "all" || uniqueDomains.size <= 1
 
@@ -355,14 +385,14 @@ export function MailboxTable({
       }
 
       if (sortField === "date") {
-        const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0
-        const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        const tA = getAccountTimestamp(a)
+        const tB = getAccountTimestamp(b)
         if (tA !== tB) {
           return sortDirection === "desc" ? tB - tA : tA - tB
         }
         return sortDirection === "desc"
-          ? b.id.localeCompare(a.id, undefined, { numeric: true })
-          : a.id.localeCompare(b.id, undefined, { numeric: true })
+          ? b.email.toLowerCase().localeCompare(a.email.toLowerCase())
+          : a.email.toLowerCase().localeCompare(b.email.toLowerCase())
       }
 
       if (sortField === "name") {
@@ -375,7 +405,7 @@ export function MailboxTable({
 
       return 0
     })
-  }, [filtered, sortField, sortDirection])
+  }, [filtered, sortField, sortDirection, getAccountTimestamp])
 
   const allSelected =
     sorted.length > 0 && sorted.every((a) => selected.has(a.id))

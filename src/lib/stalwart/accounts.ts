@@ -18,6 +18,7 @@ const ACCOUNT_PROPS = [
   "roles",
   "isEnabled",
   "credentials",
+  "createdAt",
 ] as const
 
 export async function queryAccounts(
