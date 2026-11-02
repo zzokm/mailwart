@@ -117,13 +117,27 @@ export async function listMcpApiKeys(): Promise<SafeMcpApiKey[]> {
       // Fallback to mock store
       return Array.from(mockKeysStore.values())
         .sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
-        .map(({ keyHash: _, ...safe }) => safe)
+        .map((k) => ({
+          id: k.id,
+          name: k.name,
+          prefix: k.prefix,
+          createdBy: k.createdBy,
+          lastUsedAt: k.lastUsedAt,
+          createdAt: k.createdAt,
+        }))
     }
   }
 
   return Array.from(mockKeysStore.values())
     .sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
-    .map(({ keyHash: _, ...safe }) => safe)
+    .map((k) => ({
+      id: k.id,
+      name: k.name,
+      prefix: k.prefix,
+      createdBy: k.createdBy,
+      lastUsedAt: k.lastUsedAt,
+      createdAt: k.createdAt,
+    }))
 }
 
 export async function revokeMcpApiKey(id: string): Promise<boolean> {

@@ -180,7 +180,7 @@ if (typeof setInterval !== "undefined") {
   setInterval(() => {
     const now = Date.now()
     const oneHour = 60 * 60 * 1000
-    for (const [id, s] of sessions.entries()) {
+    for (const [, s] of sessions.entries()) {
       if (now - s.lastActivityAt > oneHour) {
         s.close().catch(() => {})
       }

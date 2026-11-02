@@ -24,6 +24,7 @@ This documentation directory is organized into modular guides covering every lay
 | **[AI Copilot & Tool Registry](/docs/ai-copilot)** | **AI Copilot & Tool Registry** | Architecture with Vercel AI SDK, 10 supported LLM providers, 48 registered administrative tools, and human-in-the-loop approval workflows. |
 | **[Database, Security & Deployment](/docs/database-and-security)** | **Database, Security & Deployment** | PostgreSQL 12-table schema, iron-session encryption, RBAC, operator impersonation, OTP recovery, audit logging, and Dokploy deployment. |
 | **[Rav Webmail & Dual Engine](/docs/rav-webmail)** | **Rav Webmail & Dual-Engine Architecture** | Next.js 16 + React 19 + Rust Axum webmail, Tantivy search, live WebSockets, and dual SSO. |
+| **[Model Context Protocol (MCP) Server](/docs/mcp-server)** | **Model Context Protocol (MCP) Server & Direct Mailbox Engine** | External AI agent integration, direct JMAP mailbox access, 56 admin tools, HTTP SSE & Stdio CLI transports. |
 
 ---
 

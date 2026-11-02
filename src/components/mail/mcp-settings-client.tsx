@@ -14,8 +14,6 @@ import {
   Zap,
   Globe,
   Mail,
-  Sliders,
-  Filter,
 } from "lucide-react"
 import { toast } from "sonner"
 
