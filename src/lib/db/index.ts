@@ -258,6 +258,17 @@ export async function initDatabase(): Promise<void> {
         ALTER TABLE forwarding_rules ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT true;
         ALTER TABLE forwarding_rules ADD COLUMN IF NOT EXISTS description TEXT;
         ALTER TABLE domains ADD COLUMN IF NOT EXISTS catch_all_archival BOOLEAN DEFAULT true;
+
+        CREATE TABLE IF NOT EXISTS mcp_api_keys (
+          id VARCHAR(64) PRIMARY KEY,
+          name VARCHAR(128) NOT NULL,
+          key_hash VARCHAR(128) UNIQUE NOT NULL,
+          prefix VARCHAR(32) NOT NULL,
+          created_by VARCHAR(64) NOT NULL,
+          last_used_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_mcp_keys_hash ON mcp_api_keys(key_hash);
       `)
 
       // 2. Seed primary admin account yehia
