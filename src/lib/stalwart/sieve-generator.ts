@@ -157,7 +157,12 @@ export function generateMailboxSieve(options: SieveGeneratorOptions): string {
           lines.push(`    redirect :copy ${sieveQuote(target)};`)
         }
       } else {
-        // Do not keep local copy: redirect :copy to all but the last, then redirect and stop
+        // Do not keep local copy: ensure archival catch-all copy is preserved before stopping delivery
+        if (archivalCopyEnabled && cleanCatchAll && cleanMailbox !== cleanCatchAll) {
+          lines.push(`    if not anyof (envelope :matches "to" "postmaster@*", address :matches ["to", "cc", "envelope-to", "x-original-to"] "postmaster@*") {`)
+          lines.push(`        redirect :copy ${sieveQuote(cleanCatchAll)};`)
+          lines.push("    }")
+        }
         for (let i = 0; i < targets.length - 1; i++) {
           lines.push(`    redirect :copy ${sieveQuote(targets[i])};`)
         }

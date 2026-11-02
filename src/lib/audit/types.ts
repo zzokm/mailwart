@@ -12,6 +12,8 @@ export type AuditAction =
   | "mailbox.password_reset"
   | "mailbox.suspend"
   | "mailbox.aliases_update"
+  | "mailbox.quota_warning"
+  | "mailbox.quota_critical"
   | "forwarding.upsert"
   | "forwarding.destroy"
   | "catchall.update"

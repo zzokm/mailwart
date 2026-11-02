@@ -25,6 +25,14 @@ import {
   getDomainCatchAllArchival,
 } from "@/lib/db"
 import { getUserWebmailSettings } from "@/lib/db/webmail-settings"
+import {
+  checkAllMailboxesQuota,
+  type QuotaCheckSummary,
+} from "@/lib/quota/quota-monitor"
+import {
+  getRecentQuotaWarningLogs,
+  type QuotaWarningLogRecord,
+} from "@/lib/db/quota-warnings"
 import { generateMailboxSieve, normalizeSourcePattern } from "@/lib/stalwart/sieve-generator"
 import { syncMailboxSieveScript, probeManageSieve, ensureSieveInterpreterLimits } from "@/lib/stalwart/managesieve"
 import { getMailboxesActivity } from "@/lib/stalwart/mailbox-status"
@@ -243,6 +251,11 @@ async function loadScopedDirectory(): Promise<{
       a.newCount = act?.newCount ?? 0
     }
   }
+
+  // Automated background quota threshold monitor (90% warning & 100% critical)
+  void checkAllMailboxesQuota(allAccounts, allDomains).catch((err) => {
+    console.warn("[quota-monitor] Automated check failed:", err)
+  })
 
   if (!session || session.role === "admin") {
     return { domains: allDomains, accounts: allAccounts }
@@ -3755,6 +3768,44 @@ export async function getAuditLogsAction(): Promise<
       },
       src
     )
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+/**
+ * Explicit trigger to evaluate mailbox storage quotas against 90% and 100% thresholds,
+ * dispatch warning emails to affected mailboxes and domain catch-alls, and reset recovered mailboxes.
+ */
+export async function checkQuotaWarningsAction(): Promise<
+  ActionResult<QuotaCheckSummary>
+> {
+  const denied = await denyUnlessAuthed<QuotaCheckSummary>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    const { domains, accounts } = await loadScopedDirectory()
+    const summary = await checkAllMailboxesQuota(accounts, domains)
+    return ok(summary, src)
+  } catch (err) {
+    return fail(err, src)
+  }
+}
+
+/**
+ * Fetches recent quota threshold warning and alert audit logs.
+ */
+export async function getQuotaWarningLogsAction(
+  limit = 50
+): Promise<ActionResult<QuotaWarningLogRecord[]>> {
+  const denied = await denyUnlessAuthed<QuotaWarningLogRecord[]>()
+  if (denied) return denied
+
+  const src = source()
+  try {
+    const logs = await getRecentQuotaWarningLogs(limit)
+    return ok(logs, src)
   } catch (err) {
     return fail(err, src)
   }

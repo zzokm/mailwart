@@ -9,6 +9,7 @@ import {
   bulkResetPasswordsAction,
   bulkSetStorageCapacityAction,
   bulkSuspendMailboxesAction,
+  checkQuotaWarningsAction,
   commitBulkJobChunkAction,
   createAppPasswordAction,
   createDomainAction,
@@ -28,6 +29,7 @@ import {
   getHealth,
   getMailboxDetailAction,
   getOverview,
+  getQuotaWarningLogsAction,
   getRoutingOverviewAction,
   listDomainsAction,
   listMailboxesAction,
@@ -923,5 +925,21 @@ export function registerAllMcpTools(server: McpServer) {
     "Query the immutable administrative audit trail recording all console changes.",
     {},
     async () => execAdmin(() => getAuditLogsAction())
+  )
+
+  server.tool(
+    "check_quota_warnings",
+    "Evaluate mailbox storage quotas against 90% warning and 100% critical thresholds, automatically dispatching warning emails to mailboxes and domain catch-alls.",
+    {},
+    async () => execAdmin(() => checkQuotaWarningsAction())
+  )
+
+  server.tool(
+    "get_quota_warning_logs",
+    "Query recent storage quota threshold warning logs and dispatch history.",
+    {
+      limit: z.number().int().positive().max(100).optional().default(50).describe("Max logs to retrieve"),
+    },
+    async ({ limit }) => execAdmin(() => getQuotaWarningLogsAction(limit))
   )
 }

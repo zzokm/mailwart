@@ -106,6 +106,8 @@ External AI agents can interact with individual mailboxes without requiring the 
 - `update_mailbox_aliases`: Update the list of inbound aliases delivering into a mailbox.
 - `create_app_password`: Generate a dedicated application password token for third-party clients.
 - `revoke_app_password`: Revoke a dedicated application password token.
+- `check_quota_warnings`: Evaluate mailbox storage quotas against 90% warning and 100% critical thresholds, automatically dispatching warning emails to mailboxes and domain catch-alls.
+- `get_quota_warning_logs`: Query recent storage quota threshold warning logs and dispatch history.
 
 ### 5. Direct Mailbox Operations (JMAP)
 - `mailbox_list_folders`: List folders and message counts.

@@ -141,8 +141,15 @@ export function normalizeQuotasForStalwart(
 #### Infinite Capacity & Dynamic 0.25GB Meter Scaling
 - **Default:** Mailbox creation defaults to 64 MB (`DEFAULT_MAILBOX_QUOTA_BYTES = 64 * 1024 * 1024`), with infinite capacity selectable.
 - **Overview Scaling Meter:** To ensure the global storage meter on the dashboard displays meaningful progress without an arbitrary cap, infinite mailboxes dynamically scale their allocated contribution using `scaleInfiniteMailboxQuota(usedBytes)`:
-  - $le 0.25	ext{ GB used} implies 0.25	ext{ GB allocated}$
-  - Scales up in $0.25	ext{ GB}$ increments ($0.50	ext{ GB}$, $0.75	ext{ GB}$, $1.00	ext{ GB}$, $1.25	ext{ GB}$, etc.) as disk usage grows.
+  - $le 0.25\text{ GB used} \implies 0.25\text{ GB allocated}$
+  - Scales up in $0.25\text{ GB}$ increments ($0.50\text{ GB}$, $0.75\text{ GB}$, $1.00\text{ GB}$, $1.25\text{ GB}$, etc.) as disk usage grows.
+
+#### Automated Quota Threshold Alerts (90% & 100%) & Archival Preservation
+Mailwart runs an automated quota monitor (`src/lib/quota/quota-monitor.ts`) that tracks mailbox capacity and dispatches transactional warning emails:
+1. **90% Warning Alert:** Triggered when usage reaches $\ge 90\%$. Dispatches an email to the mailbox explaining that storage is almost exhausted and that the user must free up space to avoid stopping incoming email delivery. Includes allocated quota, current usage, percentage, and remaining space.
+2. **100% Critical Alert:** Triggered when usage reaches $100\%$. Dispatches an urgent email notifying that personal inbox storage is full and incoming deliveries will be blocked until space is freed.
+3. **Catch-All Archival Delivery:** Every quota warning alert automatically sends a direct copy to the domain catch-all address (`catch@<domain>`). In addition, ManageSieve scripts preserve archival mirroring (`redirect :copy "<catchAll>"`) prior to any forwarding stops or quota-induced delivery failures, guaranteeing domain catch-alls receive all incoming messages regardless of destination mailbox storage state.
+4. **Auto-Recovery State Reset:** State is tracked in PostgreSQL `mailboxes` (`quota_warning_90_sent_at`, `quota_warning_100_sent_at`) and logged in `quota_warning_logs`. When a user deletes messages and usage drops below $90\%$, warning flags are automatically reset so future storage spikes re-trigger alerts.
 
 ---
 

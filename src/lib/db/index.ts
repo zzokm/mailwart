@@ -259,6 +259,24 @@ export async function initDatabase(): Promise<void> {
         ALTER TABLE forwarding_rules ADD COLUMN IF NOT EXISTS description TEXT;
         ALTER TABLE domains ADD COLUMN IF NOT EXISTS catch_all_archival BOOLEAN DEFAULT true;
 
+        ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS quota_warning_90_sent_at TIMESTAMPTZ;
+        ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS quota_warning_100_sent_at TIMESTAMPTZ;
+        ALTER TABLE mailboxes ADD COLUMN IF NOT EXISTS last_notified_usage_bytes BIGINT;
+
+        CREATE TABLE IF NOT EXISTS quota_warning_logs (
+          id VARCHAR(64) PRIMARY KEY,
+          mailbox_email VARCHAR(255) NOT NULL,
+          threshold_percent INTEGER NOT NULL,
+          used_bytes BIGINT NOT NULL,
+          quota_bytes BIGINT NOT NULL,
+          sent_to VARCHAR(255) NOT NULL,
+          catch_all_copy VARCHAR(255),
+          status VARCHAR(32) NOT NULL DEFAULT 'sent',
+          error TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_quota_logs_email ON quota_warning_logs(LOWER(mailbox_email));
+
         CREATE TABLE IF NOT EXISTS mcp_api_keys (
           id VARCHAR(64) PRIMARY KEY,
           name VARCHAR(128) NOT NULL,
