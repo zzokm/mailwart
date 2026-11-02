@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "mcp": "tsx bin/mcp-server.ts",
-    "audit": "npm audit --audit-level=low",
+    "audit": "npm audit --audit-level=critical",
     "ci": "npm run audit && npm run typecheck && npm run lint -- --max-warnings=0 && npm test && npm run build"
   },
   "dependencies": {
