@@ -51,17 +51,52 @@ import { buildRoundcubeUrl } from "@/lib/roundcube-client"
 import { generatePassword, quotaSummary } from "@/lib/format"
 import type { StalwartAccount, StalwartDomain } from "@/lib/stalwart/types"
 
-type EmailSortMode = "alpha-asc" | "alpha-desc" | "domain-asc" | "domain-desc"
-type StatusSortMode = "active-first" | "suspended-first"
-type SpaceSortMode = "used-desc" | "used-asc"
-type NotificationSortMode = "new-first" | "unread-first"
+export type MailboxSortField =
+  | "email"
+  | "domain"
+  | "space"
+  | "capacity"
+  | "status"
+  | "notifications"
+  | "date"
+  | "name"
 
-type SortState =
-  | { field: null }
-  | { field: "email"; mode: EmailSortMode }
-  | { field: "status"; mode: StatusSortMode }
-  | { field: "space"; mode: SpaceSortMode }
-  | { field: "notifications"; mode: NotificationSortMode }
+export type MailboxSortDirection = "asc" | "desc"
+
+export const SORT_FIELD_OPTIONS: { id: MailboxSortField; label: string }[] = [
+  { id: "email", label: "Email" },
+  { id: "domain", label: "Domain" },
+  { id: "space", label: "Storage used" },
+  { id: "capacity", label: "Storage capacity" },
+  { id: "status", label: "Status" },
+  { id: "notifications", label: "Unread / Activity" },
+  { id: "date", label: "Date added" },
+  { id: "name", label: "Name / Description" },
+]
+
+export function getDirectionLabel(
+  field: MailboxSortField,
+  dir: MailboxSortDirection
+) {
+  switch (field) {
+    case "email":
+    case "domain":
+    case "name":
+      return dir === "asc" ? "A → Z" : "Z → A"
+    case "status":
+      return dir === "asc" ? "Active first" : "Suspended first"
+    case "space":
+      return dir === "desc" ? "Highest used" : "Lowest used"
+    case "capacity":
+      return dir === "desc" ? "Largest capacity" : "Smallest capacity"
+    case "notifications":
+      return dir === "desc" ? "Most unread" : "Least unread"
+    case "date":
+      return dir === "desc" ? "Newest first" : "Oldest first"
+    default:
+      return dir === "asc" ? "Ascending" : "Descending"
+  }
+}
 
 export function MailboxTable({
   accounts,
@@ -83,7 +118,8 @@ export function MailboxTable({
   const [bulkPassword, setBulkPassword] = useState(() => generatePassword())
   const [createOpen, setCreateOpen] = useState(false)
   const [configAccount, setConfigAccount] = useState<StalwartAccount | null>(null)
-  const [sortState, setSortState] = useState<SortState>({ field: null })
+  const [sortField, setSortField] = useState<MailboxSortField>("email")
+  const [sortDirection, setSortDirection] = useState<MailboxSortDirection>("asc")
 
   const [activityMap, setActivityMap] = useState<
     Map<
@@ -175,60 +211,73 @@ export function MailboxTable({
   const isSingleDomain = domainId !== "all" || uniqueDomains.size <= 1
 
   function toggleEmailSort() {
-    setSortState((prev) => {
-      if (prev.field !== "email") {
-        return { field: "email", mode: "alpha-asc" }
-      }
-      if (prev.mode === "alpha-asc") {
-        return { field: "email", mode: "alpha-desc" }
-      }
-      if (isSingleDomain) {
-        return { field: null }
-      }
-      if (prev.mode === "alpha-desc") {
-        return { field: "email", mode: "domain-asc" }
-      }
-      if (prev.mode === "domain-asc") {
-        return { field: "email", mode: "domain-desc" }
-      }
-      return { field: null }
-    })
+    if (sortField !== "email" && sortField !== "domain") {
+      setSortField("email")
+      setSortDirection("asc")
+    } else if (sortField === "email" && sortDirection === "asc") {
+      setSortDirection("desc")
+    } else if (!isSingleDomain && sortField === "email" && sortDirection === "desc") {
+      setSortField("domain")
+      setSortDirection("asc")
+    } else if (!isSingleDomain && sortField === "domain" && sortDirection === "asc") {
+      setSortDirection("desc")
+    } else {
+      setSortField("email")
+      setSortDirection("asc")
+    }
   }
 
   function toggleStatusSort() {
-    setSortState((prev) => {
-      if (prev.field !== "status") {
-        return { field: "status", mode: "active-first" }
-      }
-      if (prev.mode === "active-first") {
-        return { field: "status", mode: "suspended-first" }
-      }
-      return { field: null }
-    })
+    if (sortField !== "status") {
+      setSortField("status")
+      setSortDirection("asc")
+    } else {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
+    }
   }
 
   function toggleSpaceSort() {
-    setSortState((prev) => {
-      if (prev.field !== "space") {
-        return { field: "space", mode: "used-desc" }
-      }
-      if (prev.mode === "used-desc") {
-        return { field: "space", mode: "used-asc" }
-      }
-      return { field: null }
-    })
+    if (sortField !== "space" && sortField !== "capacity") {
+      setSortField("space")
+      setSortDirection("desc")
+    } else if (sortField === "space" && sortDirection === "desc") {
+      setSortDirection("asc")
+    } else if (sortField === "space" && sortDirection === "asc") {
+      setSortField("capacity")
+      setSortDirection("desc")
+    } else if (sortField === "capacity" && sortDirection === "desc") {
+      setSortDirection("asc")
+    } else {
+      setSortField("space")
+      setSortDirection("desc")
+    }
   }
 
   function toggleNotificationSort() {
-    setSortState((prev) => {
-      if (prev.field !== "notifications") {
-        return { field: "notifications", mode: "new-first" }
-      }
-      if (prev.mode === "new-first") {
-        return { field: "notifications", mode: "unread-first" }
-      }
-      return { field: null }
-    })
+    if (sortField !== "notifications") {
+      setSortField("notifications")
+      setSortDirection("desc")
+    } else {
+      setSortDirection((prev) => (prev === "desc" ? "asc" : "desc"))
+    }
+  }
+
+  function handleSortFieldChange(field: MailboxSortField) {
+    setSortField(field)
+    if (
+      field === "date" ||
+      field === "space" ||
+      field === "notifications" ||
+      field === "capacity"
+    ) {
+      setSortDirection("desc")
+    } else {
+      setSortDirection("asc")
+    }
+  }
+
+  function toggleSortDirection() {
+    setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
   }
 
   const filtered = useMemo(() => {
@@ -244,78 +293,89 @@ export function MailboxTable({
   }, [accountList, domainId, query])
 
   const sorted = useMemo(() => {
-    if (!sortState.field) return filtered
-
     const list = [...filtered]
-    if (sortState.field === "email") {
-      const mode = sortState.mode
-      return list.sort((a, b) => {
+    return list.sort((a, b) => {
+      if (sortField === "email") {
         const eA = a.email.toLowerCase()
         const eB = b.email.toLowerCase()
-        if (mode === "alpha-asc") return eA.localeCompare(eB)
-        if (mode === "alpha-desc") return eB.localeCompare(eA)
+        return sortDirection === "asc"
+          ? eA.localeCompare(eB)
+          : eB.localeCompare(eA)
+      }
 
-        const [uA = "", dA = ""] = eA.split("@")
-        const [uB = "", dB = ""] = eB.split("@")
-        if (mode === "domain-asc") {
-          const domComp = dA.localeCompare(dB)
-          if (domComp !== 0) return domComp
-          return uA.localeCompare(uB)
-        }
-        if (mode === "domain-desc") {
-          const domComp = dB.localeCompare(dA)
-          if (domComp !== 0) return domComp
-          return uB.localeCompare(uA)
-        }
-        return 0
-      })
-    }
+      if (sortField === "domain") {
+        const [uA = "", dA = ""] = a.email.toLowerCase().split("@")
+        const [uB = "", dB = ""] = b.email.toLowerCase().split("@")
+        const domComp =
+          sortDirection === "asc" ? dA.localeCompare(dB) : dB.localeCompare(dA)
+        if (domComp !== 0) return domComp
+        return uA.localeCompare(uB)
+      }
 
-    if (sortState.field === "status") {
-      const mode = sortState.mode
-      return list.sort((a, b) => {
+      if (sortField === "status") {
         const actA = a.isEnabled !== false ? 1 : 0
         const actB = b.isEnabled !== false ? 1 : 0
         if (actA !== actB) {
-          return mode === "active-first" ? actB - actA : actA - actB
+          return sortDirection === "asc" ? actB - actA : actA - actB
         }
         return a.email.toLowerCase().localeCompare(b.email.toLowerCase())
-      })
-    }
+      }
 
-    if (sortState.field === "space") {
-      const mode = sortState.mode
-      return list.sort((a, b) => {
+      if (sortField === "space") {
         const uA = quotaSummary(a.quotas).used
         const uB = quotaSummary(b.quotas).used
         if (uA !== uB) {
-          return mode === "used-desc" ? uB - uA : uA - uB
+          return sortDirection === "desc" ? uB - uA : uA - uB
         }
         return a.email.toLowerCase().localeCompare(b.email.toLowerCase())
-      })
-    }
+      }
 
-    if (sortState.field === "notifications") {
-      const mode = sortState.mode
-      return list.sort((a, b) => {
+      if (sortField === "capacity") {
+        const qA = quotaSummary(a.quotas)
+        const qB = quotaSummary(b.quotas)
+        const capA = qA.isUnlimited ? Number.POSITIVE_INFINITY : (qA.bytes ?? 0)
+        const capB = qB.isUnlimited ? Number.POSITIVE_INFINITY : (qB.bytes ?? 0)
+        if (capA !== capB) {
+          return sortDirection === "desc" ? capB - capA : capA - capB
+        }
+        return a.email.toLowerCase().localeCompare(b.email.toLowerCase())
+      }
+
+      if (sortField === "notifications") {
         const aNew = a.newCount ?? 0
         const bNew = b.newCount ?? 0
         const aUnread = a.unreadCount ?? 0
         const bUnread = b.unreadCount ?? 0
-
-        if (mode === "new-first") {
-          if (bNew !== aNew) return bNew - aNew
-          if (bUnread !== aUnread) return bUnread - aUnread
-        } else {
-          if (bUnread !== aUnread) return bUnread - aUnread
-          if (bNew !== aNew) return bNew - aNew
+        const totalA = aNew + aUnread
+        const totalB = bNew + bUnread
+        if (totalA !== totalB) {
+          return sortDirection === "desc" ? totalB - totalA : totalA - totalB
         }
         return a.email.toLowerCase().localeCompare(b.email.toLowerCase())
-      })
-    }
+      }
 
-    return list
-  }, [filtered, sortState])
+      if (sortField === "date") {
+        const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        if (tA !== tB) {
+          return sortDirection === "desc" ? tB - tA : tA - tB
+        }
+        return sortDirection === "desc"
+          ? b.id.localeCompare(a.id, undefined, { numeric: true })
+          : a.id.localeCompare(b.id, undefined, { numeric: true })
+      }
+
+      if (sortField === "name") {
+        const nA = (a.name || a.description || a.email).toLowerCase()
+        const nB = (b.name || b.description || b.email).toLowerCase()
+        return sortDirection === "asc"
+          ? nA.localeCompare(nB)
+          : nB.localeCompare(nA)
+      }
+
+      return 0
+    })
+  }, [filtered, sortField, sortDirection])
 
   const allSelected =
     sorted.length > 0 && sorted.every((a) => selected.has(a.id))
@@ -340,7 +400,7 @@ export function MailboxTable({
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex flex-1 flex-wrap gap-2 sm:flex-nowrap sm:items-center">
           <div className="relative min-w-0 flex-1 sm:max-w-xs">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -358,7 +418,7 @@ export function MailboxTable({
             value={domainId}
             onValueChange={(v) => setDomainId(v ?? "all")}
           >
-            <SelectTrigger className="w-full sm:w-48">
+            <SelectTrigger className="w-full sm:w-44">
               <SelectValue placeholder="All domains" />
             </SelectTrigger>
             <SelectContent>
@@ -370,6 +430,50 @@ export function MailboxTable({
               ))}
             </SelectContent>
           </Select>
+
+          {/* Sort By Field & Direction Toggle */}
+          <div className="flex items-center gap-1.5 w-full sm:w-auto">
+            <Select
+              items={Object.fromEntries(
+                SORT_FIELD_OPTIONS.map((o) => [o.id, o.label])
+              )}
+              value={sortField}
+              onValueChange={(v) => {
+                if (v) handleSortFieldChange(v as MailboxSortField)
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-44 font-mono text-[13px]">
+                <div className="flex items-center gap-1.5 truncate">
+                  <ArrowUpDown className="size-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground">Sort:</span>
+                  <SelectValue placeholder="Sort by…" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {SORT_FIELD_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-9 shrink-0"
+              onClick={toggleSortDirection}
+              title={`Sort ${sortDirection === "asc" ? "Ascending" : "Descending"} (${getDirectionLabel(sortField, sortDirection)}). Click to reverse.`}
+              aria-label={`Toggle sort direction (${sortDirection === "asc" ? "Ascending" : "Descending"})`}
+            >
+              {sortDirection === "asc" ? (
+                <ArrowUp className="size-4 text-foreground" />
+              ) : (
+                <ArrowDown className="size-4 text-foreground" />
+              )}
+            </Button>
+          </div>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
           <Plus data-icon="inline-start" />
@@ -479,27 +583,29 @@ export function MailboxTable({
                     className="group inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground transition-colors select-none cursor-pointer"
                     title={
                       isSingleDomain
-                        ? "Sort by email: A-Z, Z-A, or clear"
-                        : "Sort by email: A-Z, Z-A, Domain A-Z, Domain Z-A, or clear"
+                        ? "Sort by email: A-Z, Z-A"
+                        : "Sort by email: A-Z, Z-A, Domain A-Z, Domain Z-A"
                     }
                   >
                     <span>Email</span>
-                    {sortState.field === "email" ? (
-                      sortState.mode === "alpha-asc" ? (
+                    {sortField === "email" ? (
+                      sortDirection === "asc" ? (
                         <>
                           <ArrowUp className="size-3 text-foreground" />
                           <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
                             a-z
                           </span>
                         </>
-                      ) : sortState.mode === "alpha-desc" ? (
+                      ) : (
                         <>
                           <ArrowDown className="size-3 text-foreground" />
                           <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
                             z-a
                           </span>
                         </>
-                      ) : sortState.mode === "domain-asc" ? (
+                      )
+                    ) : sortField === "domain" ? (
+                      sortDirection === "asc" ? (
                         <>
                           <ArrowUp className="size-3 text-foreground" />
                           <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
@@ -525,11 +631,11 @@ export function MailboxTable({
                       type="button"
                       onClick={toggleStatusSort}
                       className="group inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground transition-colors select-none cursor-pointer"
-                      title="Sort by status: Active first, Suspended first, or clear"
+                      title="Sort by status: Active first, Suspended first"
                     >
                       <span>Status</span>
-                      {sortState.field === "status" ? (
-                        sortState.mode === "active-first" ? (
+                      {sortField === "status" ? (
+                        sortDirection === "asc" ? (
                           <>
                             <ArrowUp className="size-3 text-foreground" />
                             <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
@@ -556,11 +662,11 @@ export function MailboxTable({
                       type="button"
                       onClick={toggleSpaceSort}
                       className="group inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground transition-colors select-none cursor-pointer"
-                      title="Sort by space: High to Low, Low to High, or clear"
+                      title="Sort by space: High to Low, Low to High"
                     >
                       <span>Space</span>
-                      {sortState.field === "space" ? (
-                        sortState.mode === "used-desc" ? (
+                      {sortField === "space" ? (
+                        sortDirection === "desc" ? (
                           <>
                             <ArrowDown className="size-3 text-foreground" />
                             <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
@@ -572,6 +678,22 @@ export function MailboxTable({
                             <ArrowUp className="size-3 text-foreground" />
                             <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
                               low
+                            </span>
+                          </>
+                        )
+                      ) : sortField === "capacity" ? (
+                        sortDirection === "desc" ? (
+                          <>
+                            <ArrowDown className="size-3 text-foreground" />
+                            <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
+                              max
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <ArrowUp className="size-3 text-foreground" />
+                            <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
+                              min
                             </span>
                           </>
                         )
@@ -587,23 +709,23 @@ export function MailboxTable({
                       type="button"
                       onClick={toggleNotificationSort}
                       className="group inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground transition-colors select-none cursor-pointer"
-                      title="Sort by notifications: New first, Unread first, or clear"
+                      title="Sort by notifications: Most unread first, Least unread first"
                     >
                       <Bell className="size-3 text-muted-foreground group-hover:text-foreground transition-colors" />
                       <span>Notifications</span>
-                      {sortState.field === "notifications" ? (
-                        sortState.mode === "new-first" ? (
+                      {sortField === "notifications" ? (
+                        sortDirection === "desc" ? (
                           <>
                             <ArrowDown className="size-3 text-foreground" />
                             <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
-                              new
+                              most
                             </span>
                           </>
                         ) : (
                           <>
-                            <ArrowDown className="size-3 text-foreground" />
+                            <ArrowUp className="size-3 text-foreground" />
                             <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-foreground lowercase tracking-normal">
-                              unread
+                              least
                             </span>
                           </>
                         )
