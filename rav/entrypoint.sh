@@ -70,6 +70,45 @@ if command -v sqlite3 >/dev/null 2>&1; then
       sqlite3 "$db" "UPDATE outbox SET state = 'scheduled', send_after = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), fail_reason = NULL WHERE state = 'failed' OR state = 'sending' OR state = 'scheduled';" 2>/dev/null || true
     fi
   done
+
+  # 8. Unify any split/orphan impersonation user directories into canonical sha256(email)
+  python3 -c "
+import glob, os, sqlite3, hashlib, shutil
+for f in glob.glob('/data/*/db.sqlite'):
+    d = os.path.dirname(f)
+    try:
+        conn = sqlite3.connect(f)
+        emails = [r[0] for r in conn.execute('SELECT email FROM identities WHERE email LIKE \"%@%\" ORDER BY is_default DESC, id ASC').fetchall()]
+        if not emails:
+            emails = [r[0] for r in conn.execute('SELECT email FROM known_addresses WHERE email LIKE \"%@%\" ORDER BY rowid ASC').fetchall()]
+        conn.close()
+        if emails:
+            clean = emails[0].split('%')[0].strip().lower()
+            canon_hash = hashlib.sha256(clean.encode()).hexdigest()
+            curr_hash = os.path.basename(d)
+            canon_dir = os.path.join('/data', canon_hash)
+            if curr_hash != canon_hash:
+                canon_db = os.path.join(canon_dir, 'db.sqlite')
+                if os.path.exists(canon_db):
+                    src = sqlite3.connect(f)
+                    dst = sqlite3.connect(canon_db)
+                    for t in ['mfa_totp', 'mfa_totp_used_steps', 'mfa_lockout', 'mfa_settings', 'pgp_keys']:
+                        try:
+                            rows = src.execute(f'SELECT * FROM {t}').fetchall()
+                            if rows:
+                                cols = [c[1] for c in src.execute(f'PRAGMA table_info({t})').fetchall()]
+                                ph = ','.join(['?']*len(cols))
+                                dst.execute(f'DELETE FROM {t}')
+                                dst.executemany(f'INSERT INTO {t} VALUES ({ph})', rows)
+                        except Exception:
+                            pass
+                    dst.commit()
+                    src.close()
+                    dst.close()
+                    shutil.rmtree(d, ignore_errors=True)
+    except Exception:
+        pass
+" 2>/dev/null || true
 fi
 
 exec /app/rav-email-server "$@"

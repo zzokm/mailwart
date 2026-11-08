@@ -24,6 +24,7 @@ import sys
 import re
 
 def patch_binary(binary_path: str):
+    import struct
     print(f"[patch-rav] Inspecting binary: {binary_path}")
     if not os.path.exists(binary_path):
         raise FileNotFoundError(f"Binary not found: {binary_path}")
@@ -31,17 +32,88 @@ def patch_binary(binary_path: str):
     with open(binary_path, "rb") as f:
         data = bytearray(f.read())
 
-    # Pattern: 4084f67e -> 'test sil, sil; jle <exit_loop>'
+    # 1. IMAP take_while1 pattern: 4084f67e -> 'test sil, sil; jle <exit_loop>'
     pattern = bytes.fromhex("4084f67e")
     pos = data.find(pattern)
-    if pos == -1:
-        if bytes.fromhex("4084f674") in data:
-            print("[patch-rav] Binary already patched with 0x74 (jz)!")
-            return
-        raise RuntimeError("IMAP take_while1 pattern 4084f67e not found in binary!")
+    if pos != -1:
+        print(f"[patch-rav] Found take_while1 pattern at offset {hex(pos)}. Patching 0x7e -> 0x74...")
+        data[pos + 3] = 0x74
+    elif bytes.fromhex("4084f674") in data:
+        print("[patch-rav] Binary already patched with 0x74 (jz)!")
+    else:
+        print("[patch-rav] Warning: take_while1 pattern not found.")
 
-    print(f"[patch-rav] Found take_while1 pattern at offset {hex(pos)}. Patching 0x7e -> 0x74...")
-    data[pos + 3] = 0x74
+    def vaddr_to_offset(vaddr):
+        return vaddr - 0x1000
+
+    # 2. Account session synchronization & clean email hash (Helper 1 in cave 0xf587d2)
+    h1_offset = vaddr_to_offset(0xf587d2)
+    c1_offset = vaddr_to_offset(0x9be815)
+    call1_bytes = bytes.fromhex("e8b89f590090")
+
+    if c1_offset < len(data) and data[c1_offset:c1_offset+6] != call1_bytes:
+        print("[patch-rav] Installing account session unification hook in hash_email...")
+        loop_off = 0x07
+        found_off = 0x17
+        check_size_off = 0x1a
+        ret_normal_off = 0x29
+
+        b00 = bytes([0x48, 0x85, 0xd2])
+        b03 = bytes([0x74, check_size_off - (0x03 + 2)])
+        b05 = bytes([0x31, 0xc9])
+        b07 = bytes([0x80, 0x3c, 0x0e, 0x25])
+        b0b = bytes([0x74, found_off - (0x0b + 2)])
+        b0d = bytes([0x48, 0xff, 0xc1])
+        b10 = bytes([0x48, 0x39, 0xca])
+        b13 = bytes([0x75, loop_off - (0x13 + 2) & 0xff])
+        b15 = bytes([0xeb, check_size_off - (0x15 + 2)])
+        b17 = bytes([0x48, 0x89, 0xca])
+        b1a = bytes([0x48, 0x83, 0xfa, 0x3f])
+        b1e = bytes([0x76, ret_normal_off - (0x1e + 2)])
+        b20 = bytes([0x48, 0x83, 0xc4, 0x08])
+        jmp_vaddr = 0xf587d2 + 0x24
+        target_vaddr = 0x9be836
+        rel32_1 = target_vaddr - (jmp_vaddr + 5)
+        b24 = bytes([0xe9]) + struct.pack('<i', rel32_1)
+        b29 = bytes([0xc3])
+
+        helper1 = b00 + b03 + b05 + b07 + b0b + b0d + b10 + b13 + b15 + b17 + b1a + b1e + b20 + b24 + b29
+        data[h1_offset:h1_offset+len(helper1)] = helper1
+        data[c1_offset:c1_offset+6] = call1_bytes
+        print("[patch-rav] Account session unification hook installed successfully!")
+
+    # 3. Administrative session login hook (Helper 2 in cave 0xf59309)
+    h2_offset = vaddr_to_offset(0xf59309)
+    c2_offset = vaddr_to_offset(0x85a42e)
+    call2_bytes = bytes.fromhex("e8d6ee6f0090")
+
+    if c2_offset < len(data) and data[c2_offset:c2_offset+6] != call2_bytes:
+        print("[patch-rav] Installing administrative session login hook...")
+        normal_offset = 0x22
+        skip_mfa_offset = 0x23
+
+        h2_00 = bytes([0x74, skip_mfa_offset - 2])
+        h2_02 = bytes([0x48, 0x8b, 0xb3, 0xf8, 0x00, 0x00, 0x00])
+        h2_09 = bytes([0x48, 0x8b, 0x8b, 0x00, 0x01, 0x00, 0x00])
+        h2_10 = bytes([0x48, 0x85, 0xc9])
+        h2_13 = bytes([0x74, normal_offset - (0x13 + 2)])
+        h2_15 = bytes([0x80, 0x3e, 0x25])
+        h2_18 = bytes([0x74, skip_mfa_offset - (0x18 + 2)])
+        h2_1a = bytes([0x48, 0xff, 0xc6])
+        h2_1d = bytes([0x48, 0xff, 0xc9])
+        h2_20 = bytes([0x75, 0x15 - (0x20 + 2) & 0xff])
+        h2_22 = bytes([0xc3])
+        h2_23 = bytes([0x48, 0x83, 0xc4, 0x08])
+
+        jmp2_vaddr = 0xf59309 + 0x27
+        target2_vaddr = 0x85aa9d
+        rel32_2 = target2_vaddr - (jmp2_vaddr + 5)
+        h2_27 = bytes([0xe9]) + struct.pack('<i', rel32_2)
+
+        helper2 = h2_00 + h2_02 + h2_09 + h2_10 + h2_13 + h2_15 + h2_18 + h2_1a + h2_1d + h2_20 + h2_22 + h2_23 + h2_27
+        data[h2_offset:h2_offset+len(helper2)] = helper2
+        data[c2_offset:c2_offset+6] = call2_bytes
+        print("[patch-rav] Administrative session login hook installed successfully!")
 
     with open(binary_path, "wb") as f:
         f.write(data)

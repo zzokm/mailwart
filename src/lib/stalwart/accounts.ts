@@ -16,6 +16,7 @@ const ACCOUNT_PROPS = [
   "usedDiskQuota",
   "aliases",
   "roles",
+  "permissions",
   "isEnabled",
   "credentials",
   "createdAt",
@@ -187,9 +188,23 @@ export async function updateAccount(
     aliases: Record<string, unknown> | unknown[]
   }>
 ): Promise<void> {
-  const normalizedPatch: typeof patch = { ...patch }
+  const normalizedPatch: Record<string, unknown> = {}
+  if (patch.description !== undefined) {
+    normalizedPatch.description = patch.description
+  }
   if (patch.quotas !== undefined) {
     normalizedPatch.quotas = normalizeQuotasForStalwart(patch.quotas)
+  }
+  if (patch.aliases !== undefined) {
+    normalizedPatch.aliases = patch.aliases
+  }
+  if (patch.isEnabled !== undefined) {
+    normalizedPatch.permissions = patch.isEnabled
+      ? { "@type": "Inherit" }
+      : {
+          "@type": "Merge",
+          disabledPermissions: { authenticate: true, emailSend: true },
+        }
   }
 
   const r = await jmapCall([

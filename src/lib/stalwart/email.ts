@@ -111,6 +111,16 @@ export function hydrateAccounts(
 
     const credProbe = probeAccountCredentials(item.credentials)
 
+    const permissions = item.permissions as Record<string, unknown> | undefined
+    const disabledPerms = (permissions?.disabledPermissions &&
+      typeof permissions.disabledPermissions === "object"
+        ? permissions.disabledPermissions
+        : null) as Record<string, unknown> | null
+    const isSuspended = Boolean(
+      disabledPerms &&
+        (disabledPerms.authenticate === true || disabledPerms.emailSend === true)
+    )
+
     const base = {
       id: String(item.id),
       name: String(item.name ?? ""),
@@ -122,7 +132,7 @@ export function hydrateAccounts(
       aliases: (item.aliases as StalwartAccount["aliases"]) ?? null,
       roles: item.roles,
       isEnabled:
-        typeof item.isEnabled === "boolean" ? item.isEnabled : true,
+        typeof item.isEnabled === "boolean" ? item.isEnabled : !isSuspended,
       usedDiskQuota,
       appPasswords: credProbe.credentialsPresent
         ? credProbe.appPasswords
