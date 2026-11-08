@@ -42,7 +42,7 @@ export function PasswordField({
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="absolute top-1/2 right-1 -translate-y-1/2"
+            className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             onClick={() => setVisible((v) => !v)}
             disabled={disabled}
           >

@@ -141,3 +141,21 @@ a.font-brand {
 a.font-brand:hover {
   opacity: 0.8;
 }
+
+/* Password visibility toggle button styling inside input */
+.password-toggle-btn {
+  position: absolute !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 2.5rem !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer !important;
+  z-index: 10 !important;
+}
+
