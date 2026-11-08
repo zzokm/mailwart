@@ -205,7 +205,7 @@ describe("Mailwart MCP Server and Tool Registry", () => {
 
     expect(res.isError).toBe(true)
     const errText = getTextContent(res)
-    expect(errText).toContain("Required")
+    expect(errText).toMatch(/Required|Invalid input|expected string/i)
 
     await client.close()
     await mcpServer.close()

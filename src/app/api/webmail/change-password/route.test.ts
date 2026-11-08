@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
+import type { StalwartAccount } from "@/lib/stalwart/types"
 import { POST, validateStrongPassword } from "./route"
 
 vi.mock("@/lib/stalwart/accounts", () => ({
@@ -141,7 +142,7 @@ describe("Webmail Change Password API (/api/webmail/change-password)", () => {
           quotaBytes: 0,
           usedBytes: 0,
           status: "active",
-        } as any,
+        } as unknown as StalwartAccount,
       ])
       vi.mocked(updateAccountPassword).mockResolvedValue(undefined)
 
@@ -180,7 +181,7 @@ describe("Webmail Change Password API (/api/webmail/change-password)", () => {
           quotaBytes: 0,
           usedBytes: 0,
           status: "active",
-        } as any,
+        } as unknown as StalwartAccount,
       ])
       vi.mocked(updateAccountPassword).mockResolvedValue(undefined)
 
@@ -202,3 +203,4 @@ describe("Webmail Change Password API (/api/webmail/change-password)", () => {
     })
   })
 })
+

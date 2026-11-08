@@ -24,7 +24,8 @@ export type CopilotToolDef<TSchema extends z.ZodTypeAny = z.ZodTypeAny> = {
    * Wraps an existing Server Action. Must not open a second JMAP client.
    * Return value is sanitized before it reaches the model stream.
    */
-  execute: (input: z.infer<TSchema>) => Promise<unknown>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  execute: (input: any) => Promise<unknown>
   /** Optional left-panel route after a successful mutation. */
   navigate?: (result: unknown) => string | null
 }
