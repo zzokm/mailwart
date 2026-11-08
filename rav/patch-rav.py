@@ -88,13 +88,15 @@ def patch_frontend(static_dir: str):
     login_rep = '(0,t.jsx)("a",{href:"https://email.yehia.dev",className:"inline-block font-brand text-3xl font-[200] lowercase leading-none tracking-[-0.015em] text-foreground hover:opacity-80 transition-opacity",style:{fontFamily:\'"Bricolage Grotesque", sans-serif\',fontWeight:200},children:"mailwart"})'
 
     login_patched = False
-    for js_path in glob.glob(os.path.join(chunks_dir, "*.js")):
+    for js_path in sorted(glob.glob(os.path.join(chunks_dir, "*.js"))):
+        if re.search(r'_p\d+\.js$', js_path):
+            continue
         with open(js_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         if login_target in content:
             old_chunk_name = os.path.basename(js_path)
-            new_chunk_name = old_chunk_name.replace(".js", "_p2.js") if "_p2.js" not in old_chunk_name else old_chunk_name
+            new_chunk_name = old_chunk_name.replace(".js", "_p2.js")
             new_chunk_path = os.path.join(chunks_dir, new_chunk_name)
 
             print(f"[patch-rav] Patching login wordmark in {old_chunk_name} -> {new_chunk_name}...")
@@ -104,9 +106,8 @@ def patch_frontend(static_dir: str):
                 f.write(content)
 
             update_chunk_references(root_static, old_chunk_name, new_chunk_name)
-            if "_p1.js" in old_chunk_name:
-                base_orig = old_chunk_name.replace("_p1.js", ".js")
-                update_chunk_references(root_static, base_orig, new_chunk_name)
+            for prev in ["_p1.js"]:
+                update_chunk_references(root_static, old_chunk_name.replace(".js", prev), new_chunk_name)
             login_patched = True
 
     if not login_patched:
@@ -131,33 +132,45 @@ def patch_frontend(static_dir: str):
     watermark_target = 'className:"text-2xl font-bold tracking-tight text-muted-foreground/40 select-none",children:"Rav"'
     watermark_rep = 'className:"text-3xl font-brand font-[200] lowercase tracking-tight text-muted-foreground/40 select-none",style:{fontFamily:\'"Bricolage Grotesque", sans-serif\',fontWeight:200},children:"mailwart"'
 
+    # --- 3. Patch Settings Chunk (Change Password Tab with High-Security Enforcement) ---
+    password_func = '''function oPassword(){let[e,t]=(0,f.useState)(""),[r,n]=(0,f.useState)(""),[s,a]=(0,f.useState)(""),[i,l]=(0,f.useState)(!1),[o,d]=(0,f.useState)(!1),[c,u]=(0,f.useState)(!1),[p,v]=(0,f.useState)(!1),[y,j]=(0,f.useState)(null),[w,N]=(0,f.useState)(!1),k=(e_.useAuthStore.getState().activeAccount()?.email||"").split("%")[0].trim().toLowerCase(),S=(k.split("@")[0]||"").toLowerCase(),C=r.length>=14,M=/[A-Z]/.test(r),E=/[a-z]/.test(r),z=/[0-9]/.test(r),D=/[^a-zA-Z0-9\\s]/.test(r),A=!S||S.length<3||!r.toLowerCase().includes(S),_=(!e||r!==e)&&r.length>0,P=s.length>0&&r===s,F=0;r.length>=8&&F++,C&&F++,M&&E&&F++,z&&F++,D&&F++;let R="Very Weak",$= "text-muted-foreground";1===F?(R="Weak",$="text-red-500"):2===F?(R="Fair",$="text-amber-500"):3===F?(R="Good",$="text-yellow-500"):4===F?(R="Strong",$="text-blue-500"):F>=5&&(R="Very Strong",$="text-emerald-500");let L=C&&M&&E&&z&&D&&A&&_&&P&&e.length>0&&!p;async function O(i){if(i&&i.preventDefault&&i.preventDefault(),!L)return;v(!0),j(null),N(!1);try{let i=await fetch("/api/sso/change-password",{method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({email:k,currentPassword:e,newPassword:r,confirmPassword:s})}),l=await i.json().catch(()=>({}));if(!i.ok)throw Error(l.error||"Failed to update password. Please check your current password.");N(!0),j("Password changed successfully! Your mailbox password has been updated."),t(""),n(""),a(""),ei.toast.success("Password changed successfully!")}catch(e){let t=e instanceof Error?e.message:"Failed to update password.";N(!1),j(t),ei.toast.error(t)}finally{v(!1)}}function U(e,t){return(0,m.jsxs)("div",{className:(0,I.cn)("flex items-center gap-2 text-xs transition-colors",e?"text-emerald-600 dark:text-emerald-400 font-medium":"text-muted-foreground"),children:[e?(0,m.jsx)("svg",{className:"size-3.5 shrink-0 text-emerald-500",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5,strokeLinecap:"round",strokeLinejoin:"round",children:(0,m.jsx)("polyline",{points:"20 6 9 17 4 12"})}):(0,m.jsx)("svg",{className:"size-3.5 shrink-0 text-muted-foreground/40",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2,children:(0,m.jsx)("circle",{cx:12,cy:12,r:3,fill:"currentColor"})}),(0,m.jsx)("span",{children:t})]})}function B(e,t){return(0,m.jsx)("button",{type:"button",tabIndex:-1,onClick:t,className:"absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors",children:e?(0,m.jsxs)("svg",{className:"size-4",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round",children:[(0,m.jsx)("path",{d:"M9.88 9.88a3 3 0 1 0 4.24 4.24"}),(0,m.jsx)("path",{d:"M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"}),(0,m.jsx)("path",{d:"M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"}),(0,m.jsx)("line",{x1:2,x2:22,y1:2,y2:22})]}):(0,m.jsxs)("svg",{className:"size-4",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round",children:[(0,m.jsx)("path",{d:"M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"}),(0,m.jsx)("circle",{cx:12,cy:12,r:3})]})})}return(0,m.jsxs)("div",{className:"flex flex-col gap-6 max-w-2xl",children:[(0,m.jsxs)("div",{children:[(0,m.jsx)("h2",{className:"text-base font-semibold text-foreground",children:"Change Password"}),(0,m.jsx)("p",{className:"mt-1 text-sm text-muted-foreground",children:`Update the password for ${k}. High-security requirements are enforced.`})]}),(0,m.jsxs)("div",{className:"rounded-lg border border-border bg-card p-5 space-y-4 shadow-sm",children:[(0,m.jsxs)("div",{className:"space-y-1.5",children:[(0,m.jsx)("label",{className:"text-sm font-medium text-foreground",children:"Current Password"}),(0,m.jsxs)("div",{className:"relative",children:[(0,m.jsx)("input",{type:i?"text":"password",value:e,onChange:e=>t(e.target.value),placeholder:"Enter current password",className:"w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 pr-10"}),B(i,()=>l(!i))]})]}),(0,m.jsxs)("div",{className:"space-y-1.5",children:[(0,m.jsx)("label",{className:"text-sm font-medium text-foreground",children:"New Password"}),(0,m.jsxs)("div",{className:"relative",children:[(0,m.jsx)("input",{type:o?"text":"password",value:r,onChange:e=>n(e.target.value),placeholder:"Enter new strong password",className:"w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 pr-10"}),B(o,()=>d(!o))]})]}),r.length>0&&(0,m.jsxs)("div",{className:"space-y-1.5 pt-1",children:[(0,m.jsxs)("div",{className:"flex items-center justify-between text-xs",children:[(0,m.jsx)("span",{className:"text-muted-foreground",children:"Password Strength"}),(0,m.jsx)("span",{className:(0,I.cn)("font-semibold",$),children:R})]}),(0,m.jsxs)("div",{className:"grid grid-cols-4 gap-1.5 h-1.5 w-full",children:[(0,m.jsx)("div",{className:(0,I.cn)("rounded-full h-full transition-colors",F>=1?"bg-red-500":"bg-muted")}),(0,m.jsx)("div",{className:(0,I.cn)("rounded-full h-full transition-colors",F>=2?"bg-amber-500":"bg-muted")}),(0,m.jsx)("div",{className:(0,I.cn)("rounded-full h-full transition-colors",F>=4?"bg-blue-500":"bg-muted")}),(0,m.jsx)("div",{className:(0,I.cn)("rounded-full h-full transition-colors",F>=5?"bg-emerald-500":"bg-muted")})]})]}),(0,m.jsxs)("div",{className:"space-y-1.5",children:[(0,m.jsx)("label",{className:"text-sm font-medium text-foreground",children:"Confirm New Password"}),(0,m.jsxs)("div",{className:"relative",children:[(0,m.jsx)("input",{type:c?"text":"password",value:s,onChange:e=>a(e.target.value),placeholder:"Re-enter new password to confirm",className:"w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 pr-10"}),B(c,()=>u(!c))]})]}),(0,m.jsxs)("div",{className:"rounded-md border border-border/80 bg-muted/40 p-3.5 space-y-2.5",children:[(0,m.jsx)("div",{className:"text-xs font-semibold uppercase tracking-wider text-muted-foreground",children:"Security Requirements"}),(0,m.jsxs)("div",{className:"grid grid-cols-1 sm:grid-cols-2 gap-2",children:[U(C,"At least 14 characters"),U(M,"Uppercase letter (A-Z)"),U(E,"Lowercase letter (a-z)"),U(z,"Number (0-9)"),U(D,"Special symbol (!@#$%^&*)"),U(A,"No email username"),U(_,"Different from current"),U(P,"Passwords match")]})]}),y&&(0,m.jsxs)("div",{className:(0,I.cn)("rounded-md p-3 text-xs flex items-start gap-2",w?"bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400":"bg-destructive/10 border border-destructive/30 text-destructive"),children:[(0,m.jsx)("span",{className:"font-medium",children:w?"Success:":"Error:"}),(0,m.jsx)("span",{children:y})]}),(0,m.jsx)("div",{className:"pt-2 flex justify-end",children:(0,m.jsxs)("button",{type:"button",onClick:O,disabled:!L,className:"inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 transition-colors",children:[p&&(0,m.jsx)(T.Loader2,{className:"size-4 animate-spin"}),p?"Updating Password...":"Update Password"]})})]})]})}'''
+
+    target_tabs = 'let oo=[{id:"display",label:"Display"},{id:"notifications",label:"Notifications"},{id:"identities",label:"Identities"},{id:"vacation",label:"Vacation"},{id:"filters",label:"Filters"},{id:"security",label:"Security"}];'
+    rep_tabs = f'{password_func}let oo=[{{id:"display",label:"Display"}},{{id:"notifications",label:"Notifications"}},{{id:"identities",label:"Identities"}},{{id:"password",label:"Password"}},{{id:"vacation",label:"Vacation"}},{{id:"filters",label:"Filters"}},{{id:"security",label:"Security"}}];'
+
+    target_body = '"security"===r&&(0,m.jsx)(oa,{})'
+    rep_body = '"security"===r&&(0,m.jsx)(oa,{}),"password"===r&&(0,m.jsx)(oPassword,{})'
+
     main_patched = False
-    for js_path in glob.glob(os.path.join(chunks_dir, "*.js")):
+    for js_path in sorted(glob.glob(os.path.join(chunks_dir, "*.js"))):
+        if re.search(r'_p\d+\.js$', js_path):
+            continue
         with open(js_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        if target2 in content:
+        if target2 in content or target_tabs in content:
             old_chunk_name = os.path.basename(js_path)
-            new_chunk_name = old_chunk_name.replace(".js", "_p3.js") if "_p3.js" not in old_chunk_name else old_chunk_name
+            new_chunk_name = old_chunk_name.replace(".js", "_p4.js")
             new_chunk_path = os.path.join(chunks_dir, new_chunk_name)
 
-            print(f"[patch-rav] Patching mail client chunk in {old_chunk_name} -> {new_chunk_name}...")
-            content = content.replace(target1, rep1).replace(target2, rep2).replace(target3, rep3).replace(target4, rep4)
-            content = content.replace(rail_target, rail_rep)
-            content = content.replace(watermark_target, watermark_rep)
-            content = re.sub(r'document\.title\s*=\s*r\s*>\s*0\s*\?\s*`\(\${r}\)[^`]+`\s*:\s*["\'][^"\']+["\']', 'document.title=r>0?`(${r}) Webmail Inbox`:"Webmail Inbox"', content)
-            content = re.sub(r'document\.title\s*=\s*r\s*>\s*0\s*\?\s*`\(\${r}\)\s*Webmail(?: Inbox)?`\s*:\s*["\']Webmail(?: Inbox)?["\']', 'document.title=r>0?`(${r}) Webmail Inbox`:"Webmail Inbox"', content)
+            print(f"[patch-rav] Patching mail client & settings chunk in {old_chunk_name} -> {new_chunk_name}...")
+            if target2 in content:
+                content = content.replace(target1, rep1).replace(target2, rep2).replace(target3, rep3).replace(target4, rep4)
+                content = content.replace(rail_target, rail_rep)
+                content = content.replace(watermark_target, watermark_rep)
+                content = re.sub(r'document\.title\s*=\s*r\s*>\s*0\s*\?\s*`\(\${r}\)[^`]+`\s*:\s*["\'][^"\']+["\']', 'document.title=r>0?`(${r}) Webmail Inbox`:"Webmail Inbox"', content)
+                content = re.sub(r'document\.title\s*=\s*r\s*>\s*0\s*\?\s*`\(\${r}\)\s*Webmail(?: Inbox)?`\s*:\s*["\']Webmail(?: Inbox)?["\']', 'document.title=r>0?`(${r}) Webmail Inbox`:"Webmail Inbox"', content)
+
+            if target_tabs in content:
+                content = content.replace(target_tabs, rep_tabs)
+                content = content.replace(target_body, rep_body)
 
             with open(new_chunk_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
             update_chunk_references(root_static, old_chunk_name, new_chunk_name)
-            if "_p1.js" in old_chunk_name:
-                base_orig = old_chunk_name.replace("_p1.js", ".js")
-                update_chunk_references(root_static, base_orig, new_chunk_name)
-            if "_p2.js" in old_chunk_name:
-                base_orig = old_chunk_name.replace("_p2.js", ".js")
-                update_chunk_references(root_static, base_orig, new_chunk_name)
+            for prev in ["_p1.js", "_p2.js", "_p3.js"]:
+                update_chunk_references(root_static, old_chunk_name.replace(".js", prev), new_chunk_name)
             main_patched = True
 
     if not main_patched:
